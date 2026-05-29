@@ -7,23 +7,29 @@
  * inputs are marked readOnly + visually dimmed so an operator can SEE
  * the current values without thinking they're editable.
  *
- * Permissions UX (interim — until the api ships a canonical catalog
- * endpoint per the design discussion):
- *   - We discover the "known" permission set client-side from the
- *     union of all permissions across existing roles.
- *   - Known permissions render as togglable chips grouped by their
- *     `<resource>.*` prefix.
- *   - A free-form add-input lives below the catalog so operators can
- *     still type a permission the platform doesn't ship yet — with a
- *     warning that the api doesn't enforce strings outside the catalog.
+ * Permissions UX — CANONICAL catalog (replaces ui#6's interim trick):
  *
- * When the api ships `GET /api/v1/permissions` (slice 1 of the
- * permission catalog work), swap `useRoles()` for the catalog hook —
- * the rest of this file stays put.
+ *   - The picker hydrates from `GET /api/v1/permissions`
+ *     (api#32 — internal/auth/permissions.go::Catalog). Operators
+ *     see every permission the platform actually understands, grouped
+ *     by the api's `group` field (RBAC / Workflows / Agents /
+ *     Secrets / Observability / Integrations), with descriptions
+ *     surfaced as hover tooltips.
+ *
+ *   - Permissions a role currently holds that aren't in the catalog
+ *     (e.g. custom strings typed before the catalog landed, or
+ *     deprecated entries) render in a final "Custom / unknown" group
+ *     with a warning style. Toggling removes them. This is the
+ *     graceful-degradation path that keeps old roles editable.
+ *
+ *   - A free-form add-input below the catalog still lets operators
+ *     type a string the platform doesn't ship yet. The warning beneath
+ *     it calls out that strings outside the catalog won't gate any
+ *     handler until api#27 (P0-2) lands.
  *
  * On submit:
- * - create mode  → POST /roles  with { name, description?, permissions }
- * - edit mode    → PUT  /roles/:id/permissions  with { permissions }
+ *   - create mode → POST /roles  with { name, description?, permissions }
+ *   - edit mode   → PUT  /roles/:id/permissions  with { permissions }
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -31,9 +37,14 @@ import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import type { Role, RoleCreateInput, RolePermissionsInput } from '../../api/types';
+import type {
+  PermissionDescriptor,
+  Role,
+  RoleCreateInput,
+  RolePermissionsInput,
+} from '../../api/types';
 import { ApiError } from '../../api/client';
-import { useRoles } from '../../api/roles';
+import { usePermissions } from '../../api/permissions';
 
 const schema = z.object({
   name: z.string().min(1, 'name is required').max(120),
@@ -58,6 +69,8 @@ const defaults: FormShape = {
   permissions: [],
 };
 
+const UNKNOWN_GROUP = 'Custom / unknown';
+
 export function RoleForm({
   initial,
   onCreate,
@@ -67,7 +80,7 @@ export function RoleForm({
   submitError,
 }: Props) {
   const editMode = !!initial;
-  const roles = useRoles();
+  const catalog = usePermissions();
 
   const {
     register,
@@ -96,19 +109,14 @@ export function RoleForm({
   const selected = watch('permissions') ?? [];
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 
-  // Discover the known permission catalog from every role's `permissions`
-  // field. This is an interim source until the api exposes
-  // `GET /api/v1/permissions` directly. Union with the currently-selected
-  // permissions so even custom strings render as togglable chips after
-  // they've been added.
-  const catalog = useMemo(() => {
-    const set = new Set<string>();
-    roles.data?.forEach((r) => r.permissions.forEach((p) => set.add(p)));
-    selected.forEach((p) => set.add(p));
-    return Array.from(set).sort();
-  }, [roles.data, selected]);
-
-  const groups = useMemo(() => groupByResource(catalog), [catalog]);
+  // Build the render list: every catalog descriptor (preserving the
+  // api's order so the UI shape matches the source of truth), PLUS
+  // synthetic descriptors for selected strings the catalog doesn't
+  // know about (so we can render + toggle them).
+  const groups = useMemo(
+    () => buildGroups(catalog.data ?? [], selected),
+    [catalog.data, selected],
+  );
 
   const toggle = (p: string) => {
     const next = selectedSet.has(p) ? selected.filter((x) => x !== p) : [...selected, p].sort();
@@ -174,36 +182,48 @@ export function RoleForm({
           <span className="text-[11px] text-muted/70">{selected.length} selected</span>
         </div>
 
-        {groups.length === 0 && roles.isLoading && (
+        {catalog.isLoading && (
           <div className="text-xs text-muted">Loading catalog…</div>
         )}
 
-        {groups.length === 0 && !roles.isLoading && (
-          <div className="text-xs text-muted italic">
-            No catalog discovered yet. Add a custom permission below.
+        {catalog.isError && (
+          <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+            Failed to load permission catalog. Existing chips still work; new selections fall back to free-form.
           </div>
         )}
 
-        <div className="space-y-3 max-h-64 overflow-auto pr-1 -mr-1">
-          {groups.map(({ resource, perms }) => (
-            <div key={resource} className="space-y-1">
-              <div className="text-[11px] uppercase text-muted/80 tracking-wide">{resource}</div>
+        <div className="space-y-3 max-h-72 overflow-auto pr-1 -mr-1">
+          {groups.map((g) => (
+            <div key={g.name} className="space-y-1">
+              <div
+                className={
+                  g.name === UNKNOWN_GROUP
+                    ? 'text-[11px] uppercase text-yellow-300/80 tracking-wide'
+                    : 'text-[11px] uppercase text-muted/80 tracking-wide'
+                }
+              >
+                {g.name}
+              </div>
               <div className="flex flex-wrap gap-1.5">
-                {perms.map((p) => {
-                  const on = selectedSet.has(p);
+                {g.items.map((d) => {
+                  const on = selectedSet.has(d.key);
+                  const unknown = g.name === UNKNOWN_GROUP;
                   return (
                     <button
-                      key={p}
+                      key={d.key}
                       type="button"
-                      onClick={() => toggle(p)}
+                      onClick={() => toggle(d.key)}
+                      title={d.description || (unknown ? 'Not in the platform catalog — will not gate any handler' : d.key)}
                       className={
                         on
-                          ? 'text-[11px] rounded px-2 py-1 bg-accent/20 border border-accent/60 text-accent'
+                          ? unknown
+                            ? 'text-[11px] rounded px-2 py-1 bg-yellow-400/15 border border-yellow-400/50 text-yellow-200'
+                            : 'text-[11px] rounded px-2 py-1 bg-accent/20 border border-accent/60 text-accent'
                           : 'text-[11px] rounded px-2 py-1 bg-bg border border-border text-muted hover:text-text hover:border-border'
                       }
                     >
                       {on && <span className="mr-1">✓</span>}
-                      {p}
+                      {d.key}
                     </button>
                   );
                 })}
@@ -215,8 +235,8 @@ export function RoleForm({
         <CustomAdd onAdd={addCustom} />
 
         <div className="text-[11px] text-muted/80">
-          The catalog above is discovered from existing roles. The api does not yet enforce permissions
-          (<a className="underline" href="https://github.com/secrets-bridge/api/issues/27" target="_blank" rel="noreferrer">api#27</a>) — strings outside the platform's eventual catalog will not gate any handler.
+          Catalog from <code>GET /api/v1/permissions</code>. The api does not yet enforce permissions
+          (<a className="underline" href="https://github.com/secrets-bridge/api/issues/27" target="_blank" rel="noreferrer">api#27</a>) — strings outside the catalog will not gate any handler.
         </div>
       </div>
 
@@ -244,6 +264,46 @@ export function RoleForm({
       </div>
     </form>
   );
+}
+
+/**
+ * Build the rendered groups list:
+ *   1. Iterate the catalog in API order; bucket by descriptor.group;
+ *      preserve insertion order both for groups and within each group.
+ *   2. Any currently-selected permission that the catalog DOESN'T
+ *      know about → append to a synthetic "Custom / unknown" group
+ *      at the bottom so operators can see + toggle it off.
+ */
+function buildGroups(
+  catalog: PermissionDescriptor[],
+  selected: string[],
+): { name: string; items: PermissionDescriptor[] }[] {
+  const groupMap = new Map<string, PermissionDescriptor[]>();
+  const knownKeys = new Set<string>();
+
+  for (const d of catalog) {
+    knownKeys.add(d.key);
+    const bucket = groupMap.get(d.group);
+    if (bucket) bucket.push(d);
+    else groupMap.set(d.group, [d]);
+  }
+
+  const groups = Array.from(groupMap.entries()).map(([name, items]) => ({ name, items }));
+
+  const unknown = selected
+    .filter((p) => !knownKeys.has(p))
+    .sort()
+    .map<PermissionDescriptor>((key) => ({
+      key,
+      group: UNKNOWN_GROUP,
+      description: 'Not in the platform catalog — will not gate any handler',
+    }));
+
+  if (unknown.length > 0) {
+    groups.push({ name: UNKNOWN_GROUP, items: unknown });
+  }
+
+  return groups;
 }
 
 function CustomAdd({ onAdd }: { onAdd: (raw: string) => void }) {
@@ -276,19 +336,6 @@ function CustomAdd({ onAdd }: { onAdd: (raw: string) => void }) {
       </button>
     </div>
   );
-}
-
-function groupByResource(catalog: string[]): { resource: string; perms: string[] }[] {
-  const buckets = new Map<string, string[]>();
-  catalog.forEach((p) => {
-    const i = p.indexOf('.');
-    const resource = i === -1 ? 'other' : p.slice(0, i);
-    if (!buckets.has(resource)) buckets.set(resource, []);
-    buckets.get(resource)!.push(p);
-  });
-  return Array.from(buckets.entries())
-    .map(([resource, perms]) => ({ resource, perms: perms.sort() }))
-    .sort((a, b) => a.resource.localeCompare(b.resource));
 }
 
 const inputCls =
