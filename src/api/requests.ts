@@ -28,7 +28,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
-import type { AccessRequest, ReadRequestInput } from './types';
+import type {
+  AccessRequest,
+  PatchRequestInput,
+  ReadRequestInput,
+} from './types';
 
 export const requestsKey = {
   all: ['requests'] as const,
@@ -177,6 +181,20 @@ export function useSubmitReadRequest() {
   return useMutation({
     mutationFn: (body: ReadRequestInput) =>
       api.post<AccessRequest>('/api/v1/requests/read', body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: requestsKey.all }),
+  });
+}
+
+/**
+ * Submit a patch request. The caller is responsible for clearing
+ * `key_values` from local state immediately after the promise settles
+ * — every plaintext string survives in JS heap until GC otherwise.
+ */
+export function useSubmitPatchRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PatchRequestInput) =>
+      api.post<AccessRequest>('/api/v1/requests', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: requestsKey.all }),
   });
 }

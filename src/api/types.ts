@@ -104,12 +104,34 @@ export interface Approval {
 
 /** Body shape for POST /requests/read. Values never leave the user. */
 export interface ReadRequestInput {
-  workflow_id?: string;
+  requester_id: string;
+  project_id?: string;
+  environment?: string;
   target_provider_type: string;
   target_provider_config?: Record<string, unknown>;
   target_secret_ref: string;
-  target_keys: string[];
-  target_scope?: Record<string, string>;
+  target_keys?: string[];
+  justification: string;
+}
+
+/**
+ * Body shape for POST /requests (patch flow). `key_values` carries one
+ * plaintext per key the user wants to write. The api wraps each value
+ * before it touches Postgres — but on the wire it's a plain string
+ * over TLS (with optional Piece 8b agent-side envelope when the agent
+ * has a registered keypair).
+ *
+ * Hard rule: the form MUST clear key_values from local state
+ * immediately after the submit promise settles.
+ */
+export interface PatchRequestInput {
+  requester_id: string;
+  project_id?: string;
+  environment?: string;
+  target_provider_type: string;
+  target_provider_config?: Record<string, unknown>;
+  target_secret_ref: string;
+  key_values: Record<string, string>;
   justification: string;
 }
 
