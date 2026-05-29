@@ -114,3 +114,41 @@ export interface RoleCreateInput {
 export interface RolePermissionsInput {
   permissions: string[];
 }
+
+/**
+ * Policy rule — `policy_rules` table on the api side. Mirrors
+ * `internal/handlers/admin.go::PolicyBody`.
+ *
+ * Selector shape: keys present must match the incoming request; absent
+ * keys are wildcards. The documented dimensions are `project_id`,
+ * `environment`, `provider_type`, `secret_ref_prefix` (prefix-match for
+ * the last, exact for the others).
+ *
+ * Higher `priority` wins on overlap. The seed `match-all` policy lives
+ * at priority 0 with an empty selector + `is_system: true`; any
+ * operator rule at priority ≥ 100 takes precedence.
+ *
+ * Unlike Roles, Policies are full-mutation: name + selector + workflow
+ * + priority + enabled all editable via `PUT /policies/:id`. The form
+ * mirrors that — no readOnly inputs in edit mode.
+ */
+export interface Policy {
+  id: string;
+  name: string;
+  selector: Record<string, string>;
+  workflow_id: string;
+  priority: number;
+  enabled: boolean;
+  is_system?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Body shape for POST + PUT /policies. */
+export interface PolicyInput {
+  name: string;
+  selector: Record<string, string>;
+  workflow_id: string;
+  priority: number;
+  enabled: boolean;
+}
