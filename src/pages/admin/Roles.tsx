@@ -1,16 +1,24 @@
 /**
- * Roles admin page. Lists permission-bundle roles in a table; provides
- * create (drawer) + edit-permissions (drawer) + delete (with confirm)
- * actions.
+ * Roles admin page. Visual layout matches the Figma frame
+ * `Roles · /admin/roles (list)` on page 06:
  *
- * System roles (e.g. seed `admin` / `approver` / `developer`) are
- * editable but the Delete action is disabled — the api returns 409 on
- * DELETE for them.
+ *   PageHeader: "Roles" / "Define what each role can do across the
+ *   platform. Permissions are grouped by resource." / "+ New role"
+ *   primary CTA (brand gradient pill).
  *
- * Edit-mode special case: the api only exposes
- * `PUT /roles/:id/permissions`. Name and description are immutable;
- * RoleForm enforces this by marking those inputs readOnly when an
- * `initial` role is provided.
+ *   Card containing a table:
+ *     NAME (mono)  · DESCRIPTION · PERMISSIONS · TYPE · ACTIONS
+ *     System rows show a small `system` pill next to the name.
+ *     Permissions column shows count + label ("N permissions" / "all").
+ *     Actions column is text-only (Edit + Delete); Delete dims for
+ *     system rows.
+ *
+ *   System-seed footer note.
+ *
+ * Drawer + ConfirmModal moved to `src/ui/` as shared components.
+ *
+ * Behavior is unchanged: list + create + edit-permissions + delete.
+ * api endpoint: POST /roles, PUT /roles/:id/permissions, DELETE.
  */
 
 import { useState } from 'react';
@@ -23,6 +31,12 @@ import {
   useRoles,
   useUpdateRole,
 } from '../../api/roles';
+import { Button } from '../../ui/Button';
+import { Card } from '../../ui/Card';
+import { ConfirmModal } from '../../ui/ConfirmModal';
+import { Drawer } from '../../ui/Drawer';
+import { PageHeader } from '../../ui/PageHeader';
+import { StatusPill } from '../../ui/StatusPill';
 import { RoleForm } from './RoleForm';
 
 export function Roles() {
@@ -35,108 +49,75 @@ export function Roles() {
   const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-text text-xl font-semibold">Roles</h1>
-          <p className="text-muted text-sm mt-1">
-            Permission bundles assignable to users. Name + description are immutable after create; permission lists can be edited at any time.
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setEditing(null);
-            setCreating(true);
-          }}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90"
-        >
-          + New role
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        title="Roles"
+        description="Define what each role can do across the platform. Permissions are grouped by resource."
+        actions={
+          <Button
+            variant="primary"
+            onClick={() => {
+              setEditing(null);
+              setCreating(true);
+            }}
+          >
+            + New role
+          </Button>
+        }
+      />
 
       {list.isError && (
-        <div className="bg-surface border border-red-500/40 rounded p-4 text-sm">
-          <div className="text-red-400 font-medium">Failed to load roles</div>
+        <Card className="border-red-500/40 p-5 text-sm mb-4">
+          <div className="text-red-300 font-medium">Failed to load roles</div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
-        </div>
+        </Card>
       )}
 
       {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
 
       {list.data && list.data.length === 0 && (
-        <div className="bg-surface border border-border rounded p-6 text-center text-muted text-sm">
-          No roles defined yet. The api seeds <code>admin</code> / <code>approver</code> / <code>developer</code> on first boot.
-        </div>
+        <Card className="p-10 text-center text-muted text-sm">
+          No roles defined yet. The api seeds <code className="font-mono">admin</code>{' '}
+          / <code className="font-mono">approver</code> /{' '}
+          <code className="font-mono">developer</code> on first boot.
+        </Card>
       )}
 
       {list.data && list.data.length > 0 && (
-        <div className="bg-surface border border-border rounded overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="text-left text-muted text-xs uppercase">
-              <tr className="border-b border-border">
-                <th className="px-4 py-3 font-normal">Name</th>
-                <th className="px-4 py-3 font-normal">Permissions</th>
-                <th className="px-4 py-3 font-normal">Flags</th>
-                <th className="px-4 py-3 font-normal text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.data.map((r) => (
-                <tr key={r.id} className="border-b border-border/50 last:border-0 hover:bg-bg/30 align-top">
-                  <td className="px-4 py-3">
-                    <div className="text-text">{r.name}</div>
-                    {r.description && <div className="text-muted text-xs">{r.description}</div>}
-                  </td>
-                  <td className="px-4 py-3">
-                    {r.permissions.length === 0 ? (
-                      <span className="text-muted text-xs italic">none</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {r.permissions.map((p) => (
-                          <span
-                            key={p}
-                            className="text-[11px] bg-bg border border-border text-muted rounded px-2 py-0.5"
-                          >
-                            {p}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 space-x-1">
-                    {r.is_system && (
-                      <span className="text-xs bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 rounded px-2 py-0.5">
-                        system
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right space-x-2 whitespace-nowrap">
-                    <button
-                      onClick={() => {
-                        setCreating(false);
-                        setEditing(r);
-                      }}
-                      className="text-xs text-muted hover:text-text border border-border px-2 py-1 rounded"
-                    >
-                      Edit permissions
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(r)}
-                      disabled={!!r.is_system}
-                      title={r.is_system ? 'System seed — not deletable' : undefined}
-                      className="text-xs text-red-400 hover:text-red-300 border border-border px-2 py-1 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      Delete
-                    </button>
-                  </td>
+        <>
+          <Card className="overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+                <tr className="border-b border-border/60">
+                  <Th>Name</Th>
+                  <Th>Description</Th>
+                  <Th>Permissions</Th>
+                  <Th>Type</Th>
+                  <Th className="text-right">Actions</Th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {list.data.map((r) => (
+                  <RoleRow
+                    key={r.id}
+                    role={r}
+                    onEdit={() => {
+                      setCreating(false);
+                      setEditing(r);
+                    }}
+                    onDelete={() => setConfirmDelete(r)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </Card>
+
+          <p className="text-muted text-xs mt-3">
+            System seed roles can't be deleted — delete is disabled (muted) with a tooltip <em>"System seed — not deletable"</em>.
+          </p>
+        </>
       )}
 
-      {/* Drawer: create */}
       {creating && (
         <Drawer title="New role" onClose={() => setCreating(false)}>
           <RoleForm
@@ -151,14 +132,12 @@ export function Roles() {
         </Drawer>
       )}
 
-      {/* Drawer: edit permissions */}
       {editing && <EditDrawer role={editing} onClose={() => setEditing(null)} />}
 
-      {/* Confirm: delete */}
       {confirmDelete && (
         <ConfirmModal
           title={`Delete role "${confirmDelete.name}"?`}
-          body="Users currently granted this role lose its permissions immediately. Existing user-role rows are revoked atomically."
+          body="This permanently removes the role. Members lose its permissions immediately. This cannot be undone."
           confirmText="Delete"
           danger
           onCancel={() => setConfirmDelete(null)}
@@ -174,10 +153,100 @@ export function Roles() {
   );
 }
 
+// --- row + cell bits ------------------------------------------------
+
+function RoleRow({
+  role,
+  onEdit,
+  onDelete,
+}: {
+  role: Role;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const sys = !!role.is_system;
+  return (
+    <tr className="border-b border-border/40 last:border-0 hover:bg-bg/20">
+      <Td>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-accent text-sm">{role.name}</span>
+          {sys && (
+            <StatusPill variant="system" tone="outline">
+              system
+            </StatusPill>
+          )}
+        </div>
+      </Td>
+      <Td className="text-muted">
+        {role.description || (
+          <span className="italic text-muted/60">no description</span>
+        )}
+      </Td>
+      <Td>
+        <PermissionsCell role={role} />
+      </Td>
+      <Td className="text-text">{sys ? 'System' : 'Custom'}</Td>
+      <Td className="text-right">
+        <div className="flex items-center justify-end gap-3">
+          <button
+            onClick={onEdit}
+            className="text-accent hover:text-accent-bright text-sm font-medium"
+          >
+            Edit
+          </button>
+          <button
+            onClick={onDelete}
+            disabled={sys}
+            title={sys ? 'System seed — not deletable' : undefined}
+            className={
+              sys
+                ? 'text-muted/50 cursor-not-allowed text-sm font-medium'
+                : 'text-red-300 hover:text-red-200 text-sm font-medium'
+            }
+          >
+            Delete
+          </button>
+        </div>
+      </Td>
+    </tr>
+  );
+}
+
+function PermissionsCell({ role }: { role: Role }) {
+  const n = role.permissions.length;
+  // System "admin" role gets the special "all" label per the Figma
+  // frame — visually distinguishes the omnipotent role from large but
+  // bounded permission lists.
+  if (role.name === 'admin') {
+    return <span className="text-accent text-sm font-medium">all</span>;
+  }
+  if (n === 0) {
+    return <span className="text-muted italic text-sm">none</span>;
+  }
+  return (
+    <span className="text-accent text-sm font-medium">
+      {n} permission{n === 1 ? '' : 's'}
+    </span>
+  );
+}
+
+function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
+}
+
+function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return <td className={`px-5 py-3.5 align-middle ${className}`}>{children}</td>;
+}
+
+// --- edit drawer ----------------------------------------------------
+
 function EditDrawer({ role, onClose }: { role: Role; onClose: () => void }) {
   const update = useUpdateRole(role.id);
   return (
     <Drawer title={`Edit ${role.name}`} onClose={onClose}>
+      <p className="text-muted text-sm mb-4 -mt-2">
+        Name and description are immutable after creation.
+      </p>
       <RoleForm
         initial={role}
         onUpdatePermissions={async (body) => {
@@ -189,83 +258,6 @@ function EditDrawer({ role, onClose }: { role: Role; onClose: () => void }) {
         submitError={update.error}
       />
     </Drawer>
-  );
-}
-
-function Drawer({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <button className="absolute inset-0 bg-black/50" onClick={onClose} aria-label="Close drawer" />
-      <div className="relative w-[480px] max-w-full bg-surface border-l border-border h-full overflow-auto">
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <div className="text-text font-semibold">{title}</div>
-          <button onClick={onClose} className="text-muted hover:text-text text-xl leading-none">
-            ×
-          </button>
-        </div>
-        <div className="px-6 py-4">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function ConfirmModal({
-  title,
-  body,
-  confirmText,
-  danger,
-  onCancel,
-  onConfirm,
-  loading,
-  error,
-}: {
-  title: string;
-  body: string;
-  confirmText: string;
-  danger?: boolean;
-  onCancel: () => void;
-  onConfirm: () => Promise<unknown>;
-  loading: boolean;
-  error?: unknown;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <button className="absolute inset-0 bg-black/60" onClick={onCancel} aria-label="Close" />
-      <div className="relative bg-surface border border-border rounded-lg w-[420px] p-5 space-y-3">
-        <div className="text-text font-semibold">{title}</div>
-        <div className="text-muted text-sm">{body}</div>
-        {error instanceof ApiError && (
-          <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
-            {error.status}: {error.message}
-          </div>
-        )}
-        <div className="flex gap-2 pt-2">
-          <button
-            onClick={() => void onConfirm()}
-            disabled={loading}
-            className={`${
-              danger ? 'bg-red-500 text-white' : 'bg-accent text-bg'
-            } font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50`}
-          >
-            {loading ? 'Working…' : confirmText}
-          </button>
-          <button
-            onClick={onCancel}
-            className="text-muted hover:text-text px-3 py-2 rounded border border-border"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
