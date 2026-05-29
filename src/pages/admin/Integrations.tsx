@@ -33,6 +33,7 @@ import {
   useSetArgoCDEndpointEnabled,
 } from '../../api/integrations';
 import { ArgoCDEndpointForm } from './ArgoCDEndpointForm';
+import { DiscoverAppsPanel } from './DiscoverAppsPanel';
 import { GitOpsAppMappingForm } from './GitOpsAppMappingForm';
 
 export function Integrations() {
@@ -74,6 +75,7 @@ function EndpointsSection() {
 
   const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<ArgoCDEndpoint | null>(null);
+  const [discovering, setDiscovering] = useState<ArgoCDEndpoint | null>(null);
 
   return (
     <section className="space-y-3">
@@ -122,6 +124,7 @@ function EndpointsSection() {
                   key={e.id}
                   endpoint={e}
                   onDelete={() => setConfirmDelete(e)}
+                  onDiscover={() => setDiscovering(e)}
                 />
               ))}
             </tbody>
@@ -158,6 +161,20 @@ function EndpointsSection() {
           error={del.error}
         />
       )}
+
+      {discovering && (
+        <Drawer
+          wide
+          title={`Discover apps in "${discovering.name}"`}
+          onClose={() => setDiscovering(null)}
+        >
+          <DiscoverAppsPanel
+            endpoint={discovering}
+            onClose={() => setDiscovering(null)}
+            onDone={() => setDiscovering(null)}
+          />
+        </Drawer>
+      )}
     </section>
   );
 }
@@ -165,9 +182,11 @@ function EndpointsSection() {
 function EndpointRow({
   endpoint,
   onDelete,
+  onDiscover,
 }: {
   endpoint: ArgoCDEndpoint;
   onDelete: () => void;
+  onDiscover: () => void;
 }) {
   const setEnabled = useSetArgoCDEndpointEnabled(endpoint.id);
 
@@ -200,7 +219,15 @@ function EndpointRow({
           />
         </label>
       </td>
-      <td className="px-4 py-3 text-right">
+      <td className="px-4 py-3 text-right space-x-2 whitespace-nowrap">
+        <button
+          onClick={onDiscover}
+          disabled={!endpoint.enabled}
+          title={endpoint.enabled ? 'Discover ArgoCD apps + bulk-create mappings' : 'Enable the endpoint first'}
+          className="text-xs text-accent hover:opacity-90 border border-border px-2 py-1 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          Discover
+        </button>
         <button
           onClick={onDelete}
           className="text-xs text-red-400 hover:text-red-300 border border-border px-2 py-1 rounded"
@@ -363,15 +390,22 @@ function Drawer({
   title,
   onClose,
   children,
+  wide,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  wide?: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <button className="absolute inset-0 bg-black/50" onClick={onClose} aria-label="Close drawer" />
-      <div className="relative w-[520px] max-w-full bg-surface border-l border-border h-full overflow-auto">
+      <div
+        className={
+          (wide ? 'w-[760px]' : 'w-[520px]') +
+          ' relative max-w-full bg-surface border-l border-border h-full overflow-auto'
+        }
+      >
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <div className="text-text font-semibold">{title}</div>
           <button onClick={onClose} className="text-muted hover:text-text text-xl leading-none">

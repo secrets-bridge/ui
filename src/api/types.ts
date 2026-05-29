@@ -238,6 +238,28 @@ export interface ArgoCDEndpointInput {
 }
 
 /**
+ * DiscoveredApp — one row returned by
+ * GET /api/v1/argocd-endpoints/:id/discovered-apps. The api trims
+ * ArgoCD's Application to just the metadata the bulk-create flow
+ * needs. NEVER carries manifests.
+ *
+ * `namespace` is the ArgoCD Application CR's own namespace (usually
+ * "argocd"); `destination_namespace` is where the app actually
+ * deploys to — that's the value the gitops mapping form's
+ * `application_namespace` column should mirror.
+ */
+export interface DiscoveredApp {
+  name: string;
+  namespace?: string;
+  project?: string;
+  destination_server?: string;
+  destination_cluster?: string;
+  destination_namespace?: string;
+  health_status?: string;
+  sync_status?: string;
+}
+
+/**
  * GitOps app mapping — binds an ArgoCD application to the platform's
  * notion of "this is the workload that consumes secret X". Used by
  * the worker's gitops-poller to know which app to query for sync

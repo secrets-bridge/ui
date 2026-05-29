@@ -21,6 +21,7 @@ import { api } from './client';
 import type {
   ArgoCDEndpoint,
   ArgoCDEndpointInput,
+  DiscoveredApp,
   GitOpsAppMapping,
   GitOpsAppMappingInput,
 } from './types';
@@ -72,6 +73,40 @@ export const gitopsAppMappingsKey = {
   all: ['gitops-app-mappings'] as const,
   one: (id: string) => ['gitops-app-mappings', id] as const,
 };
+
+// --- discovered apps (read-through to ArgoCD) -----------------------
+
+export const discoveredAppsKey = {
+  for: (endpointId: string, project: string) =>
+    ['argocd-endpoints', endpointId, 'discovered-apps', project] as const,
+};
+
+/**
+ * Discover apps under an ArgoCD endpoint. **On-demand**: the query
+ * starts disabled and only fires once the operator explicitly opens
+ * the discover panel (the page passes `enabled=true` at that point).
+ *
+ * The api returns 503 when the endpoint is disabled or the upstream
+ * call fails. We surface that as a friendly banner rather than retry.
+ */
+export function useDiscoveredApps(
+  endpointId: string,
+  project: string,
+  options: { enabled: boolean } = { enabled: false },
+) {
+  return useQuery({
+    queryKey: discoveredAppsKey.for(endpointId, project),
+    queryFn: () =>
+      api.get<DiscoveredApp[]>(
+        `/api/v1/argocd-endpoints/${endpointId}/discovered-apps${
+          project ? `?project=${encodeURIComponent(project)}` : ''
+        }`,
+      ),
+    enabled: options.enabled,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
 
 export function useGitOpsAppMappings() {
   return useQuery({
