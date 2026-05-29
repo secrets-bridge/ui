@@ -8,6 +8,7 @@ import { Shell } from './layout/Shell';
 import { Agents } from './pages/Agents';
 import { LoginStub } from './pages/LoginStub';
 import { Placeholder } from './pages/Placeholder';
+import { Assignments } from './pages/admin/Assignments';
 import { Integrations } from './pages/admin/Integrations';
 import { Policies } from './pages/admin/Policies';
 import { Projects } from './pages/admin/Projects';
@@ -43,6 +44,7 @@ export function App() {
           />
           <Route path="/admin/projects" element={<Projects />} />
           <Route path="/admin/roles" element={<Roles />} />
+          <Route path="/admin/assignments" element={<Assignments />} />
           <Route path="/admin/workflows" element={<Workflows />} />
           <Route path="/admin/policies" element={<Policies />} />
           <Route path="/admin/integrations" element={<Integrations />} />

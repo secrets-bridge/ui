@@ -38,6 +38,9 @@ export function Shell() {
           <NavLink to="/admin/roles" className={sectionLink}>
             Roles
           </NavLink>
+          <NavLink to="/admin/assignments" className={sectionLink}>
+            Assignments
+          </NavLink>
           <NavLink to="/admin/workflows" className={sectionLink}>
             Workflows
           </NavLink>

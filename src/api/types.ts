@@ -161,6 +161,39 @@ export interface RolePermissionsInput {
 }
 
 /**
+ * UserRole — one RBAC assignment (BRD §17). Binds a user to a role,
+ * optionally narrowed by `scope`. Mirrors
+ * `api/internal/handlers/admin.go::UserRoleBody`.
+ *
+ * Scope shape (all keys optional; empty = global):
+ *   - project_id          UUID — narrow to one project
+ *   - environment         text — narrow to one env name (e.g. "prod")
+ *   - secret_ref_prefix   text — narrow to a ref prefix
+ *   - provider_type       text — narrow to one provider type
+ *
+ * When `auth.Require(perm, scopeFromRequest)` ships (api#27), the
+ * middleware joins request scope vs. user-role scope: assignment
+ * matches when every present key in user-role scope matches the
+ * request's value (absent keys = wildcards).
+ */
+export interface UserRole {
+  id: string;
+  user_id: string;
+  role_id: string;
+  scope?: Record<string, string>;
+  granted_by?: string;
+  granted_at: string;
+}
+
+/** Body shape for POST /user-roles. */
+export interface UserRoleInput {
+  user_id: string;
+  role_id: string;
+  scope?: Record<string, string>;
+  granted_by?: string;
+}
+
+/**
  * Policy rule — `policy_rules` table on the api side. Mirrors
  * `internal/handlers/admin.go::PolicyBody`.
  *
