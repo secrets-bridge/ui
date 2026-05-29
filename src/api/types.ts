@@ -152,3 +152,21 @@ export interface PolicyInput {
   priority: number;
   enabled: boolean;
 }
+
+/**
+ * Permission descriptor — one row of the catalog returned by
+ * GET /api/v1/permissions. The canonical source for "what permissions
+ * exist on this platform" (curated in api/internal/auth/permissions.go).
+ *
+ * The Roles admin picker hydrates from this endpoint instead of
+ * guessing from observed role data. Order in the response is
+ * presentation-stable; respect it when rendering chips.
+ *
+ * Strings outside this catalog are accepted by the api today but
+ * won't gate any handler until api#27 (P0-2 RBAC enforcement) lands.
+ */
+export interface PermissionDescriptor {
+  key: string;
+  group: string;        // "RBAC" | "Workflows" | "Agents" | "Secrets" | "Observability" | "Integrations"
+  description: string;
+}
