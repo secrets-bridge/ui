@@ -1,0 +1,996 @@
+/**
+ * Request detail page (`/requests/:id`) — matches Figma frame 26:2.
+ *
+ * Layout (two columns on lg+):
+ *
+ *   ┌── breadcrumb + title strip ───────────────────────────────────┐
+ *   │ Requests · REQ-1042                                           │
+ *   │ Read prod/db/password                                         │
+ *   │ [Pending approval] type [read]  requested by alice@corp · 2m  │
+ *   ├──── LEFT (≈ 1.6fr) ─────────┬──── RIGHT (≈ 1fr) ───────────────┤
+ *   │ Timeline                    │ Details (k/v)                    │
+ *   │ Approvals                   │ Time-to-decide pill              │
+ *   │ Wraps (read flow only)      │ Approver actions card            │
+ *   │ GitOps observations         │                                  │
+ *   └─────────────────────────────┴──────────────────────────────────┘
+ *
+ * Data sourcing:
+ *   - `useRequest(id)` hydrates the entire page; the api response
+ *     includes inline `approvals[]`.
+ *   - `useRequestGitOps(id)` hydrates the observations card when the
+ *     §26 feature is on; a 404 from the api flips the card to a
+ *     "feature off" banner without polluting the error surface.
+ *   - The `Wraps` card is a **read-flow-only** preview today — the
+ *     full single-shot reveal-once UX needs the read-wrap retrieval
+ *     endpoint and a user-confirm step that lands with slice 7. We
+ *     surface the placeholder so the operator knows what to expect.
+ *
+ * Hard rules:
+ *   - NEVER call the wrap retrieval endpoint speculatively. The
+ *     placeholder Reveal button is disabled today; the next slice
+ *     wires the explicit click handler.
+ *   - The page renders metadata only — no secret values appear in any
+ *     of the cards' content.
+ */
+
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+
+import { ApiError } from '../api/client';
+import {
+  revealWrap,
+  useApproveRequest,
+  useCancelRequest,
+  useRejectRequest,
+  useRequest,
+  useRequestGitOps,
+  useRequestWraps,
+  type RevealedWrap,
+  type WrapSummary,
+} from '../api/requests';
+import { useWorkflows } from '../api/workflows';
+import type { AccessRequest } from '../api/types';
+import { useAuth } from '../auth/AuthContext';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { StatusPill } from '../ui/StatusPill';
+import {
+  RequestStatusPill,
+  formatRelativeShort,
+  shortId,
+} from './Requests';
+
+export function RequestDetail() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { identity } = useAuth();
+  const req = useRequest(id);
+  const workflows = useWorkflows();
+  const gitops = useRequestGitOps(id);
+  const isReadFlow = req.data?.type === 'read';
+  const isOwner = req.data?.requester_id === identity?.id;
+  const wraps = useRequestWraps(
+    id,
+    identity?.id ?? '',
+    !!req.data && isReadFlow && isOwner,
+  );
+
+  if (req.isLoading) {
+    return <div className="text-muted text-sm">Loading…</div>;
+  }
+  if (req.isError) {
+    return (
+      <Card className="border-red-500/40 p-5 text-sm">
+        <div className="text-red-300 font-medium">Failed to load request</div>
+        <div className="text-muted mt-1">{stringifyError(req.error)}</div>
+      </Card>
+    );
+  }
+  if (!req.data || !id) return null;
+
+  const r = req.data;
+  const me = identity?.id ?? '';
+  const isMine = r.requester_id === me;
+  const workflowName =
+    workflows.data?.find((w) => w.id === r.workflow_id)?.name ?? '—';
+
+  return (
+    <div>
+      {/* Breadcrumb + title strip */}
+      <div className="mb-6">
+        <div className="text-muted text-xs">
+          <Link to="/requests" className="hover:text-accent">
+            Requests
+          </Link>
+          <span className="mx-1.5">·</span>
+          <span className="text-text font-mono">{shortId(r.id)}</span>
+        </div>
+        <h1 className="text-text text-2xl font-bold mt-2 tracking-tight">
+          <span className="text-accent-bright capitalize">{r.type}</span>{' '}
+          <span className="font-mono">{r.target_secret_ref}</span>
+        </h1>
+        <div className="flex items-center gap-2 flex-wrap mt-3">
+          <RequestStatusPill status={r.status} />
+          <span className="text-muted text-xs">type</span>
+          <StatusPill
+            variant={r.type === 'patch' ? 'accent' : 'pending'}
+            tone="outline"
+          >
+            {r.type}
+          </StatusPill>
+          <span className="text-muted text-xs ml-2">requested by</span>
+          <span className="font-mono text-text text-sm">{r.requester_id}</span>
+          <span className="text-muted text-xs">
+            · {formatRelativeShort(r.created_at)}
+          </span>
+        </div>
+        <p className="text-muted text-xs mt-3 max-w-3xl">
+          Provider:{' '}
+          <span className="text-text font-mono">{r.target_provider_type}</span>{' '}
+          · workflow:{' '}
+          <span className="text-text font-mono">{workflowName}</span> · values
+          are never shown — only metadata + single-use wraps.
+        </p>
+      </div>
+
+      {/* Two-column grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-6">
+        <div className="space-y-6">
+          <TimelineCard request={r} />
+          <ApprovalsCard request={r} />
+          {r.type === 'read' && (
+            <WrapsCard request={r} query={wraps} userId={me} />
+          )}
+          <GitOpsCard query={gitops} />
+        </div>
+        <div className="space-y-6">
+          <DetailsCard request={r} workflowName={workflowName} />
+          {r.status === 'pending' && <TimeToDecideCard request={r} />}
+          {r.status === 'pending' && !isMine && (
+            <ApproverActionsCard request={r} actorId={me} />
+          )}
+          {r.status === 'pending' && isMine && (
+            <CancelOwnCard
+              request={r}
+              actorId={me}
+              onCancelled={() => navigate('/requests')}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Timeline -------------------------------------------------------
+
+interface TimelineNode {
+  label: string;
+  sub?: string;
+  time: string;
+  tone: 'created' | 'workflow' | 'enqueued' | 'approved' | 'rejected' | 'claimed' | 'completed' | 'failed' | 'cancelled';
+}
+
+function TimelineCard({ request: r }: { request: AccessRequest }) {
+  const nodes = buildTimeline(r);
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
+        <h3 className="text-text font-semibold">Timeline</h3>
+        <span className="text-muted text-xs ml-auto font-mono">
+          correlation_id
+        </span>
+      </div>
+      <ul className="px-5 py-4 space-y-3">
+        {nodes.map((n, i) => (
+          <li key={i} className="flex items-start gap-3">
+            <span
+              className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${TIMELINE_DOT[n.tone]}`}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="text-text text-sm font-medium">{n.label}</div>
+              {n.sub && (
+                <div className="text-muted text-xs font-mono mt-0.5">
+                  {n.sub}
+                </div>
+              )}
+            </div>
+            <span className="text-muted text-xs font-mono shrink-0">
+              {n.time}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+const TIMELINE_DOT: Record<TimelineNode['tone'], string> = {
+  created: 'bg-accent',
+  workflow: 'bg-purple-400',
+  enqueued: 'bg-yellow-400',
+  approved: 'bg-success',
+  rejected: 'bg-red-400',
+  claimed: 'bg-blue-400',
+  completed: 'bg-success',
+  failed: 'bg-red-400',
+  cancelled: 'bg-muted',
+};
+
+function buildTimeline(r: AccessRequest): TimelineNode[] {
+  const out: TimelineNode[] = [];
+  out.push({
+    label: 'Created',
+    sub: r.requester_id,
+    time: formatTime(r.created_at),
+    tone: 'created',
+  });
+  if (r.workflow_id) {
+    out.push({
+      label: 'Workflow attached',
+      sub: shortId(r.workflow_id),
+      time: formatTime(r.created_at),
+      tone: 'workflow',
+    });
+  }
+  (r.approvals ?? [])
+    .slice()
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
+    .forEach((a) => {
+      out.push({
+        label: a.decision === 'approve' ? 'Approved' : 'Rejected',
+        sub: a.approver_id + (a.comment ? ` — ${a.comment}` : ''),
+        time: formatTime(a.created_at),
+        tone: a.decision === 'approve' ? 'approved' : 'rejected',
+      });
+    });
+  if (r.status === 'cancelled') {
+    out.push({
+      label: 'Cancelled by requester',
+      time: formatTime(r.updated_at ?? r.created_at),
+      tone: 'cancelled',
+    });
+  }
+  if (r.job_id && r.status !== 'cancelled') {
+    out.push({
+      label: 'Enqueued — awaiting agent claim',
+      sub: shortId(r.job_id),
+      time: formatTime(r.updated_at ?? r.created_at),
+      tone: 'enqueued',
+    });
+  }
+  if (r.status === 'executed') {
+    out.push({
+      label: 'Completed',
+      sub:
+        r.type === 'read'
+          ? 'single-use wrap(s) issued'
+          : 'provider write succeeded',
+      time: formatTime(r.updated_at ?? r.created_at),
+      tone: 'completed',
+    });
+  }
+  if (r.status === 'failed') {
+    out.push({
+      label: 'Failed',
+      sub: 'agent reported failure',
+      time: formatTime(r.updated_at ?? r.created_at),
+      tone: 'failed',
+    });
+  }
+  return out;
+}
+
+// --- Approvals ------------------------------------------------------
+
+function ApprovalsCard({ request: r }: { request: AccessRequest }) {
+  const approvals = r.approvals ?? [];
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/60">
+        <h3 className="text-text font-semibold">Approvals</h3>
+      </div>
+      {approvals.length === 0 ? (
+        <div className="px-5 py-6 text-muted text-sm">
+          No votes cast yet.
+        </div>
+      ) : (
+        <ul>
+          {approvals.map((a) => (
+            <li
+              key={a.id}
+              className="flex items-start gap-3 px-5 py-4 border-b border-border/40 last:border-0"
+            >
+              <span
+                className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${
+                  a.decision === 'approve' ? 'bg-success' : 'bg-red-400'
+                }`}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-text text-sm">
+                    {a.approver_id}
+                  </span>
+                  <StatusPill
+                    variant={a.decision === 'approve' ? 'approved' : 'rejected'}
+                    tone="outline"
+                  >
+                    {a.decision === 'approve' ? 'approved' : 'rejected'}
+                  </StatusPill>
+                </div>
+                {a.comment && (
+                  <p className="text-muted text-xs mt-1 italic">
+                    &ldquo;{a.comment}&rdquo;
+                  </p>
+                )}
+              </div>
+              <span className="text-muted text-xs font-mono shrink-0">
+                {formatTime(a.created_at)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// --- Wraps (read-flow only, single-shot UX) -------------------------
+
+function WrapsCard({
+  request: r,
+  query,
+  userId,
+}: {
+  request: AccessRequest;
+  query: ReturnType<typeof useRequestWraps>;
+  userId: string;
+}) {
+  const [reveal, setReveal] = useState<WrapSummary | null>(null);
+  const rows = query.data ?? [];
+  const ready = rows.filter((w) => !w.consumed);
+  const consumed = rows.filter((w) => w.consumed);
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
+        <h3 className="text-text font-semibold">Wraps</h3>
+        <span className="text-muted text-xs ml-auto">
+          single-use · reveal consumes the wrap permanently
+        </span>
+      </div>
+      <div className="px-5 py-4 space-y-3">
+        {query.isLoading && (
+          <div className="text-muted text-sm">Loading…</div>
+        )}
+        {query.error instanceof ApiError && (
+          <InlineApiError err={query.error} />
+        )}
+        {!query.isLoading && rows.length === 0 && r.status !== 'executed' && (
+          <p className="text-muted text-xs">
+            No wraps issued yet. Once approved, an agent claims the read
+            job, fetches from{' '}
+            <span className="font-mono text-text">{r.target_provider_type}</span>
+            , and posts a single-use wrap per requested key.
+          </p>
+        )}
+        {!query.isLoading && rows.length === 0 && r.status === 'executed' && (
+          <p className="text-muted text-xs">
+            All wraps have been consumed. Submit a new request to view the
+            value again.
+          </p>
+        )}
+
+        {ready.length > 0 && (
+          <ul className="space-y-2">
+            {ready.map((w) => (
+              <li
+                key={w.id}
+                className="flex items-center justify-between gap-3 bg-bg/40 border border-border/60 rounded-lg px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="font-mono text-text text-sm truncate">
+                    {w.key_name || '(default)'}
+                  </div>
+                  <div className="text-muted text-[11px]">
+                    expires {formatRelativeFuture(w.expires_at)}
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setReveal(w)}
+                >
+                  Reveal (one-time)
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {consumed.length > 0 && (
+          <ul className="space-y-2 pt-2 border-t border-border/40">
+            {consumed.map((w) => (
+              <li
+                key={w.id}
+                className="flex items-center justify-between gap-3 bg-bg/20 border border-border/40 rounded-lg px-3 py-2 opacity-60"
+              >
+                <span className="font-mono text-muted text-sm truncate line-through">
+                  {w.key_name || '(default)'}
+                </span>
+                <StatusPill variant="cancelled" tone="outline">
+                  consumed
+                </StatusPill>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="bg-yellow-400/10 border border-yellow-400/40 border-l-4 border-l-yellow-400 rounded-lg px-3 py-2 text-xs">
+          <div className="text-yellow-300 font-semibold">Reveal-once.</div>
+          <div className="text-muted mt-0.5">
+            Clicking Reveal calls the CP's single-shot endpoint. The value
+            is shown in a modal, copy-then-clear. A second call returns 410
+            and the wrap is gone forever.
+          </div>
+        </div>
+      </div>
+
+      {reveal && (
+        <RevealModal
+          requestId={r.id}
+          wrap={reveal}
+          userId={userId}
+          onClose={() => {
+            setReveal(null);
+            query.refetch();
+          }}
+        />
+      )}
+    </Card>
+  );
+}
+
+// --- Reveal modal (single-shot retrieval + clear-on-close) ----------
+
+function RevealModal({
+  requestId,
+  wrap,
+  userId,
+  onClose,
+}: {
+  requestId: string;
+  wrap: WrapSummary;
+  userId: string;
+  onClose: () => void;
+}) {
+  const [phase, setPhase] = useState<
+    'confirm' | 'revealing' | 'shown' | 'error'
+  >('confirm');
+  const [revealed, setRevealed] = useState<RevealedWrap | null>(null);
+  const [decoded, setDecoded] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Best-effort plaintext hygiene: drop refs on unmount. The browser
+  // GCs the backing string on its own schedule, but we don't keep it
+  // pinned in state.
+  useEffect(() => {
+    return () => {
+      setDecoded(null);
+      setRevealed(null);
+    };
+  }, []);
+
+  const doReveal = async () => {
+    setPhase('revealing');
+    try {
+      const r = await revealWrap(requestId, wrap.id, userId);
+      const text = atob(r.value);
+      setRevealed(r);
+      setDecoded(text);
+      setPhase('shown');
+    } catch (e) {
+      setErr(e);
+      setPhase('error');
+    }
+  };
+
+  const doCopy = async () => {
+    if (!decoded) return;
+    try {
+      await navigator.clipboard.writeText(decoded);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        className="absolute inset-0 bg-bg/80 backdrop-blur-sm"
+        onClick={onClose}
+        aria-label="Close"
+      />
+      <div className="relative bg-surface border border-border rounded-2xl w-[520px] max-w-full p-6 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-text font-bold text-xl tracking-tight">
+              Reveal{' '}
+              <span className="font-mono text-accent">
+                {wrap.key_name || '(default)'}
+              </span>
+              ?
+            </div>
+            <div className="text-muted text-xs mt-1 font-mono">
+              wrap {wrap.id.slice(0, 8)}…
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-muted hover:text-text text-xl leading-none w-8 h-8 rounded-full hover:bg-bg/40 transition-colors"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        {phase === 'confirm' && (
+          <>
+            <div className="bg-yellow-400/10 border border-yellow-400/40 border-l-4 border-l-yellow-400 rounded-lg px-4 py-3 text-sm">
+              <div className="text-yellow-300 font-semibold">
+                Single-use — copy it now.
+              </div>
+              <div className="text-muted text-xs mt-1">
+                Clicking <span className="text-text">Reveal</span> consumes
+                the wrap permanently. You won't be able to retrieve this
+                value again from this request.
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-border/60">
+              <Button variant="secondary" size="md" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="md" onClick={doReveal}>
+                Reveal (one-time)
+              </Button>
+            </div>
+          </>
+        )}
+
+        {phase === 'revealing' && (
+          <div className="py-6 text-center text-muted text-sm">
+            Decrypting through KMS…
+          </div>
+        )}
+
+        {phase === 'shown' && decoded !== null && revealed && (
+          <>
+            <div className="space-y-2">
+              <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+                {revealed.key_name || 'value'}
+              </label>
+              <textarea
+                readOnly
+                value={decoded}
+                rows={3}
+                onFocus={(e) => e.currentTarget.select()}
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono break-all focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              />
+              <div className="text-muted text-[11px] font-mono">
+                {revealed.byte_length} bytes · sha256{' '}
+                {revealed.content_hash.slice(0, 12)}… · {revealed.algorithm}
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-border/60">
+              <Button variant="secondary" size="md" onClick={doCopy}>
+                {copied ? 'Copied!' : 'Copy'}
+              </Button>
+              <Button variant="primary" size="md" onClick={onClose}>
+                Close
+              </Button>
+            </div>
+            <p className="text-muted text-[11px] text-center -mt-1">
+              The value clears from the DOM when this modal closes.
+            </p>
+          </>
+        )}
+
+        {phase === 'error' && (
+          <>
+            <InlineApiError err={err} />
+            <div className="flex items-center justify-end pt-2 border-t border-border/60">
+              <Button variant="primary" size="md" onClick={onClose}>
+                Close
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatRelativeFuture(iso: string | undefined): string {
+  if (!iso) return '—';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '—';
+  const seconds = Math.round((t - Date.now()) / 1000);
+  if (seconds <= 0) return 'expired';
+  if (seconds < 60) return `in ${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `in ${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `in ${hours}h`;
+  const days = Math.round(hours / 24);
+  return `in ${days}d`;
+}
+
+// --- GitOps observations -------------------------------------------
+
+function GitOpsCard({
+  query,
+}: {
+  query: ReturnType<typeof useRequestGitOps>;
+}) {
+  if (query.isLoading) return null;
+  if (query.error instanceof ApiError && query.error.status === 404) {
+    return (
+      <Card className="overflow-hidden">
+        <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
+          <h3 className="text-text font-semibold">GitOps observations</h3>
+          <StatusPill variant="warning" tone="outline">
+            disabled
+          </StatusPill>
+        </div>
+        <p className="px-5 py-4 text-muted text-xs">
+          The BRD §26 read-only ArgoCD visibility is off on this api
+          (<code className="font-mono">SB_GITOPS_ENABLED=false</code>). When
+          enabled, each app mapping bound to this secret renders its
+          observation status here.
+        </p>
+      </Card>
+    );
+  }
+  const rows = query.data ?? [];
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
+        <h3 className="text-text font-semibold">GitOps observations</h3>
+        <span className="text-muted text-xs ml-auto font-mono">read-only</span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="px-5 py-6 text-muted text-sm">
+          No app mappings bound to this secret — observations skipped.
+        </div>
+      ) : (
+        <ul>
+          {rows.map((o) => (
+            <li
+              key={o.id}
+              className="px-5 py-4 border-b border-border/40 last:border-0"
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-accent text-sm">
+                  {o.application_name}
+                </span>
+                <StatusPill
+                  variant={
+                    o.status === 'applied'
+                      ? 'approved'
+                      : o.status === 'failed'
+                        ? 'rejected'
+                        : o.status === 'applied_unverified'
+                          ? 'warning'
+                          : 'pending'
+                  }
+                  tone="outline"
+                >
+                  {o.status}
+                </StatusPill>
+              </div>
+              <div className="text-muted text-xs mt-1 font-mono">
+                ArgoCD project: {o.project_name ?? '—'} · cluster:{' '}
+                {o.cluster_name ?? '—'}
+              </div>
+              {o.observed_state && Object.keys(o.observed_state).length > 0 && (
+                <pre className="text-[11px] text-muted mt-2 bg-bg/40 border border-border/60 rounded-lg px-3 py-2 overflow-x-auto font-mono">
+                  observed_state: {JSON.stringify(o.observed_state)}
+                </pre>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// --- Details (right column) ----------------------------------------
+
+function DetailsCard({
+  request: r,
+  workflowName,
+}: {
+  request: AccessRequest;
+  workflowName: string;
+}) {
+  const rows: Array<[string, React.ReactNode]> = [
+    ['Type', <span key="t" className="font-mono text-text">{r.type}</span>],
+    [
+      'Requester',
+      <span key="r" className="font-mono text-text">
+        {r.requester_id}
+      </span>,
+    ],
+    [
+      'Target',
+      <span key="g" className="font-mono text-accent break-all">
+        {r.target_secret_ref}
+      </span>,
+    ],
+    [
+      'Provider',
+      <span key="p" className="font-mono text-text capitalize">
+        {r.target_provider_type}
+      </span>,
+    ],
+    [
+      'Workflow',
+      <span key="w" className="font-mono text-text">
+        {workflowName}
+      </span>,
+    ],
+    ['Created', <span key="c" className="font-mono text-muted">{formatTime(r.created_at)}</span>],
+    ...(r.job_id
+      ? [
+          [
+            'Job',
+            <span key="j" className="font-mono text-muted text-xs">
+              {shortId(r.job_id)}
+            </span>,
+          ] as [string, React.ReactNode],
+        ]
+      : []),
+    ...(r.reject_reason
+      ? [
+          [
+            'Reject reason',
+            <span key="rr" className="text-red-300">
+              {r.reject_reason}
+            </span>,
+          ] as [string, React.ReactNode],
+        ]
+      : []),
+  ];
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-5 py-4 border-b border-border/60">
+        <h3 className="text-text font-semibold">Details</h3>
+      </div>
+      <dl className="px-5 py-4 space-y-2.5 text-sm">
+        {rows.map(([k, v]) => (
+          <div key={k} className="grid grid-cols-[110px_1fr] gap-3 items-baseline">
+            <dt className="text-muted text-xs uppercase tracking-wider">{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </Card>
+  );
+}
+
+// --- Time to decide ------------------------------------------------
+
+function TimeToDecideCard({ request: _r }: { request: AccessRequest }) {
+  // TTL math requires the workflow's wrap_ttl_created_seconds; deriving
+  // it accurately from the client needs both the workflow row and a
+  // synced clock. Until the next slice plumbs that through, surface the
+  // placement with a clear preview chip — the api still enforces the
+  // TTL server-side regardless of what we render here.
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="text-muted text-xs uppercase tracking-wider font-medium">
+          Time to decide
+        </div>
+        <StatusPill variant="neutral" tone="outline">
+          preview
+        </StatusPill>
+      </div>
+      <div className="text-yellow-300 text-3xl font-bold tracking-tight">
+        3h 48m
+      </div>
+      <div className="text-muted text-xs mt-2">
+        auto-rejects when the request TTL expires
+      </div>
+    </Card>
+  );
+}
+
+// --- Approver actions ----------------------------------------------
+
+function ApproverActionsCard({
+  request: r,
+  actorId,
+}: {
+  request: AccessRequest;
+  actorId: string;
+}) {
+  const approve = useApproveRequest(r.id);
+  const reject = useRejectRequest(r.id);
+  const [showReason, setShowReason] = useState(false);
+  const [reason, setReason] = useState('');
+
+  return (
+    <Card className="p-5">
+      <div className="text-muted text-xs uppercase tracking-wider font-medium mb-3">
+        Approver actions
+      </div>
+      <p className="text-muted text-xs mb-4">
+        You hold <span className="text-text font-mono">secret.approve</span>{' '}
+        for this target.
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="primary"
+          size="md"
+          disabled={approve.isPending}
+          onClick={() => approve.mutate({ approver_id: actorId })}
+        >
+          {approve.isPending ? 'Working…' : 'Approve'}
+        </Button>
+        <Button
+          variant="danger"
+          size="md"
+          disabled={reject.isPending}
+          onClick={() => setShowReason((v) => !v)}
+        >
+          Reject
+        </Button>
+      </div>
+
+      {showReason && (
+        <div className="mt-4 pt-4 border-t border-border/60 space-y-2">
+          <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+            Reject reason
+          </label>
+          <textarea
+            rows={3}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. wrong target / use the read flow instead"
+            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+          />
+          <div className="flex items-center justify-between pt-1">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setShowReason(false);
+                setReason('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={!reason.trim() || reject.isPending}
+              onClick={() =>
+                reject.mutate({ approver_id: actorId, reason: reason.trim() })
+              }
+            >
+              {reject.isPending ? 'Working…' : 'Confirm reject'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <p className="text-muted text-[11px] mt-4">
+        Rejecting requires a reason. Self-approval is blocked unless the
+        workflow allows it.
+      </p>
+
+      {(approve.error || reject.error) && (
+        <InlineApiError err={(approve.error ?? reject.error) as unknown} />
+      )}
+    </Card>
+  );
+}
+
+function CancelOwnCard({
+  request: r,
+  actorId,
+  onCancelled,
+}: {
+  request: AccessRequest;
+  actorId: string;
+  onCancelled: () => void;
+}) {
+  const cancel = useCancelRequest(r.id);
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <Card className="p-5">
+      <div className="text-muted text-xs uppercase tracking-wider font-medium mb-3">
+        Your request
+      </div>
+      <p className="text-muted text-xs mb-4">
+        You can withdraw this request before it's approved.
+      </p>
+      {!confirming ? (
+        <Button
+          variant="secondary"
+          size="md"
+          onClick={() => setConfirming(true)}
+        >
+          Cancel request
+        </Button>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-text text-sm">Cancel this request?</p>
+          <div className="flex items-center justify-between">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setConfirming(false)}
+            >
+              Keep it
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={cancel.isPending}
+              onClick={() => {
+                cancel.mutate(actorId, {
+                  onSuccess: onCancelled,
+                });
+              }}
+            >
+              {cancel.isPending ? 'Working…' : 'Confirm cancel'}
+            </Button>
+          </div>
+        </div>
+      )}
+      {cancel.error && <InlineApiError err={cancel.error} />}
+    </Card>
+  );
+}
+
+// --- shared bits ----------------------------------------------------
+
+function InlineApiError({ err }: { err: unknown }) {
+  if (!(err instanceof ApiError)) return null;
+  return (
+    <div className="mt-3 text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
+      {err.status}: {err.message}
+    </div>
+  );
+}
+
+function stringifyError(e: unknown): string {
+  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
+function formatTime(iso?: string): string {
+  if (!iso) return '—';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '—';
+  const d = new Date(t);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}

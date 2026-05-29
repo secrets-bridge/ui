@@ -16,7 +16,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { setAuthTokenProvider } from '../api/client';
+import { setAuthTokenProvider, setIdentityProvider } from '../api/client';
 
 export interface Identity {
   id: string;
@@ -50,6 +50,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setAuthTokenProvider(() => token);
   }, [token]);
+
+  useEffect(() => {
+    setIdentityProvider(() => (identity ? identity.id : null));
+  }, [identity]);
 
   const login = useCallback((i: Identity, t: string) => {
     setIdentity(i);

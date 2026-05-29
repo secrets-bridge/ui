@@ -78,8 +78,39 @@ export interface AccessRequest {
   target_provider_type: string;
   target_secret_ref: string;
   target_keys: string[];
+  target_provider_config?: Record<string, unknown>;
+  target_scope?: Record<string, string>;
   workflow_id: string | null;
+  reject_reason?: string;
+  job_id?: string | null;
   created_at: string;
+  updated_at?: string;
+  approvals?: Approval[];
+}
+
+/**
+ * Approval — a single vote on a request. Returned inline with the
+ * request via GET /requests/:id. Append-only; one row per
+ * (request_id, approver_id) pair.
+ */
+export interface Approval {
+  id: string;
+  request_id: string;
+  approver_id: string;
+  decision: 'approve' | 'reject';
+  comment?: string;
+  created_at: string;
+}
+
+/** Body shape for POST /requests/read. Values never leave the user. */
+export interface ReadRequestInput {
+  workflow_id?: string;
+  target_provider_type: string;
+  target_provider_config?: Record<string, unknown>;
+  target_secret_ref: string;
+  target_keys: string[];
+  target_scope?: Record<string, string>;
+  justification: string;
 }
 
 /**

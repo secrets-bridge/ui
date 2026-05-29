@@ -19,22 +19,26 @@ export function LoginStub() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState('');
+  const [userId, setUserId] = useState('');
   const [name, setName] = useState('');
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email || !name) return;
+    if (!userId || !name) return;
     login(
       {
-        id: 'stub-' + email,
-        email,
+        // user_id is sent verbatim as the X-User-Id header AND used as
+        // the requester_id / approver_id in request bodies. Whatever
+        // the operator types here is the identity the api sees — match
+        // the values they pre-seeded (e.g. `bob`, `alice`).
+        id: userId,
+        email: userId.includes('@') ? userId : `${userId}@example.com`,
         display_name: name,
         permissions: ['*'],
       },
       'stub-bearer-token'
     );
-    const to = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/agents';
+    const to = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/';
     navigate(to, { replace: true });
   }
 
@@ -48,16 +52,25 @@ export function LoginStub() {
           </div>
         </div>
         <div className="space-y-2">
-          <label className="block text-xs text-muted">Email</label>
+          <label className="block text-xs text-muted">
+            User ID <span className="text-muted/60">(sent as X-User-Id)</span>
+          </label>
           <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
             required
-            className="w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm focus:outline-none focus:border-accent"
-            placeholder="alice@example.com"
-            autoComplete="email"
+            className="w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent"
+            placeholder="alice"
+            autoComplete="username"
+            autoCapitalize="off"
+            spellCheck={false}
           />
+          <div className="text-[11px] text-muted/80">
+            Use the same identifier the api saw at request submit time
+            (e.g. <code className="font-mono">bob</code> to view bob's
+            requests). Real OIDC swap lands with api #26.
+          </div>
         </div>
         <div className="space-y-2">
           <label className="block text-xs text-muted">Display name</label>
