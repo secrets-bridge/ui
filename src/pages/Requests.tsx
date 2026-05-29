@@ -27,7 +27,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
 import {
@@ -41,11 +41,13 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { PageHeader } from '../ui/PageHeader';
 import { StatusPill } from '../ui/StatusPill';
+import { SubmitRequestDrawer } from './SubmitRequestDrawer';
 
 type StatusFilter = 'all' | AccessRequest['status'];
 type TypeFilter = 'all' | AccessRequest['type'];
 
 export function Requests() {
+  const navigate = useNavigate();
   const { identity } = useAuth();
   const me = identity?.id ?? '';
 
@@ -54,6 +56,7 @@ export function Requests() {
 
   const [status, setStatus] = useState<StatusFilter>('all');
   const [type, setType] = useState<TypeFilter>('all');
+  const [submitting, setSubmitting] = useState(false);
 
   const filteredMine = useMemo(() => {
     const rows = myRequests.data ?? [];
@@ -75,7 +78,11 @@ export function Requests() {
         title="Requests"
         description="Track your own requests and act on those awaiting your decision."
         actions={
-          <Button variant="primary" disabled title="Submit lands with the next slice">
+          <Button
+            variant="primary"
+            onClick={() => setSubmitting(true)}
+            disabled={!me}
+          >
             + New request
           </Button>
         }
@@ -170,6 +177,17 @@ export function Requests() {
           <ApproverQueueCard key={r.id} row={r} />
         ))}
       </div>
+
+      {submitting && (
+        <SubmitRequestDrawer
+          requesterId={me}
+          onClose={() => setSubmitting(false)}
+          onCreated={(id) => {
+            setSubmitting(false);
+            navigate(`/requests/${id}`);
+          }}
+        />
+      )}
     </div>
   );
 }
