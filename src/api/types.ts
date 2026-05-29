@@ -36,3 +36,50 @@ export interface AccessRequest {
   workflow_id: string | null;
   created_at: string;
 }
+
+/**
+ * Workflow definition — `workflow_definitions` table on the api side.
+ * Mirrors `internal/handlers/admin.go::WorkflowBody`.
+ *
+ * `is_system` rows ship as seed data (e.g. the `standard` default
+ * workflow). They are editable but NOT deletable — DELETE returns 409
+ * and the UI surfaces that as a disabled action.
+ */
+export interface Workflow {
+  id: string;
+  name: string;
+  description?: string;
+  min_approvers: number;
+  approver_role_id?: string | null;
+  wrap_ttl_created_seconds: number;
+  wrap_ttl_approved_seconds: number;
+  wrap_ttl_claimed_seconds: number;
+  request_ttl_seconds: number;
+  require_justification: boolean;
+  allow_self_approval: boolean;
+  notification_channels: string[];
+  is_default?: boolean;
+  enabled: boolean;
+  is_system?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Body shape for POST / PUT. The api accepts the same shape for both
+ * (modulo `id`, which the URL carries on PUT). `is_default` and
+ * `is_system` are server-managed — the form omits them.
+ */
+export interface WorkflowInput {
+  name: string;
+  description?: string;
+  min_approvers: number;
+  wrap_ttl_created_seconds: number;
+  wrap_ttl_approved_seconds: number;
+  wrap_ttl_claimed_seconds: number;
+  request_ttl_seconds: number;
+  require_justification: boolean;
+  allow_self_approval: boolean;
+  notification_channels: string[];
+  enabled: boolean;
+}
