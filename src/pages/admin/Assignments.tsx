@@ -5,11 +5,13 @@
  * Roles + Projects). Each row binds a user to a role with an optional
  * narrowing scope.
  *
+ * Polished in ui#17 to match the design pattern (PageHeader, Card,
+ * shared `src/ui/` primitives, StatusPill for the role + scope chips).
+ *
  * Layout:
- *   - Table of every assignment in the system (one row per (user,
- *     role, scope) triple). Filter input on top narrows to a single
- *     user_id substring match. Role chip + scope chips per row.
- *   - "+ New assignment" drawer with a role dropdown + project +
+ *   - Filter strip + table of every assignment in the system. Role
+ *     pill + scope chips per row.
+ *   - "+ Grant role" drawer with a role dropdown + project +
  *     environment + secret_ref_prefix + provider_type inputs.
  *   - Per-row Revoke confirm.
  *
@@ -18,10 +20,9 @@
  *     identities come from the future OIDC flow, api#26).
  *   - Empty scope fields are stripped on submit so the api treats
  *     them as wildcards (matching the policy_rules.selector pattern).
- *   - Project_id input is a UUID dropdown hydrated from
- *     useProjects(); environment is a name input (not a UUID — the
- *     api scope keys are by name to match how user_roles.scope
- *     references envs).
+ *   - Project_id is a UUID dropdown hydrated from useProjects;
+ *     environment is a name input (not a UUID — the api scope keys
+ *     reference envs by name to match user_roles.scope).
  */
 
 import { useMemo, useState } from 'react';
@@ -38,6 +39,12 @@ import {
 } from '../../api/assignments';
 import { useRoles } from '../../api/roles';
 import { useEnvironments, useProjects } from '../../api/tenancy';
+import { Button } from '../../ui/Button';
+import { Card } from '../../ui/Card';
+import { ConfirmModal } from '../../ui/ConfirmModal';
+import { Drawer } from '../../ui/Drawer';
+import { PageHeader } from '../../ui/PageHeader';
+import { StatusPill } from '../../ui/StatusPill';
 
 export function Assignments() {
   const list = useUserRoles();
@@ -63,119 +70,89 @@ export function Assignments() {
     projects.data?.find((p) => p.id === id)?.name ?? id.slice(0, 8) + '…';
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-text text-xl font-semibold">Assignments</h1>
-          <p className="text-muted text-sm mt-1">
-            User × role × scope bindings. Scope keys narrow the assignment to a single project / environment / ref prefix / provider type. Empty scope = global.
-          </p>
-        </div>
-        <button
-          onClick={() => setGranting(true)}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90"
-        >
-          + Grant role
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        title="Assignments"
+        description="User × role × scope bindings. Scope keys narrow the assignment to a single project / environment / ref prefix / provider type. Empty scope = global."
+        actions={
+          <Button variant="primary" onClick={() => setGranting(true)}>
+            + Grant role
+          </Button>
+        }
+      />
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 mb-4">
         <input
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter by user_id…"
-          className="flex-1 bg-bg border border-border rounded px-3 py-2 text-text text-sm focus:outline-none focus:border-accent"
+          className="flex-1 bg-bg border border-border rounded-lg px-3.5 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
         />
         {filter && (
-          <button
-            onClick={() => setFilter('')}
-            className="text-xs text-muted hover:text-text border border-border px-3 rounded"
-          >
+          <Button variant="secondary" size="sm" onClick={() => setFilter('')}>
             Clear
-          </button>
+          </Button>
         )}
       </div>
 
       {list.isError && (
-        <div className="bg-surface border border-red-500/40 rounded p-4 text-sm">
-          <div className="text-red-400 font-medium">Failed to load assignments</div>
+        <Card className="border-red-500/40 p-5 text-sm mb-4">
+          <div className="text-red-300 font-medium">
+            Failed to load assignments
+          </div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
-        </div>
+        </Card>
       )}
 
       {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
 
       {list.data && list.data.length === 0 && (
-        <div className="bg-surface border border-border rounded p-6 text-center text-muted text-sm">
+        <Card className="p-10 text-center text-muted text-sm">
           No assignments yet. Grant a role to start scoping access.
-        </div>
+        </Card>
+      )}
+
+      {list.data && list.data.length > 0 && filtered.length === 0 && (
+        <Card className="p-10 text-center text-muted text-sm">
+          No assignments match{' '}
+          <code className="font-mono text-accent">{filter}</code>.
+        </Card>
       )}
 
       {filtered.length > 0 && (
-        <div className="bg-surface border border-border rounded overflow-hidden">
+        <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="text-left text-muted text-xs uppercase">
-              <tr className="border-b border-border">
-                <th className="px-4 py-3 font-normal">User</th>
-                <th className="px-4 py-3 font-normal">Role</th>
-                <th className="px-4 py-3 font-normal">Scope</th>
-                <th className="px-4 py-3 font-normal">Granted</th>
-                <th className="px-4 py-3 font-normal text-right">Actions</th>
+            <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+              <tr className="border-b border-border/60">
+                <Th>User</Th>
+                <Th>Role</Th>
+                <Th>Scope</Th>
+                <Th>Granted</Th>
+                <Th className="text-right">Actions</Th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => (
-                <tr
+                <AssignmentRow
                   key={r.id}
-                  className="border-b border-border/50 last:border-0 hover:bg-bg/30 align-top"
-                >
-                  <td className="px-4 py-3 text-text font-mono text-xs">{r.user_id}</td>
-                  <td className="px-4 py-3">
-                    <span className="text-[11px] bg-accent/20 text-accent border border-accent/60 rounded px-2 py-0.5">
-                      {roleName(r.role_id)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {!r.scope || Object.keys(r.scope).length === 0 ? (
-                      <span className="text-muted text-xs italic">global</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {Object.entries(r.scope).map(([k, v]) => (
-                          <span
-                            key={k}
-                            className="text-[11px] bg-bg border border-border text-muted rounded px-2 py-0.5"
-                          >
-                            <span className="text-text">{k}</span>
-                            <span className="opacity-50 mx-1">=</span>
-                            <span>{k === 'project_id' ? projectName(v) : v}</span>
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-muted text-xs">
-                    {r.granted_at.slice(0, 10)}
-                    {r.granted_by && <div>by {r.granted_by}</div>}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => setConfirmRevoke(r)}
-                      className="text-xs text-red-400 hover:text-red-300 border border-border px-2 py-1 rounded"
-                    >
-                      Revoke
-                    </button>
-                  </td>
-                </tr>
+                  row={r}
+                  roleName={roleName(r.role_id)}
+                  projectName={projectName}
+                  onRevoke={() => setConfirmRevoke(r)}
+                />
               ))}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
 
       {granting && (
         <Drawer title="Grant role" onClose={() => setGranting(false)}>
-          <AssignmentForm onDone={() => setGranting(false)} onCancel={() => setGranting(false)} />
+          <AssignmentForm
+            onDone={() => setGranting(false)}
+            onCancel={() => setGranting(false)}
+          />
         </Drawer>
       )}
 
@@ -196,6 +173,88 @@ export function Assignments() {
       )}
     </div>
   );
+}
+
+// --- row + cell bits ------------------------------------------------
+
+function AssignmentRow({
+  row: r,
+  roleName,
+  projectName,
+  onRevoke,
+}: {
+  row: UserRole;
+  roleName: string;
+  projectName: (id: string) => string;
+  onRevoke: () => void;
+}) {
+  const scopeKeys = Object.entries(r.scope ?? {});
+  return (
+    <tr className="border-b border-border/40 last:border-0 hover:bg-bg/20 align-top">
+      <Td>
+        <span className="font-mono text-text text-sm">{r.user_id}</span>
+      </Td>
+      <Td>
+        <StatusPill variant="accent" tone="outline">
+          <span className="font-mono">{roleName}</span>
+        </StatusPill>
+      </Td>
+      <Td>
+        {scopeKeys.length === 0 ? (
+          <span className="text-muted text-xs italic">global</span>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {scopeKeys.map(([k, v]) => (
+              <span
+                key={k}
+                className="inline-flex items-center gap-1 rounded-full bg-bg/60 border border-border px-2.5 py-0.5 text-[11px] font-mono"
+              >
+                <span className="text-muted">{k}</span>
+                <span className="text-muted/50">=</span>
+                <span className="text-accent">
+                  {k === 'project_id' ? projectName(v) : v}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+      </Td>
+      <Td className="text-muted text-xs">
+        <div>{r.granted_at.slice(0, 10)}</div>
+        {r.granted_by && (
+          <div className="text-muted/70 mt-0.5">by {r.granted_by}</div>
+        )}
+      </Td>
+      <Td className="text-right">
+        <button
+          onClick={onRevoke}
+          className="text-red-300 hover:text-red-200 text-sm font-medium"
+        >
+          Revoke
+        </button>
+      </Td>
+    </tr>
+  );
+}
+
+function Th({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
+}
+
+function Td({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <td className={`px-5 py-3.5 align-top ${className}`}>{children}</td>;
 }
 
 // --- form -----------------------------------------------------------
@@ -252,7 +311,8 @@ function AssignmentForm({
     const scope: Record<string, string> = {};
     if (data.sc_project_id) scope.project_id = data.sc_project_id;
     if (data.sc_environment) scope.environment = data.sc_environment;
-    if (data.sc_secret_ref_prefix) scope.secret_ref_prefix = data.sc_secret_ref_prefix;
+    if (data.sc_secret_ref_prefix)
+      scope.secret_ref_prefix = data.sc_secret_ref_prefix;
     if (data.sc_provider_type) scope.provider_type = data.sc_provider_type;
 
     const body: UserRoleInput = {
@@ -269,7 +329,7 @@ function AssignmentForm({
       <Field
         label="User ID"
         error={errors.user_id?.message}
-        hint="Free-form for now (no users table — identities come from the future OIDC flow). Use the same identifier your IdP issues as sub claim."
+        hint="Free-form for now (no users table — identities come from the future OIDC flow). Use the same identifier your IdP issues as `sub`."
       >
         <input
           type="text"
@@ -290,12 +350,12 @@ function AssignmentForm({
           ))}
         </select>
         {roles.isError && (
-          <div className="text-xs text-red-400">failed to load roles</div>
+          <div className="text-xs text-red-300">failed to load roles</div>
         )}
       </Field>
 
-      <fieldset className="border border-border rounded p-3 space-y-3">
-        <legend className="text-xs text-muted px-1">
+      <fieldset className="border border-border/60 rounded-lg p-4 space-y-3">
+        <legend className="text-[11px] text-muted uppercase tracking-wider px-1 font-medium">
           Scope — narrow the assignment. All optional; empty = global.
         </legend>
 
@@ -312,7 +372,10 @@ function AssignmentForm({
           </select>
         </Field>
 
-        <Field label="Environment" hint="By NAME (not UUID) since multiple projects can each have `uat`.">
+        <Field
+          label="Environment"
+          hint="By NAME (not UUID) since multiple projects can each have `uat`."
+        >
           <input
             list="env-options"
             {...register('sc_environment')}
@@ -326,7 +389,10 @@ function AssignmentForm({
           </datalist>
         </Field>
 
-        <Field label="Secret ref prefix" hint="Prefix match (e.g. `billing/`).">
+        <Field
+          label="Secret ref prefix"
+          hint="Prefix match (e.g. `billing/`)."
+        >
           <input
             type="text"
             {...register('sc_secret_ref_prefix')}
@@ -335,32 +401,42 @@ function AssignmentForm({
           />
         </Field>
 
-        <Field label="Provider type" hint="exact: vault | aws-sm | gcp-sm | azure-kv">
-          <input type="text" {...register('sc_provider_type')} className={inputCls} placeholder="vault" />
+        <Field
+          label="Provider type"
+          hint="exact: vault | aws-sm | gcp-sm | azure-kv"
+        >
+          <input
+            type="text"
+            {...register('sc_provider_type')}
+            className={inputCls}
+            placeholder="vault"
+          />
         </Field>
       </fieldset>
 
       {grant.error instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+        <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
           {grant.error.status}: {grant.error.message}
         </div>
       )}
 
-      <div className="flex gap-2 pt-2 border-t border-border">
-        <button
-          type="submit"
-          disabled={grant.isPending}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50"
-        >
-          {grant.isPending ? 'Saving…' : 'Grant'}
-        </button>
-        <button
+      <div className="flex items-center justify-between pt-3 border-t border-border/60">
+        <Button
           type="button"
+          variant="secondary"
+          size="md"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded border border-border"
         >
           Cancel
-        </button>
+        </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          size="md"
+          disabled={grant.isPending}
+        >
+          {grant.isPending ? 'Saving…' : 'Grant'}
+        </Button>
       </div>
     </form>
   );
@@ -368,85 +444,8 @@ function AssignmentForm({
 
 // --- shared bits ----------------------------------------------------
 
-function Drawer({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <button className="absolute inset-0 bg-black/50" onClick={onClose} aria-label="Close drawer" />
-      <div className="relative w-[520px] max-w-full bg-surface border-l border-border h-full overflow-auto">
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <div className="text-text font-semibold">{title}</div>
-          <button onClick={onClose} className="text-muted hover:text-text text-xl leading-none">
-            ×
-          </button>
-        </div>
-        <div className="px-6 py-4">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function ConfirmModal({
-  title,
-  body,
-  confirmText,
-  danger,
-  onCancel,
-  onConfirm,
-  loading,
-  error,
-}: {
-  title: string;
-  body: string;
-  confirmText: string;
-  danger?: boolean;
-  onCancel: () => void;
-  onConfirm: () => Promise<unknown>;
-  loading: boolean;
-  error?: unknown;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <button className="absolute inset-0 bg-black/60" onClick={onCancel} aria-label="Close" />
-      <div className="relative bg-surface border border-border rounded-lg w-[420px] p-5 space-y-3">
-        <div className="text-text font-semibold">{title}</div>
-        <div className="text-muted text-sm">{body}</div>
-        {error instanceof ApiError && (
-          <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
-            {error.status}: {error.message}
-          </div>
-        )}
-        <div className="flex gap-2 pt-2">
-          <button
-            onClick={() => void onConfirm()}
-            disabled={loading}
-            className={`${
-              danger ? 'bg-red-500 text-white' : 'bg-accent text-bg'
-            } font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50`}
-          >
-            {loading ? 'Working…' : confirmText}
-          </button>
-          <button
-            onClick={onCancel}
-            className="text-muted hover:text-text px-3 py-2 rounded border border-border"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const inputCls =
-  'w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm focus:outline-none focus:border-accent';
+  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
 
 function Field({
   label,
@@ -461,10 +460,14 @@ function Field({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-xs text-muted">{label}</label>
+      <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+        {label}
+      </label>
       {children}
-      {hint && !error && <div className="text-[11px] text-muted/80">{hint}</div>}
-      {error && <div className="text-xs text-red-400">{error}</div>}
+      {hint && !error && (
+        <div className="text-[11px] text-muted/80">{hint}</div>
+      )}
+      {error && <div className="text-xs text-red-300">{error}</div>}
     </div>
   );
 }
