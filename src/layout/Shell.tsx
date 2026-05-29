@@ -43,8 +43,9 @@ export function Shell() {
         {/* nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           <NavGroup>
-            <NavItem to="/agents" label="Agents" />
+            <NavItem to="/" label="Dashboard" end />
             <NavItem to="/requests" label="Requests" badge={undefined /* slot for pending count */} />
+            <NavItem to="/agents" label="Agents" />
             <NavItem to="/secrets" label="Secrets" />
             <NavItem to="/audit" label="Audit" />
           </NavGroup>
@@ -124,14 +125,19 @@ function NavItem({
   to,
   label,
   badge,
+  end,
 }: {
   to: string;
   label: string;
   badge?: number;
+  // NavLink defaults to prefix matching — `/` would otherwise stay
+  // active under every route. Pass `end` for the Dashboard root.
+  end?: boolean;
 }) {
   return (
     <NavLink
       to={to}
+      end={end}
       className={({ isActive }) =>
         [
           'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',

@@ -6,6 +6,7 @@ import { AuthProvider } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import { Shell } from './layout/Shell';
 import { Agents } from './pages/Agents';
+import { Dashboard } from './pages/Dashboard';
 import { LoginStub } from './pages/LoginStub';
 import { Placeholder } from './pages/Placeholder';
 import { Assignments } from './pages/admin/Assignments';
@@ -28,7 +29,7 @@ export function App() {
             </RequireAuth>
           }
         >
-          <Route path="/" element={<Navigate to="/agents" replace />} />
+          <Route path="/" element={<Dashboard />} />
           <Route path="/agents" element={<Agents />} />
           <Route
             path="/requests"
@@ -48,7 +49,7 @@ export function App() {
           <Route path="/admin/workflows" element={<Workflows />} />
           <Route path="/admin/policies" element={<Policies />} />
           <Route path="/admin/integrations" element={<Integrations />} />
-          <Route path="*" element={<Navigate to="/agents" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
         </Routes>
       </AuthProvider>
