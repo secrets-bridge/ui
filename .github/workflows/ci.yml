@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: install
+        run: npm ci --no-audit --no-fund
+      - name: typecheck
+        run: npx tsc -b
+      - name: build
+        run: npm run build
+      - name: bundle-size budget
+        run: |
+          set -e
+          # FR-13 — initial route ≤ 500 KB gzipped. We approximate by
+          # gzipping every file in dist/assets and summing; failing
+          # the CI when the total exceeds the cap forces a perf
+          # conversation before the bundle creeps.
+          total=$(find dist/assets -type f \( -name "*.js" -o -name "*.css" \) -exec sh -c 'gzip -c "$1" | wc -c' _ {} \; | awk '{s+=$1} END {print s+0}')
+          echo "gzipped asset bytes: $total"
+          if [ "$total" -gt 512000 ]; then
+            echo "::error::initial bundle exceeds 500 KB gzipped (FR-13)"
+            exit 1
+          fi
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build
+        # Smoke-tests the multi-stage Dockerfile every PR. The build
+        # stage runs the same tsc + vite build as the `build` job;
+        # the serve stage assembles the nginx image. Failure here
+        # means the production image won't ship.
+        run: docker build -t sb-ui:ci .
