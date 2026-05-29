@@ -1,16 +1,20 @@
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
+import { queryClient } from './api/queryClient';
 import { AuthProvider } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import { Shell } from './layout/Shell';
 import { Agents } from './pages/Agents';
 import { LoginStub } from './pages/LoginStub';
 import { Placeholder } from './pages/Placeholder';
+import { Workflows } from './pages/admin/Workflows';
 
 export function App() {
   return (
-    <AuthProvider>
-      <Routes>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <Routes>
         <Route path="/login" element={<LoginStub />} />
         <Route
           element={
@@ -37,10 +41,7 @@ export function App() {
             path="/admin/roles"
             element={<Placeholder title="Roles" note="Dynamic permission bundles." />}
           />
-          <Route
-            path="/admin/workflows"
-            element={<Placeholder title="Workflows" note="Approval templates: min approvers, TTLs, self-approval." />}
-          />
+          <Route path="/admin/workflows" element={<Workflows />} />
           <Route
             path="/admin/policies"
             element={<Placeholder title="Policies" note="Selectors that map request scope to workflow." />}
@@ -56,7 +57,8 @@ export function App() {
           />
           <Route path="*" element={<Navigate to="/agents" replace />} />
         </Route>
-      </Routes>
-    </AuthProvider>
+        </Routes>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
