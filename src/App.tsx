@@ -8,7 +8,7 @@ import { Shell } from './layout/Shell';
 import { Agents } from './pages/Agents';
 import { Audit } from './pages/Audit';
 import { Dashboard } from './pages/Dashboard';
-import { LoginStub } from './pages/LoginStub';
+import { Login } from './pages/Login';
 import { RequestDetail } from './pages/RequestDetail';
 import { Requests } from './pages/Requests';
 import { Secrets } from './pages/Secrets';
@@ -24,7 +24,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Routes>
-        <Route path="/login" element={<LoginStub />} />
+        <Route path="/login" element={<Login />} />
         <Route
           element={
             <RequireAuth>
