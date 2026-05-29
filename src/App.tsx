@@ -10,6 +10,7 @@ import { LoginStub } from './pages/LoginStub';
 import { Placeholder } from './pages/Placeholder';
 import { Integrations } from './pages/admin/Integrations';
 import { Policies } from './pages/admin/Policies';
+import { Projects } from './pages/admin/Projects';
 import { Roles } from './pages/admin/Roles';
 import { Workflows } from './pages/admin/Workflows';
 
@@ -40,6 +41,7 @@ export function App() {
             path="/audit"
             element={<Placeholder title="Audit Log" note="Filter by actor / action / resource / correlation_id." />}
           />
+          <Route path="/admin/projects" element={<Projects />} />
           <Route path="/admin/roles" element={<Roles />} />
           <Route path="/admin/workflows" element={<Workflows />} />
           <Route path="/admin/policies" element={<Policies />} />

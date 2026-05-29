@@ -32,6 +32,9 @@ export function Shell() {
           </NavLink>
 
           <div className="text-xs uppercase text-muted px-3 mt-6 mb-2">Admin</div>
+          <NavLink to="/admin/projects" className={sectionLink}>
+            Projects
+          </NavLink>
           <NavLink to="/admin/roles" className={sectionLink}>
             Roles
           </NavLink>

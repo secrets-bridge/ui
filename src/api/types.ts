@@ -17,11 +17,56 @@ export interface Agent {
   updated_at: string;
 }
 
+/**
+ * Project — top-level tenancy boundary (BRD §17). Mirrors
+ * `api/internal/handlers/tenancy.go::projectBody`.
+ *
+ * Soft-delete model: there's no DELETE endpoint. Status flips between
+ * `active` and `archived`. Archived projects stay in the list but are
+ * visually de-emphasized; they remain referenced by historical
+ * requests, role assignments, and gitops mappings.
+ */
 export interface Project {
   id: string;
   name: string;
-  owner_team_id: string | null;
+  owner_team_id?: string;
   status: 'active' | 'archived';
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Body shape for POST /projects. */
+export interface ProjectInput {
+  name: string;
+  owner_team_id?: string;
+}
+
+/**
+ * Environment — lifecycle boundary within a project (BRD §17). One
+ * project carries N environments (`dev`, `uat`, `staging`, `prod`,
+ * `other`). Mirrors `api/internal/handlers/tenancy.go::environmentBody`.
+ *
+ * Unique within a project: a project can't have two `uat`
+ * environments, but two projects CAN each have their own `uat`.
+ *
+ * Hard-delete model (unlike Project). Cheap to recreate; no FK
+ * ownership downstream. `user_roles.scope` jsonb references envs by
+ * name, not FK.
+ */
+export interface Environment {
+  id: string;
+  project_id: string;
+  name: string;
+  type: 'dev' | 'staging' | 'uat' | 'prod' | 'other';
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Body shape for POST /environments. */
+export interface EnvironmentInput {
+  project_id: string;
+  name: string;
+  type: Environment['type'];
 }
 
 export interface AccessRequest {
