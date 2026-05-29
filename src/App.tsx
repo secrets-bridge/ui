@@ -6,6 +6,7 @@ import { AuthProvider } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import { Shell } from './layout/Shell';
 import { Agents } from './pages/Agents';
+import { Audit } from './pages/Audit';
 import { Dashboard } from './pages/Dashboard';
 import { LoginStub } from './pages/LoginStub';
 import { Placeholder } from './pages/Placeholder';
@@ -39,10 +40,7 @@ export function App() {
             path="/secrets"
             element={<Placeholder title="Discovered Secrets" note="Search by cluster / provider / labels." />}
           />
-          <Route
-            path="/audit"
-            element={<Placeholder title="Audit Log" note="Filter by actor / action / resource / correlation_id." />}
-          />
+          <Route path="/audit" element={<Audit />} />
           <Route path="/admin/projects" element={<Projects />} />
           <Route path="/admin/roles" element={<Roles />} />
           <Route path="/admin/assignments" element={<Assignments />} />
