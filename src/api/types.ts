@@ -154,6 +154,77 @@ export interface PolicyInput {
 }
 
 /**
+ * ArgoCD endpoint (BRD §26 — read-only GitOps visibility integration).
+ * Mirrors `internal/handlers/gitops.go::argocdEndpointResponse`.
+ *
+ * Token handling: the plaintext ArgoCD account token is base64-encoded
+ * + sent ONCE on create (POST body). The api envelope-encrypts it
+ * before persisting; no response shape on the platform ever returns
+ * it again. To rotate the token, delete + recreate the endpoint.
+ *
+ * Update endpoints are intentionally narrow:
+ *   - PUT /argocd-endpoints/:id/enabled  → toggle the `enabled` flag
+ *   - DELETE /argocd-endpoints/:id       → soft-delete
+ * There is no PUT for the other fields. That keeps the token's
+ * write-once posture honest — the only way to change connection
+ * settings is to delete + recreate.
+ */
+export interface ArgoCDEndpoint {
+  id: string;
+  name: string;
+  environment_id?: string;
+  base_url: string;
+  tls_server_name?: string;
+  enabled: boolean;
+  last_health_at?: string;
+  health_error?: string;
+  kms_key_id: string;
+}
+
+/** Body for POST /argocd-endpoints. */
+export interface ArgoCDEndpointInput {
+  name: string;
+  environment_id?: string;
+  base_url: string;
+  /** Base64-encoded plaintext ArgoCD account token. Set ONCE, never returned. */
+  token_b64: string;
+  tls_ca_pem?: string;
+  tls_server_name?: string;
+}
+
+/**
+ * GitOps app mapping — binds an ArgoCD application to the platform's
+ * notion of "this is the workload that consumes secret X". Used by
+ * the worker's gitops-poller to know which app to query for sync
+ * status after a request transitions to `executed`.
+ *
+ * Mirrors `internal/handlers/gitops.go::gitopsMappingResponse`. No
+ * update endpoint exists; mappings are create-only + delete-only.
+ */
+export interface GitOpsAppMapping {
+  id: string;
+  secret_mapping_id?: string;
+  provider_connection_id?: string;
+  argocd_endpoint_id: string;
+  application_name: string;
+  application_namespace?: string;
+  project_name?: string;
+  cluster_name?: string;
+  enabled: boolean;
+}
+
+/** Body for POST /gitops-app-mappings. */
+export interface GitOpsAppMappingInput {
+  argocd_endpoint_id: string;
+  application_name: string;
+  application_namespace?: string;
+  project_name?: string;
+  cluster_name?: string;
+  secret_mapping_id?: string;
+  provider_connection_id?: string;
+}
+
+/**
  * Permission descriptor — one row of the catalog returned by
  * GET /api/v1/permissions. The canonical source for "what permissions
  * exist on this platform" (curated in api/internal/auth/permissions.go).

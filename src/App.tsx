@@ -8,6 +8,7 @@ import { Shell } from './layout/Shell';
 import { Agents } from './pages/Agents';
 import { LoginStub } from './pages/LoginStub';
 import { Placeholder } from './pages/Placeholder';
+import { Integrations } from './pages/admin/Integrations';
 import { Policies } from './pages/admin/Policies';
 import { Roles } from './pages/admin/Roles';
 import { Workflows } from './pages/admin/Workflows';
@@ -42,15 +43,7 @@ export function App() {
           <Route path="/admin/roles" element={<Roles />} />
           <Route path="/admin/workflows" element={<Workflows />} />
           <Route path="/admin/policies" element={<Policies />} />
-          <Route
-            path="/admin/integrations"
-            element={
-              <Placeholder
-                title="Integrations"
-                note="ArgoCD endpoints + app mappings (when GitOps observation is enabled)."
-              />
-            }
-          />
+          <Route path="/admin/integrations" element={<Integrations />} />
           <Route path="*" element={<Navigate to="/agents" replace />} />
         </Route>
         </Routes>
