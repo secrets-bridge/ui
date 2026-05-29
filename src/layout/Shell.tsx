@@ -1,79 +1,191 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
-
-const sectionLink =
-  'block px-3 py-2 text-sm rounded transition-colors hover:bg-border [&.active]:bg-border [&.active]:text-text';
+import { LogoMark } from '../ui/LogoMark';
 
 /**
- * Top-level chrome: sidebar + top bar + content slot. Routes render
- * inside <Outlet />.
+ * Shell — sidebar + top bar + main content slot, matched against the
+ * Figma frame on page 05 (Dashboard) and the 06 screens. Layout:
+ *
+ *   ┌─────────────────────────────────────────────────────────────┐
+ *   │ ⬛ SecretsBridge          Roles  ┌ search ┐ ⊙ Acme Corp  ⨀  │
+ *   ├──────────────┬──────────────────────────────────────────────┤
+ *   │ ☐ Agents     │                                              │
+ *   │ ☐ Requests 3 │   <Outlet />                                 │
+ *   │ ...          │                                              │
+ *   │ ADMIN        │                                              │
+ *   │ ⬛ Roles      │                                              │
+ *   │ ...          │                                              │
+ *   │              │                                              │
+ *   │ Haider       │                                              │
+ *   │ Platform admin                                              │
+ *   └──────────────┴──────────────────────────────────────────────┘
+ *
+ * Some bits are aspirational for v1 (the search field is decorative;
+ * the env-switcher pill is a placeholder; pending-request badges land
+ * when Requests does). The shell shape is real today.
  */
 export function Shell() {
   const { identity, logout } = useAuth();
 
   return (
-    <div className="h-full grid grid-cols-[260px_1fr] grid-rows-[56px_1fr]">
-      <aside className="row-span-2 bg-surface border-r border-border p-4 flex flex-col">
-        <div className="text-text font-semibold mb-6 px-3">Secrets Bridge</div>
-        <nav className="space-y-1 flex-1">
-          <div className="text-xs uppercase text-muted px-3 mb-2">Operate</div>
-          <NavLink to="/agents" className={sectionLink}>
-            Agents
-          </NavLink>
-          <NavLink to="/requests" className={sectionLink}>
-            Requests
-          </NavLink>
-          <NavLink to="/secrets" className={sectionLink}>
-            Discovered Secrets
-          </NavLink>
-          <NavLink to="/audit" className={sectionLink}>
-            Audit Log
-          </NavLink>
+    <div className="h-full grid grid-cols-[240px_1fr] grid-rows-[64px_1fr] bg-bg">
+      {/* SIDEBAR: spans both rows */}
+      <aside className="row-span-2 bg-surface border-r border-border flex flex-col">
+        {/* brand mark */}
+        <div className="px-5 py-4 flex items-center gap-2 border-b border-border/60">
+          <LogoMark className="w-7 h-7" />
+          <span className="text-text text-base font-semibold tracking-tight">
+            SecretsBridge
+          </span>
+        </div>
 
-          <div className="text-xs uppercase text-muted px-3 mt-6 mb-2">Admin</div>
-          <NavLink to="/admin/projects" className={sectionLink}>
-            Projects
-          </NavLink>
-          <NavLink to="/admin/roles" className={sectionLink}>
-            Roles
-          </NavLink>
-          <NavLink to="/admin/assignments" className={sectionLink}>
-            Assignments
-          </NavLink>
-          <NavLink to="/admin/workflows" className={sectionLink}>
-            Workflows
-          </NavLink>
-          <NavLink to="/admin/policies" className={sectionLink}>
-            Policies
-          </NavLink>
-          <NavLink to="/admin/integrations" className={sectionLink}>
-            Integrations
-          </NavLink>
+        {/* nav */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          <NavGroup>
+            <NavItem to="/agents" label="Agents" />
+            <NavItem to="/requests" label="Requests" badge={undefined /* slot for pending count */} />
+            <NavItem to="/secrets" label="Secrets" />
+            <NavItem to="/audit" label="Audit" />
+          </NavGroup>
+
+          <SectionLabel>Admin</SectionLabel>
+          <NavGroup>
+            <NavItem to="/admin/projects" label="Projects" />
+            <NavItem to="/admin/roles" label="Roles" />
+            <NavItem to="/admin/assignments" label="Assignments" />
+            <NavItem to="/admin/workflows" label="Workflows" />
+            <NavItem to="/admin/policies" label="Policies" />
+            <NavItem to="/admin/integrations" label="Integrations" />
+          </NavGroup>
         </nav>
-        <div className="text-xs text-muted px-3 mt-4">Pre-v1.0 build</div>
+
+        {/* user profile pinned to bottom */}
+        {identity && (
+          <div className="px-3 py-3 border-t border-border/60">
+            <button
+              onClick={logout}
+              className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-bg/40 transition-colors text-left"
+              title="Sign out"
+            >
+              <Avatar name={identity.display_name} />
+              <div className="flex-1 min-w-0">
+                <div className="text-text text-sm font-medium truncate">
+                  {identity.display_name}
+                </div>
+                <div className="text-muted text-xs truncate">
+                  {identity.permissions.includes('role.edit') ? 'Platform admin' : 'Member'}
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
       </aside>
 
-      <header className="bg-surface border-b border-border px-6 flex items-center justify-between">
-        <div className="text-sm text-muted">Control Plane Dashboard</div>
-        <div className="flex items-center gap-3">
-          {identity && (
-            <>
-              <span className="text-sm text-text">{identity.display_name}</span>
-              <button
-                onClick={logout}
-                className="text-xs text-muted hover:text-text px-2 py-1 rounded border border-border"
-              >
-                Sign out
-              </button>
-            </>
-          )}
-        </div>
+      {/* TOP BAR */}
+      <header className="bg-surface border-b border-border px-6 flex items-center gap-4">
+        {/* page title is filled by per-page <PageHeader>; the bar
+            itself just hosts global controls. */}
+        <div className="flex-1" />
+        <input
+          type="text"
+          placeholder="Search secrets, requests, agents…"
+          className="hidden md:block w-80 bg-bg/60 border border-border rounded-full px-4 py-1.5 text-sm text-text placeholder-muted focus:outline-none focus:border-accent/40"
+        />
+        <EnvSwitcher value="Production" />
+        {identity && <Avatar name={identity.display_name} />}
       </header>
 
-      <main className="overflow-auto p-6 bg-bg">
-        <Outlet />
+      {/* MAIN */}
+      <main className="overflow-auto bg-bg">
+        <div className="px-8 py-6">
+          <Outlet />
+        </div>
       </main>
     </div>
+  );
+}
+
+// --- sidebar bits ---------------------------------------------------
+
+function NavGroup({ children }: { children: React.ReactNode }) {
+  return <div className="space-y-0.5">{children}</div>;
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="pt-5 pb-2 px-3 text-[11px] uppercase tracking-wider text-muted font-semibold">
+      {children}
+    </div>
+  );
+}
+
+function NavItem({
+  to,
+  label,
+  badge,
+}: {
+  to: string;
+  label: string;
+  badge?: number;
+}) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        [
+          'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+          isActive
+            ? 'bg-accent/15 text-accent'
+            : 'text-muted hover:text-text hover:bg-bg/30',
+        ].join(' ')
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <NavDot active={isActive} />
+          <span className="flex-1">{label}</span>
+          {badge !== undefined && badge > 0 && (
+            <span className="bg-accent/20 text-accent text-[11px] rounded-full px-2 py-0.5 font-medium">
+              {badge}
+            </span>
+          )}
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+function NavDot({ active }: { active: boolean }) {
+  // Small square indicator on the left of each nav item — the Figma
+  // sidebar uses a filled square for the active item and a hollow
+  // square for inactive ones. Reads as a checkbox-like affordance.
+  return active ? (
+    <span className="w-3 h-3 rounded-sm bg-accent" />
+  ) : (
+    <span className="w-3 h-3 rounded-sm border border-border" />
+  );
+}
+
+// --- top bar bits ---------------------------------------------------
+
+function EnvSwitcher({ value }: { value: string }) {
+  return (
+    <button
+      className="hidden md:inline-flex items-center gap-2 rounded-full bg-bg/60 border border-border px-3 py-1.5 text-xs text-text hover:bg-bg"
+      title="Environment context"
+    >
+      <span className="w-2 h-2 rounded-full bg-success" />
+      {value}
+    </button>
+  );
+}
+
+function Avatar({ name }: { name: string }) {
+  const initial = (name || '?').trim().charAt(0).toUpperCase();
+  return (
+    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-brand-gradient text-bg text-sm font-semibold">
+      {initial}
+    </span>
   );
 }
