@@ -9,9 +9,9 @@ import { Agents } from './pages/Agents';
 import { Audit } from './pages/Audit';
 import { Dashboard } from './pages/Dashboard';
 import { LoginStub } from './pages/LoginStub';
-import { Placeholder } from './pages/Placeholder';
 import { RequestDetail } from './pages/RequestDetail';
 import { Requests } from './pages/Requests';
+import { Secrets } from './pages/Secrets';
 import { Assignments } from './pages/admin/Assignments';
 import { Integrations } from './pages/admin/Integrations';
 import { Policies } from './pages/admin/Policies';
@@ -36,10 +36,7 @@ export function App() {
           <Route path="/agents" element={<Agents />} />
           <Route path="/requests" element={<Requests />} />
           <Route path="/requests/:id" element={<RequestDetail />} />
-          <Route
-            path="/secrets"
-            element={<Placeholder title="Discovered Secrets" note="Search by cluster / provider / labels." />}
-          />
+          <Route path="/secrets" element={<Secrets />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="/admin/projects" element={<Projects />} />
           <Route path="/admin/roles" element={<Roles />} />
