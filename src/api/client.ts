@@ -28,8 +28,10 @@ if (buildTimeBase) {
 }
 
 export type AuthTokenProvider = () => string | null;
+export type IdentityProvider = () => string | null;
 
 let currentToken: AuthTokenProvider = () => null;
+let currentIdentity: IdentityProvider = () => null;
 
 /**
  * Wire the auth token source. Called by AuthContext on login / logout.
@@ -37,6 +39,16 @@ let currentToken: AuthTokenProvider = () => null;
  */
 export function setAuthTokenProvider(p: AuthTokenProvider) {
   currentToken = p;
+}
+
+/**
+ * Wire the identity source. Today the api gates admin write endpoints
+ * by reading `X-User-Id` (stub identity, NOT a security boundary —
+ * swaps to OIDC `sub` claim when api#26 lands). The client injects it
+ * automatically when an identity is signed in.
+ */
+export function setIdentityProvider(p: IdentityProvider) {
+  currentIdentity = p;
 }
 
 export class ApiError extends Error {
@@ -68,6 +80,8 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
   const token = currentToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  const userId = currentIdentity();
+  if (userId && !headers['X-User-Id']) headers['X-User-Id'] = userId;
 
   const resp = await fetch(url, {
     method: opts.method ?? 'GET',
