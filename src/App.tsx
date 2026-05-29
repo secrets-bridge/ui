@@ -8,6 +8,7 @@ import { Shell } from './layout/Shell';
 import { Agents } from './pages/Agents';
 import { LoginStub } from './pages/LoginStub';
 import { Placeholder } from './pages/Placeholder';
+import { Policies } from './pages/admin/Policies';
 import { Roles } from './pages/admin/Roles';
 import { Workflows } from './pages/admin/Workflows';
 
@@ -40,10 +41,7 @@ export function App() {
           />
           <Route path="/admin/roles" element={<Roles />} />
           <Route path="/admin/workflows" element={<Workflows />} />
-          <Route
-            path="/admin/policies"
-            element={<Placeholder title="Policies" note="Selectors that map request scope to workflow." />}
-          />
+          <Route path="/admin/policies" element={<Policies />} />
           <Route
             path="/admin/integrations"
             element={
