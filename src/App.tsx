@@ -8,6 +8,7 @@ import { Shell } from './layout/Shell';
 import { Agents } from './pages/Agents';
 import { LoginStub } from './pages/LoginStub';
 import { Placeholder } from './pages/Placeholder';
+import { Roles } from './pages/admin/Roles';
 import { Workflows } from './pages/admin/Workflows';
 
 export function App() {
@@ -37,10 +38,7 @@ export function App() {
             path="/audit"
             element={<Placeholder title="Audit Log" note="Filter by actor / action / resource / correlation_id." />}
           />
-          <Route
-            path="/admin/roles"
-            element={<Placeholder title="Roles" note="Dynamic permission bundles." />}
-          />
+          <Route path="/admin/roles" element={<Roles />} />
           <Route path="/admin/workflows" element={<Workflows />} />
           <Route
             path="/admin/policies"

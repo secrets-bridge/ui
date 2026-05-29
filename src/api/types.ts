@@ -83,3 +83,34 @@ export interface WorkflowInput {
   notification_channels: string[];
   enabled: boolean;
 }
+
+/**
+ * Role — bundle of permission strings users can be granted.
+ * Mirrors `api/internal/handlers/admin.go::RoleBody`.
+ *
+ * IMPORTANT api constraint: after create, ONLY `permissions` is
+ * editable (via `PUT /roles/:id/permissions`). Name and description
+ * are immutable. The form respects this by making those fields
+ * read-only on edit.
+ */
+export interface Role {
+  id: string;
+  name: string;
+  description?: string;
+  permissions: string[];
+  is_system?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Body for POST /roles. */
+export interface RoleCreateInput {
+  name: string;
+  description?: string;
+  permissions: string[];
+}
+
+/** Body for PUT /roles/:id/permissions. */
+export interface RolePermissionsInput {
+  permissions: string[];
+}
