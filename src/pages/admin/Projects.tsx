@@ -5,6 +5,11 @@
  * project's environments on the right. Mirrors the natural
  * parent-child relationship better than two stacked sections.
  *
+ * Polished in ui#16 to match the design pattern from ui#13/14/15:
+ * PageHeader, Card-wrapped panels, shared `src/ui/` primitives,
+ * StatusPill for env types + archived flag, font-mono cyan for project
+ * + environment identifiers.
+ *
  * Projects use SOFT-DELETE: the status toggle flips between `active`
  * and `archived` (no hard-delete endpoint). Archived projects stay
  * in the list but dimmed; they remain referenced by historical
@@ -15,7 +20,7 @@
  *
  * Pattern-2 wiring (the reason this page exists): every env created
  * here becomes an available value in the Integrations form's
- * environment dropdown + the future Assignments form's scope picker.
+ * environment dropdown + the Assignments form's scope picker.
  */
 
 import { useEffect, useState } from 'react';
@@ -38,6 +43,12 @@ import {
   useProjects,
   useUpdateProjectStatus,
 } from '../../api/tenancy';
+import { Button } from '../../ui/Button';
+import { Card } from '../../ui/Card';
+import { ConfirmModal } from '../../ui/ConfirmModal';
+import { Drawer } from '../../ui/Drawer';
+import { PageHeader } from '../../ui/PageHeader';
+import { StatusPill } from '../../ui/StatusPill';
 
 export function Projects() {
   const list = useProjects();
@@ -55,35 +66,31 @@ export function Projects() {
   const selected = list.data?.find((p) => p.id === selectedId) ?? null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-text text-xl font-semibold">Projects</h1>
-          <p className="text-muted text-sm mt-1">
-            Top-level tenancy boundaries. Projects archive instead of delete (historical references stay valid). Each project carries N environments.
-          </p>
-        </div>
-        <button
-          onClick={() => setCreating(true)}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90"
-        >
-          + New project
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        title="Projects"
+        description="Top-level tenancy boundaries. Projects archive instead of delete (historical references stay valid). Each project carries N environments."
+        actions={
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            + New project
+          </Button>
+        }
+      />
 
       {list.isError && (
-        <div className="bg-surface border border-red-500/40 rounded p-4 text-sm">
-          <div className="text-red-400 font-medium">Failed to load projects</div>
+        <Card className="border-red-500/40 p-5 text-sm mb-4">
+          <div className="text-red-300 font-medium">Failed to load projects</div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
-        </div>
+        </Card>
       )}
 
       {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
 
       {list.data && list.data.length === 0 && (
-        <div className="bg-surface border border-border rounded p-6 text-center text-muted text-sm">
-          No projects yet. Create one to start scoping requests, assignments, and integrations.
-        </div>
+        <Card className="p-10 text-center text-muted text-sm">
+          No projects yet. Create one to start scoping requests,
+          assignments, and integrations.
+        </Card>
       )}
 
       {list.data && list.data.length > 0 && (
@@ -96,9 +103,9 @@ export function Projects() {
           {selected ? (
             <EnvironmentsPanel project={selected} />
           ) : (
-            <div className="bg-surface border border-border rounded p-6 text-center text-muted text-sm">
+            <Card className="p-10 text-center text-muted text-sm">
               Pick a project to manage its environments.
-            </div>
+            </Card>
           )}
         </div>
       )}
@@ -130,11 +137,11 @@ function ProjectsList({
   onSelect: (id: string) => void;
 }) {
   return (
-    <div className="bg-surface border border-border rounded overflow-hidden">
-      <div className="px-4 py-2 border-b border-border text-xs uppercase text-muted">
+    <Card className="overflow-hidden">
+      <div className="px-5 py-3 border-b border-border/60 text-[11px] uppercase tracking-wider text-muted">
         {projects.length} project{projects.length === 1 ? '' : 's'}
       </div>
-      <ul className="max-h-[600px] overflow-auto">
+      <ul className="max-h-[640px] overflow-auto">
         {projects.map((p) => {
           const on = p.id === selectedId;
           const archived = p.status === 'archived';
@@ -143,29 +150,42 @@ function ProjectsList({
               <button
                 onClick={() => onSelect(p.id)}
                 className={
-                  'w-full text-left px-4 py-3 border-b border-border/40 last:border-0 ' +
-                  (on ? 'bg-bg/40' : 'hover:bg-bg/20')
+                  'w-full text-left px-5 py-3 border-b border-border/40 last:border-0 transition-colors ' +
+                  (on
+                    ? 'bg-accent/10 border-l-2 border-l-accent'
+                    : 'hover:bg-bg/30')
                 }
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className={archived ? 'text-muted line-through' : 'text-text'}>
+                  <span
+                    className={
+                      'font-mono text-sm ' +
+                      (archived
+                        ? 'text-muted line-through'
+                        : on
+                          ? 'text-accent-bright'
+                          : 'text-text')
+                    }
+                  >
                     {p.name}
                   </span>
                   {archived && (
-                    <span className="text-[10px] bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 rounded px-1.5 py-0.5">
+                    <StatusPill variant="warning" tone="outline">
                       archived
-                    </span>
+                    </StatusPill>
                   )}
                 </div>
                 {p.owner_team_id && (
-                  <div className="text-xs text-muted mt-0.5">{p.owner_team_id}</div>
+                  <div className="text-xs text-muted mt-1">
+                    {p.owner_team_id}
+                  </div>
                 )}
               </button>
             </li>
           );
         })}
       </ul>
-    </div>
+    </Card>
   );
 }
 
@@ -186,105 +206,120 @@ function EnvironmentsPanel({ project }: { project: Project }) {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Project header */}
-      <div className="bg-surface border border-border rounded p-4">
+      <Card className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-text text-lg font-semibold">{project.name}</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-accent text-lg">
+                {project.name}
+              </span>
+              {project.status === 'archived' && (
+                <StatusPill variant="warning" tone="outline">
+                  archived
+                </StatusPill>
+              )}
+            </div>
             <div className="text-muted text-xs mt-1">
               {project.owner_team_id ? `owner: ${project.owner_team_id} · ` : ''}
               created {project.created_at?.slice(0, 10) ?? '—'}
             </div>
           </div>
-          <button
+          <Button
+            variant={project.status === 'active' ? 'secondary' : 'primary'}
+            size="sm"
             onClick={toggleStatus}
             disabled={status.isPending}
-            className={
-              project.status === 'active'
-                ? 'text-xs text-yellow-300 border border-yellow-400/40 hover:bg-yellow-400/10 px-3 py-1.5 rounded'
-                : 'text-xs text-green-300 border border-green-400/40 hover:bg-green-400/10 px-3 py-1.5 rounded'
-            }
           >
             {status.isPending
               ? 'Working…'
               : project.status === 'active'
                 ? 'Archive project'
                 : 'Restore project'}
-          </button>
+          </Button>
         </div>
         {status.error instanceof ApiError && (
-          <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2 mt-3">
+          <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2 mt-3">
             {status.error.status}: {status.error.message}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Environments table */}
-      <div className="bg-surface border border-border rounded">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border/60">
           <div>
             <div className="text-text font-medium">Environments</div>
-            <div className="text-muted text-xs">
-              {envs.data?.length ?? 0} configured · names unique within this project
+            <div className="text-muted text-xs mt-0.5">
+              {envs.data?.length ?? 0} configured · names unique within this
+              project
             </div>
           </div>
-          <button
-            onClick={() => setCreating(true)}
-            className="text-xs bg-accent text-bg font-medium px-3 py-1.5 rounded hover:opacity-90"
-          >
+          <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
             + New env
-          </button>
+          </Button>
         </div>
 
-        {envs.isLoading && <div className="px-4 py-6 text-muted text-sm">Loading…</div>}
+        {envs.isLoading && (
+          <div className="px-5 py-8 text-muted text-sm">Loading…</div>
+        )}
 
         {envs.data && envs.data.length === 0 && (
-          <div className="px-4 py-6 text-muted text-sm">
-            No environments yet. Add at least one (typically <code>uat</code> + <code>prod</code>).
+          <div className="px-5 py-8 text-muted text-sm">
+            No environments yet. Add at least one (typically{' '}
+            <code className="font-mono">uat</code> +{' '}
+            <code className="font-mono">prod</code>).
           </div>
         )}
 
         {envs.data && envs.data.length > 0 && (
           <table className="w-full text-sm">
-            <thead className="text-left text-muted text-xs uppercase">
-              <tr className="border-b border-border">
-                <th className="px-4 py-2 font-normal">Name</th>
-                <th className="px-4 py-2 font-normal">Type</th>
-                <th className="px-4 py-2 font-normal">Created</th>
-                <th className="px-4 py-2 font-normal text-right">Actions</th>
+            <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+              <tr className="border-b border-border/60">
+                <Th>Name</Th>
+                <Th>Type</Th>
+                <Th>Created</Th>
+                <Th className="text-right">Actions</Th>
               </tr>
             </thead>
             <tbody>
               {envs.data.map((e) => (
                 <tr
                   key={e.id}
-                  className="border-b border-border/40 last:border-0 hover:bg-bg/30"
+                  className="border-b border-border/40 last:border-0 hover:bg-bg/20 align-top"
                 >
-                  <td className="px-4 py-2 text-text">{e.name}</td>
-                  <td className="px-4 py-2">
-                    <TypePill type={e.type} />
-                  </td>
-                  <td className="px-4 py-2 text-muted text-xs">
+                  <Td>
+                    <span className="font-mono text-accent text-sm">
+                      {e.name}
+                    </span>
+                  </Td>
+                  <Td>
+                    <EnvTypePill type={e.type} />
+                  </Td>
+                  <Td className="text-muted text-xs">
                     {e.created_at?.slice(0, 10) ?? '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right">
+                  </Td>
+                  <Td className="text-right">
                     <button
                       onClick={() => setConfirmDelete(e)}
-                      className="text-xs text-red-400 hover:text-red-300 border border-border px-2 py-1 rounded"
+                      className="text-red-300 hover:text-red-200 text-sm font-medium"
                     >
                       Delete
                     </button>
-                  </td>
+                  </Td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
-      </div>
+      </Card>
 
       {creating && (
-        <Drawer title={`New environment in ${project.name}`} onClose={() => setCreating(false)}>
+        <Drawer
+          title={`New environment in ${project.name}`}
+          onClose={() => setCreating(false)}
+        >
           <EnvironmentForm
             projectId={project.id}
             onSubmit={async (body) => {
@@ -306,7 +341,10 @@ function EnvironmentsPanel({ project }: { project: Project }) {
           danger
           onCancel={() => setConfirmDelete(null)}
           onConfirm={async () => {
-            await deleteEnv.mutateAsync({ id: confirmDelete.id, projectId: project.id });
+            await deleteEnv.mutateAsync({
+              id: confirmDelete.id,
+              projectId: project.id,
+            });
             setConfirmDelete(null);
           }}
           loading={deleteEnv.isPending}
@@ -317,21 +355,21 @@ function EnvironmentsPanel({ project }: { project: Project }) {
   );
 }
 
-function TypePill({ type }: { type: Environment['type'] }) {
-  const cls =
+function EnvTypePill({ type }: { type: Environment['type'] }) {
+  const variant: React.ComponentProps<typeof StatusPill>['variant'] =
     type === 'prod'
-      ? 'bg-red-400/15 text-red-300 border-red-400/40'
+      ? 'error'
       : type === 'uat'
-        ? 'bg-yellow-400/15 text-yellow-300 border-yellow-400/40'
+        ? 'warning'
         : type === 'staging'
-          ? 'bg-blue-400/15 text-blue-300 border-blue-400/40'
+          ? 'accent'
           : type === 'dev'
-            ? 'bg-green-400/15 text-green-300 border-green-400/40'
-            : 'bg-bg text-muted border-border';
+            ? 'success'
+            : 'neutral';
   return (
-    <span className={'text-[11px] uppercase border rounded px-2 py-0.5 ' + cls}>
+    <StatusPill variant={variant} tone="outline" className="uppercase">
       {type}
-    </span>
+    </StatusPill>
   );
 }
 
@@ -393,26 +431,28 @@ function ProjectForm({
       </Field>
 
       {create.error instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+        <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
           {create.error.status}: {create.error.message}
         </div>
       )}
 
-      <div className="flex gap-2 pt-2 border-t border-border">
-        <button
-          type="submit"
-          disabled={create.isPending}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50"
-        >
-          {create.isPending ? 'Saving…' : 'Create project'}
-        </button>
-        <button
+      <div className="flex items-center justify-between pt-3 border-t border-border/60">
+        <Button
           type="button"
+          variant="secondary"
+          size="md"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded border border-border"
         >
           Cancel
-        </button>
+        </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          size="md"
+          disabled={create.isPending}
+        >
+          {create.isPending ? 'Saving…' : 'Create project'}
+        </Button>
       </div>
     </form>
   );
@@ -448,7 +488,11 @@ function EnvironmentForm({
   });
 
   const onValid: SubmitHandler<EnvFormShape> = async (data) => {
-    await onSubmit({ project_id: projectId, name: data.name, type: data.type });
+    await onSubmit({
+      project_id: projectId,
+      name: data.name,
+      type: data.type,
+    });
   };
 
   return (
@@ -458,7 +502,12 @@ function EnvironmentForm({
         error={errors.name?.message}
         hint="Unique within this project. Conventionally lowercase: uat, prod, dev."
       >
-        <input type="text" {...register('name')} className={inputCls} placeholder="uat" />
+        <input
+          type="text"
+          {...register('name')}
+          className={inputCls}
+          placeholder="uat"
+        />
       </Field>
 
       <Field label="Type" error={errors.type?.message}>
@@ -472,26 +521,28 @@ function EnvironmentForm({
       </Field>
 
       {submitError instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+        <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
           {submitError.status}: {submitError.message}
         </div>
       )}
 
-      <div className="flex gap-2 pt-2 border-t border-border">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50"
-        >
-          {submitting ? 'Saving…' : 'Create environment'}
-        </button>
-        <button
+      <div className="flex items-center justify-between pt-3 border-t border-border/60">
+        <Button
           type="button"
+          variant="secondary"
+          size="md"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded border border-border"
         >
           Cancel
-        </button>
+        </Button>
+        <Button
+          type="submit"
+          variant="primary"
+          size="md"
+          disabled={submitting}
+        >
+          {submitting ? 'Saving…' : 'Create environment'}
+        </Button>
       </div>
     </form>
   );
@@ -499,85 +550,8 @@ function EnvironmentForm({
 
 // --- shared bits ----------------------------------------------------
 
-function Drawer({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <button className="absolute inset-0 bg-black/50" onClick={onClose} aria-label="Close drawer" />
-      <div className="relative w-[480px] max-w-full bg-surface border-l border-border h-full overflow-auto">
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <div className="text-text font-semibold">{title}</div>
-          <button onClick={onClose} className="text-muted hover:text-text text-xl leading-none">
-            ×
-          </button>
-        </div>
-        <div className="px-6 py-4">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function ConfirmModal({
-  title,
-  body,
-  confirmText,
-  danger,
-  onCancel,
-  onConfirm,
-  loading,
-  error,
-}: {
-  title: string;
-  body: string;
-  confirmText: string;
-  danger?: boolean;
-  onCancel: () => void;
-  onConfirm: () => Promise<unknown>;
-  loading: boolean;
-  error?: unknown;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <button className="absolute inset-0 bg-black/60" onClick={onCancel} aria-label="Close" />
-      <div className="relative bg-surface border border-border rounded-lg w-[420px] p-5 space-y-3">
-        <div className="text-text font-semibold">{title}</div>
-        <div className="text-muted text-sm">{body}</div>
-        {error instanceof ApiError && (
-          <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
-            {error.status}: {error.message}
-          </div>
-        )}
-        <div className="flex gap-2 pt-2">
-          <button
-            onClick={() => void onConfirm()}
-            disabled={loading}
-            className={`${
-              danger ? 'bg-red-500 text-white' : 'bg-accent text-bg'
-            } font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50`}
-          >
-            {loading ? 'Working…' : confirmText}
-          </button>
-          <button
-            onClick={onCancel}
-            className="text-muted hover:text-text px-3 py-2 rounded border border-border"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const inputCls =
-  'w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm focus:outline-none focus:border-accent';
+  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
 
 function Field({
   label,
@@ -592,12 +566,36 @@ function Field({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-xs text-muted">{label}</label>
+      <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+        {label}
+      </label>
       {children}
-      {hint && !error && <div className="text-[11px] text-muted/80">{hint}</div>}
-      {error && <div className="text-xs text-red-400">{error}</div>}
+      {hint && !error && (
+        <div className="text-[11px] text-muted/80">{hint}</div>
+      )}
+      {error && <div className="text-xs text-red-300">{error}</div>}
     </div>
   );
+}
+
+function Th({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
+}
+
+function Td({
+  children,
+  className = '',
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <td className={`px-5 py-3.5 align-top ${className}`}>{children}</td>;
 }
 
 function stringifyError(e: unknown): string {
