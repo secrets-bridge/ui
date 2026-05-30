@@ -10,6 +10,7 @@ import { Agents } from './pages/Agents';
 import { Audit } from './pages/Audit';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
+import { Me } from './pages/Me';
 import { RequestDetail } from './pages/RequestDetail';
 import { Requests } from './pages/Requests';
 import { Secrets } from './pages/Secrets';
@@ -40,6 +41,7 @@ export function App() {
           <Route path="/requests/:id" element={<RequestDetail />} />
           <Route path="/secrets" element={<Secrets />} />
           <Route path="/audit" element={<Audit />} />
+          <Route path="/me" element={<Me />} />
           <Route path="/admin/projects" element={<Projects />} />
           <Route path="/admin/roles" element={<Roles />} />
           <Route path="/admin/assignments" element={<Assignments />} />

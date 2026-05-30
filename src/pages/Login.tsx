@@ -79,11 +79,10 @@ export function Login() {
           id: r.user.id,
           email: r.user.email,
           display_name: r.user.display_name || r.user.email,
-          // Permission strings will be hydrated from the api when
-          // api#27 / the /me endpoint lands. For now we mark the
-          // session with a placeholder so existing permission-gated
-          // UI bits (sidebar admin links, mint buttons) render.
-          permissions: ['*'],
+          // Empty until AuthProvider's /users/me hydration lands.
+          // Until then, every permission-gated nav item / button
+          // stays hidden — fail-closed by design.
+          permissions: [],
         },
         r.token,
       );
