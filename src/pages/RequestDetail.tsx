@@ -465,12 +465,19 @@ function RevealModal({
   onClose: () => void;
 }) {
   const [phase, setPhase] = useState<
-    'confirm' | 'revealing' | 'shown' | 'error'
+    'confirm' | 'revealing' | 'shown' | 'expired' | 'error'
   >('confirm');
   const [revealed, setRevealed] = useState<RevealedWrap | null>(null);
   const [decoded, setDecoded] = useState<string | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [copied, setCopied] = useState(false);
+  // The value is pinned to the modal for this many seconds after
+  // reveal. Once the timer hits 0 we clear `decoded` + `revealed`
+  // from React state and flip to the `expired` phase — the user must
+  // close + submit a new request to view again (the wrap is already
+  // consumed server-side; this is the SPA-side shoulder-surfing guard).
+  const REVEAL_TTL_SECONDS = 60;
+  const [ttlLeft, setTtlLeft] = useState<number>(REVEAL_TTL_SECONDS);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -490,6 +497,21 @@ function RevealModal({
     };
   }, []);
 
+  // Countdown — runs only while the value is shown. When it hits 0
+  // we clear the plaintext from state so even an open browser tab
+  // stops carrying it. The user can also "Hide now" to clear early.
+  useEffect(() => {
+    if (phase !== 'shown') return;
+    if (ttlLeft <= 0) {
+      setDecoded(null);
+      setRevealed(null);
+      setPhase('expired');
+      return;
+    }
+    const t = window.setTimeout(() => setTtlLeft((n) => n - 1), 1000);
+    return () => window.clearTimeout(t);
+  }, [phase, ttlLeft]);
+
   const doReveal = async () => {
     setPhase('revealing');
     try {
@@ -497,11 +519,18 @@ function RevealModal({
       const text = atob(r.value);
       setRevealed(r);
       setDecoded(text);
+      setTtlLeft(REVEAL_TTL_SECONDS);
       setPhase('shown');
     } catch (e) {
       setErr(e);
       setPhase('error');
     }
+  };
+
+  const hideNow = () => {
+    setDecoded(null);
+    setRevealed(null);
+    setPhase('expired');
   };
 
   const doCopy = async () => {
@@ -577,9 +606,12 @@ function RevealModal({
         {phase === 'shown' && decoded !== null && revealed && (
           <>
             <div className="space-y-2">
-              <label className="block text-xs text-muted font-medium uppercase tracking-wider">
-                {revealed.key_name || 'value'}
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+                  {revealed.key_name || 'value'}
+                </label>
+                <TtlChip seconds={ttlLeft} />
+              </div>
               <textarea
                 readOnly
                 value={decoded}
@@ -596,13 +628,38 @@ function RevealModal({
               <Button variant="secondary" size="md" onClick={doCopy}>
                 {copied ? 'Copied!' : 'Copy'}
               </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="md" onClick={hideNow}>
+                  Hide now
+                </Button>
+                <Button variant="primary" size="md" onClick={onClose}>
+                  Close
+                </Button>
+              </div>
+            </div>
+            <p className="text-muted text-[11px] text-center -mt-1">
+              Auto-clears from the SPA in {ttlLeft}s · the wrap is already consumed server-side.
+            </p>
+          </>
+        )}
+
+        {phase === 'expired' && (
+          <>
+            <div className="bg-bg/40 border border-border rounded-lg px-4 py-6 text-center text-sm space-y-2">
+              <div className="text-text font-semibold">Value cleared from this tab.</div>
+              <div className="text-muted text-xs">
+                {revealed === null
+                  ? 'The 60-second window elapsed (or you clicked Hide now).'
+                  : 'Hidden early — the wrap was already consumed server-side, so a re-reveal is not possible.'}
+                <br />
+                To view this value again you'll need a new request.
+              </div>
+            </div>
+            <div className="flex items-center justify-end pt-2 border-t border-border/60">
               <Button variant="primary" size="md" onClick={onClose}>
                 Close
               </Button>
             </div>
-            <p className="text-muted text-[11px] text-center -mt-1">
-              The value clears from the DOM when this modal closes.
-            </p>
           </>
         )}
 
@@ -618,6 +675,28 @@ function RevealModal({
         )}
       </div>
     </div>
+  );
+}
+
+function TtlChip({ seconds }: { seconds: number }) {
+  // Visually nudge the user as the window narrows:
+  //   >30s     accent  — comfortable read-and-copy window
+  //   11-30s   warning — getting close
+  //   ≤10s     danger  — last call
+  const tone =
+    seconds > 30
+      ? 'bg-accent/15 text-accent border-accent/40'
+      : seconds > 10
+        ? 'bg-yellow-400/15 text-yellow-300 border-yellow-400/40'
+        : 'bg-red-500/15 text-red-300 border-red-500/40';
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-mono ${tone}`}
+      title="Auto-hide countdown — the value is wiped from this tab when it hits 0"
+    >
+      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+      hides in {seconds}s
+    </span>
   );
 }
 
