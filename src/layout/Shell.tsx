@@ -88,6 +88,7 @@ export function Shell() {
               <SectionLabel>Admin</SectionLabel>
               <NavGroup>
                 {showTeams && <NavItem to="/admin/projects" label="Projects" />}
+                {showTeams && <NavItem to="/admin/teams" label="Teams" />}
                 {showRoles && <NavItem to="/admin/roles" label="Roles" />}
                 {showAssignments && <NavItem to="/admin/assignments" label="Assignments" />}
                 {showWorkflows && <NavItem to="/admin/workflows" label="Workflows" />}

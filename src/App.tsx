@@ -19,6 +19,7 @@ import { Integrations } from './pages/admin/Integrations';
 import { Policies } from './pages/admin/Policies';
 import { Projects } from './pages/admin/Projects';
 import { Roles } from './pages/admin/Roles';
+import { Teams } from './pages/admin/Teams';
 import { Workflows } from './pages/admin/Workflows';
 
 export function App() {
@@ -43,6 +44,7 @@ export function App() {
           <Route path="/audit" element={<Audit />} />
           <Route path="/me" element={<Me />} />
           <Route path="/admin/projects" element={<Projects />} />
+          <Route path="/admin/teams" element={<Teams />} />
           <Route path="/admin/roles" element={<Roles />} />
           <Route path="/admin/assignments" element={<Assignments />} />
           <Route path="/admin/workflows" element={<Workflows />} />
