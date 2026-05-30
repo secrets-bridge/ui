@@ -26,6 +26,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react';
 
 import { setAuthTokenProvider, setIdentityProvider } from '../api/client';
+import { useMe } from '../api/me';
+import type { MeResponse } from '../api/types';
 
 // sessionStorage keys. Namespaced so other tools / future tenants
 // don't collide.
@@ -71,9 +73,12 @@ export interface Identity {
   id: string;
   email: string;
   display_name: string;
-  // Permission strings — the real RBAC enforcement lands with api
-  // P0-2; today the stub fills in admin so every page is reachable
-  // during scaffold review.
+  // Permission strings — sourced from GET /users/me after login.
+  // While the hydration request is in flight, this array is empty
+  // and any nav item / button gated by a permission stays hidden
+  // (fail-closed). The Login page sets a placeholder identity with
+  // the email + a transient `pending` marker; AuthProvider replaces
+  // it with the full /users/me payload as soon as it lands.
   permissions: string[];
 }
 
@@ -83,6 +88,20 @@ interface AuthState {
   // Authorization header consistently. Real OIDC will issue a short-
   // lived access token here.
   token: string | null;
+  // Full /users/me payload — the source of truth for teams +
+  // accessible projects. Null while the hydration request is in
+  // flight or before the user logs in. The /me profile page reads
+  // from here; nav-gate paths use `hasPermission` instead.
+  me: MeResponse | null;
+  // Status of the post-login /users/me hydration. `idle` = no token
+  // yet; `loading` = fetch in flight; `ready` = identity is fully
+  // hydrated with real permissions; `error` = fetch failed (token
+  // still valid; UI shows a small banner asking the user to retry).
+  meStatus: 'idle' | 'loading' | 'ready' | 'error';
+  // Convenience predicate the sidebar + buttons use to gate against
+  // the live permission set. Returns false until /users/me has
+  // landed — strictly fail-closed.
+  hasPermission: (perm: string) => boolean;
   login: (i: Identity, token: string) => void;
   logout: () => void;
 }
@@ -107,10 +126,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIdentityProvider(() => (identity ? identity.id : null));
   }, [identity]);
 
+  // /users/me hydration — fires whenever a token is present. The
+  // query auto-attaches the Bearer token via setAuthTokenProvider
+  // wired above. Disabled when no token (avoid 401 on /login page).
+  const meQuery = useMe({ enabled: !!token });
+
+  // When /users/me lands, merge the hydrated permission + display
+  // metadata onto the locally-held identity so the rest of the app
+  // reads from one place.
+  useEffect(() => {
+    if (!meQuery.data) return;
+    const next: Identity = {
+      id: meQuery.data.id,
+      email: meQuery.data.email,
+      display_name: meQuery.data.display_name || meQuery.data.email,
+      permissions: meQuery.data.permissions,
+    };
+    setIdentity(next);
+    if (token) persistSession(token, next);
+    // Stringify deps so a refetch with identical contents doesn't
+    // re-run this effect on every render (TanStack returns a new
+    // object reference per query result).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(meQuery.data), token]);
+
+  const meStatus: AuthState['meStatus'] = !token
+    ? 'idle'
+    : meQuery.isLoading || meQuery.isFetching
+      ? 'loading'
+      : meQuery.isError
+        ? 'error'
+        : meQuery.data
+          ? 'ready'
+          : 'idle';
+
   const login = useCallback((i: Identity, t: string) => {
     setIdentity(i);
     setToken(t);
     persistSession(t, i);
+    // /users/me will refetch automatically once the token is in the
+    // client; no manual call needed.
   }, []);
 
   const logout = useCallback(() => {
@@ -119,7 +174,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession();
   }, []);
 
-  const value = useMemo<AuthState>(() => ({ identity, token, login, logout }), [identity, token, login, logout]);
+  const hasPermission = useCallback(
+    (perm: string) => {
+      if (!identity) return false;
+      // Strictly fail-closed: only allow when the live perm set
+      // (post-hydration) contains the requested key.
+      return identity.permissions.includes(perm);
+    },
+    [identity],
+  );
+
+  const value = useMemo<AuthState>(
+    () => ({
+      identity,
+      token,
+      me: meQuery.data ?? null,
+      meStatus,
+      hasPermission,
+      login,
+      logout,
+    }),
+    [identity, token, meQuery.data, meStatus, hasPermission, login, logout],
+  );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

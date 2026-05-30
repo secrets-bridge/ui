@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
 import { LogoMark } from '../ui/LogoMark';
@@ -26,7 +26,40 @@ import { LogoMark } from '../ui/LogoMark';
  * when Requests does). The shell shape is real today.
  */
 export function Shell() {
-  const { identity, logout } = useAuth();
+  const { identity, hasPermission, logout, meStatus } = useAuth();
+  const navigate = useNavigate();
+
+  // Sidebar entries gated by the live permission set. Each entry
+  // can declare one or more required permissions; the item renders
+  // only when the user holds all of them. Until /users/me hydrates
+  // (meStatus !== 'ready') every gated item stays hidden — strict
+  // fail-closed behaviour.
+  //
+  // Mapping:
+  //   Requests        → secret.request OR secret.approve
+  //   Agents          → agent.list
+  //   Secrets         → secret.list
+  //   Audit           → audit.read
+  //   Admin/Teams     → team.edit
+  //   Admin/Projects  → team.edit (admins curate projects + teams together)
+  //   Admin/Roles     → role.edit
+  //   Admin/Asgmts    → user_role.edit
+  //   Admin/Wflows    → workflow.edit
+  //   Admin/Policies  → policy.edit
+  //   Admin/Intgrtns  → integration.edit
+  //
+  // Dashboard + /me are always visible (no gate).
+  const showRequests = hasPermission('secret.request') || hasPermission('secret.approve');
+  const showAgents = hasPermission('agent.list');
+  const showSecrets = hasPermission('secret.list');
+  const showAudit = hasPermission('audit.read');
+  const showTeams = hasPermission('team.edit');
+  const showRoles = hasPermission('role.edit');
+  const showAssignments = hasPermission('user_role.edit');
+  const showWorkflows = hasPermission('workflow.edit');
+  const showPolicies = hasPermission('policy.edit');
+  const showIntegrations = hasPermission('integration.edit');
+  const anyAdmin = showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showIntegrations;
 
   return (
     <div className="h-full grid grid-cols-[240px_1fr] grid-rows-[64px_1fr] bg-bg">
@@ -44,30 +77,40 @@ export function Shell() {
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           <NavGroup>
             <NavItem to="/" label="Dashboard" end />
-            <NavItem to="/requests" label="Requests" badge={undefined /* slot for pending count */} />
-            <NavItem to="/agents" label="Agents" />
-            <NavItem to="/secrets" label="Secrets" />
-            <NavItem to="/audit" label="Audit" />
+            {showRequests && <NavItem to="/requests" label="Requests" />}
+            {showAgents && <NavItem to="/agents" label="Agents" />}
+            {showSecrets && <NavItem to="/secrets" label="Secrets" />}
+            {showAudit && <NavItem to="/audit" label="Audit" />}
           </NavGroup>
 
-          <SectionLabel>Admin</SectionLabel>
-          <NavGroup>
-            <NavItem to="/admin/projects" label="Projects" />
-            <NavItem to="/admin/roles" label="Roles" />
-            <NavItem to="/admin/assignments" label="Assignments" />
-            <NavItem to="/admin/workflows" label="Workflows" />
-            <NavItem to="/admin/policies" label="Policies" />
-            <NavItem to="/admin/integrations" label="Integrations" />
-          </NavGroup>
+          {anyAdmin && (
+            <>
+              <SectionLabel>Admin</SectionLabel>
+              <NavGroup>
+                {showTeams && <NavItem to="/admin/projects" label="Projects" />}
+                {showRoles && <NavItem to="/admin/roles" label="Roles" />}
+                {showAssignments && <NavItem to="/admin/assignments" label="Assignments" />}
+                {showWorkflows && <NavItem to="/admin/workflows" label="Workflows" />}
+                {showPolicies && <NavItem to="/admin/policies" label="Policies" />}
+                {showIntegrations && <NavItem to="/admin/integrations" label="Integrations" />}
+              </NavGroup>
+            </>
+          )}
+
+          {meStatus === 'loading' && (
+            <div className="px-3 pt-4 text-[11px] text-muted/70 italic">
+              Loading permissions…
+            </div>
+          )}
         </nav>
 
         {/* user profile pinned to bottom */}
         {identity && (
-          <div className="px-3 py-3 border-t border-border/60">
+          <div className="px-3 py-3 border-t border-border/60 space-y-1">
             <button
-              onClick={logout}
+              onClick={() => navigate('/me')}
               className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-bg/40 transition-colors text-left"
-              title="Sign out"
+              title="View your profile"
             >
               <Avatar name={identity.display_name} />
               <div className="flex-1 min-w-0">
@@ -75,9 +118,16 @@ export function Shell() {
                   {identity.display_name}
                 </div>
                 <div className="text-muted text-xs truncate">
-                  {identity.permissions.includes('role.edit') ? 'Platform admin' : 'Member'}
+                  {roleLabelFor(identity.permissions)}
                 </div>
               </div>
+            </button>
+            <button
+              onClick={logout}
+              className="w-full text-[11px] text-muted hover:text-text px-2 py-1.5 rounded-lg hover:bg-bg/30 transition-colors text-left"
+              title="Sign out"
+            >
+              Sign out
             </button>
           </div>
         )}
@@ -185,6 +235,18 @@ function EnvSwitcher({ value }: { value: string }) {
       {value}
     </button>
   );
+}
+
+// Heuristic label for the avatar's subtitle. The api doesn't return a
+// canonical "what kind of user is this" string — we approximate from
+// the permission set so the sidebar shows a reasonable label without
+// flipping to the profile page.
+function roleLabelFor(perms: string[]): string {
+  if (perms.includes('role.edit') || perms.includes('user_role.edit')) return 'Platform admin';
+  if (perms.includes('secret.approve')) return 'Approver';
+  if (perms.includes('secret.request')) return 'Developer';
+  if (perms.length === 0) return 'Loading…';
+  return 'Member';
 }
 
 function Avatar({ name }: { name: string }) {

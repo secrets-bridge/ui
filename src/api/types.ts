@@ -53,6 +53,39 @@ export interface MyProject {
 }
 
 /**
+ * Slim team shape used by GET /users/me. Direct memberships only;
+ * hierarchical access (section head seeing reports' subtree) is
+ * computed server-side via the team-scope resolver and is NOT
+ * enumerated here.
+ */
+export interface MeTeam {
+  id: string;
+  name: string;
+  parent_team_id: string | null;
+  status: 'active' | 'archived';
+}
+
+/**
+ * Response shape of GET /api/v1/users/me. Single round-trip
+ * post-login hydration: identity + nav-gating permissions + tenancy
+ * boundaries. AuthProvider auto-fetches this whenever a token lands
+ * (login or sessionStorage hydration on reload) and merges the result
+ * into the Identity stored on context.
+ *
+ * `permissions` is the deduped set across every active role grant.
+ * UI gates sidebar items + action buttons by membership in this set
+ * via `useAuth().hasPermission(key)`.
+ */
+export interface MeResponse {
+  id: string;
+  email: string;
+  display_name: string;
+  permissions: string[];
+  teams: MeTeam[];
+  projects: MyProject[];
+}
+
+/**
  * Project ↔ secret binding (api#43 Slices A + C). One project can be
  * bound to many secrets, and the same secret can be bound to many
  * projects. The pair (project_id, secret_id) is unique.
