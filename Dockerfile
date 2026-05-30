@@ -21,6 +21,12 @@ COPY tsconfig.json tsconfig.app.json tsconfig.node.json ./
 COPY vite.config.ts postcss.config.js tailwind.config.js ./
 COPY index.html ./
 COPY src ./src
+# Vite copies everything under `public/` to the dist/ root at build
+# time. Without this COPY, favicon.svg / favicon-512.png / robots.txt
+# / any top-level static asset never makes it into the image — nginx
+# then serves index.html for /favicon.svg via the SPA fallback, which
+# the browser interprets as "no favicon".
+COPY public ./public
 
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
