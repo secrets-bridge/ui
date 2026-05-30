@@ -56,6 +56,12 @@ export interface SecretsFilter {
   ref_prefix?: string;
   status?: '' | 'present' | 'missing';
   labels?: string[];
+  /**
+   * Multi-tenancy narrow (api#43 Slice B). Optional for admins; for
+   * scoped callers it must be in their `useMyProjects()` set or the
+   * server returns 403. Empty string is dropped.
+   */
+  project_id?: string;
   limit?: number;
   offset?: number;
 }
@@ -75,6 +81,7 @@ export function useSecrets(filter: SecretsFilter = {}) {
   for (const l of filter.labels ?? []) {
     if (l) qs.append('label', l);
   }
+  if (filter.project_id) qs.set('project_id', filter.project_id);
   if (filter.limit !== undefined) qs.set('limit', String(filter.limit));
   if (filter.offset !== undefined) qs.set('offset', String(filter.offset));
   const suffix = qs.toString() ? `?${qs}` : '';

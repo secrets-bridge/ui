@@ -35,7 +35,11 @@ import {
   useSubmitPatchRequest,
   useSubmitReadRequest,
 } from '../api/requests';
-import { useEnvironments, useProjects } from '../api/tenancy';
+import {
+  useEnvironments,
+  useMyProjects,
+  useProjectSecrets,
+} from '../api/tenancy';
 import type { PatchRequestInput, ReadRequestInput } from '../api/types';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
@@ -96,7 +100,7 @@ export function SubmitRequestDrawer({
   onClose,
   onCreated,
 }: Props) {
-  const projects = useProjects();
+  const projects = useMyProjects();
   const envs = useEnvironments();
   const submitRead = useSubmitReadRequest();
   const submitPatch = useSubmitPatchRequest();
@@ -124,6 +128,19 @@ export function SubmitRequestDrawer({
 
   const flowType = watch('type') as FlowType;
   const providerType = watch('target_provider_type');
+  const projectId = watch('project_id');
+  const targetRef = watch('target_secret_ref');
+
+  // When a project is picked, fetch its bindings so we can show
+  // which keys are allowed on the target secret_ref. Submit-time gate
+  // (api#43 Slice C) is the source of truth — this is just a hint so
+  // the user doesn't get a surprise 403.
+  const bindings = useProjectSecrets(projectId || undefined);
+  const matchedBinding = bindings.data?.find(
+    (b) =>
+      b.secret?.secret_ref === targetRef.trim() &&
+      b.secret?.provider_type === providerType,
+  );
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -426,6 +443,38 @@ export function SubmitRequestDrawer({
               Leave the list with one empty key to request the full bundle
               instead of specific keys.
             </p>
+          )}
+
+          {matchedBinding && matchedBinding.allowed_keys !== null && (
+            <div className="mt-3 p-3 rounded-lg border border-accent/30 bg-accent/5">
+              <div className="text-[11px] text-accent uppercase tracking-wider font-medium mb-1.5">
+                Your keys for this secret
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {matchedBinding.allowed_keys.map((k) => (
+                  <StatusPill key={k} variant="accent" tone="outline">
+                    {k}
+                  </StatusPill>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted/80 mt-2">
+                The binding for this project limits you to these keys. Submit
+                will return <span className="font-mono">out_of_scope_key</span>{' '}
+                if you ask for anything else.
+              </p>
+            </div>
+          )}
+          {matchedBinding && matchedBinding.allowed_keys === null && (
+            <p className="text-[11px] text-muted/80 mt-2">
+              The binding for this project allows every key the secret carries.
+            </p>
+          )}
+          {projectId && targetRef.trim() && !matchedBinding && !bindings.isLoading && (
+            <div className="mt-3 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5 text-yellow-200 text-[11px]">
+              No binding for this secret in the selected project. Submit will
+              return <span className="font-mono">out_of_scope_project</span>;
+              ask an admin to bind the secret first.
+            </div>
           )}
         </Section>
 

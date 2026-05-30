@@ -32,6 +32,7 @@ import {
   type SecretsFilter,
   useSecrets,
 } from '../api/secrets';
+import { useMyProjects } from '../api/tenancy';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { PageHeader } from '../ui/PageHeader';
@@ -51,6 +52,7 @@ export function Secrets() {
   const [labelInput, setLabelInput] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  const myProjects = useMyProjects();
   const list = useSecrets(filter);
   const rows = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
@@ -64,6 +66,7 @@ export function Secrets() {
       ref_prefix: draft.ref_prefix?.trim() || undefined,
       status: draft.status || undefined,
       labels: draft.labels?.length ? draft.labels : undefined,
+      project_id: draft.project_id || undefined,
       limit: draft.limit ?? 200,
     });
     setSelectedId(null);
@@ -101,6 +104,7 @@ export function Secrets() {
     !!filter.provider ||
     !!filter.ref_prefix ||
     !!filter.status ||
+    !!filter.project_id ||
     (filter.labels?.length ?? 0) > 0;
 
   return (
@@ -120,6 +124,33 @@ export function Secrets() {
       {/* Filter strip */}
       <Card className="p-4 mb-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="space-y-1">
+            <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+              Project
+            </label>
+            <select
+              value={draft.project_id ?? ''}
+              onChange={(e) =>
+                setDraft({ ...draft, project_id: e.target.value || undefined })
+              }
+              className={inputCls}
+              disabled={myProjects.isLoading}
+            >
+              <option value="">
+                {myProjects.isLoading
+                  ? 'loading…'
+                  : myProjects.data && myProjects.data.length > 1
+                    ? '(all my projects)'
+                    : '(all)'}
+              </option>
+              {(myProjects.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.status === 'archived' ? ' (archived)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
           <FilterField
             label="Cluster"
             value={draft.cluster_name ?? ''}
