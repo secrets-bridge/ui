@@ -19,8 +19,12 @@ import { api } from './client';
 import type {
   Environment,
   EnvironmentInput,
+  MyProject,
   Project,
   ProjectInput,
+  ProjectSecretBinding,
+  ProjectSecretBindingInput,
+  ProjectSecretBindingUpdate,
 } from './types';
 
 // --- projects --------------------------------------------------------
@@ -113,5 +117,72 @@ export function useDeleteEnvironment() {
         qc.invalidateQueries({ queryKey: projectsKey.environmentsFor(projectId) });
       }
     },
+  });
+}
+
+// --- project ↔ secret bindings (api#43 Slice A) ----------------------
+
+export const projectSecretsKey = {
+  forProject: (projectId: string) => ['projects', projectId, 'secrets'] as const,
+};
+
+export function useProjectSecrets(projectId: string | undefined) {
+  return useQuery({
+    queryKey: projectId ? projectSecretsKey.forProject(projectId) : ['projects'],
+    queryFn: () =>
+      api.get<ProjectSecretBinding[]>(`/api/v1/projects/${projectId}/secrets`),
+    enabled: !!projectId,
+  });
+}
+
+export function useBindProjectSecret(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ProjectSecretBindingInput) =>
+      api.post<ProjectSecretBinding>(
+        `/api/v1/projects/${projectId}/secrets`,
+        body,
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: projectSecretsKey.forProject(projectId) }),
+  });
+}
+
+export function useUpdateProjectSecret(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ secretId, body }: { secretId: string; body: ProjectSecretBindingUpdate }) =>
+      api.put<ProjectSecretBinding>(
+        `/api/v1/projects/${projectId}/secrets/${secretId}`,
+        body,
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: projectSecretsKey.forProject(projectId) }),
+  });
+}
+
+export function useUnbindProjectSecret(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ secretId }: { secretId: string }) =>
+      api.delete<void>(`/api/v1/projects/${projectId}/secrets/${secretId}`),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: projectSecretsKey.forProject(projectId) }),
+  });
+}
+
+// --- /users/me/projects (api#43 Slice D) ----------------------------
+
+export const myProjectsKey = ['users', 'me', 'projects'] as const;
+
+/**
+ * The caller's accessible projects. Drives the project switcher in
+ * /secrets + the submit-request drawer. Admin callers see every
+ * project; scoped callers see only their granted set.
+ */
+export function useMyProjects() {
+  return useQuery({
+    queryKey: myProjectsKey,
+    queryFn: () => api.get<MyProject[]>('/api/v1/users/me/projects'),
   });
 }
