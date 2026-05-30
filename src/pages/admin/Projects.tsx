@@ -50,6 +50,8 @@ import { Drawer } from '../../ui/Drawer';
 import { PageHeader } from '../../ui/PageHeader';
 import { StatusPill } from '../../ui/StatusPill';
 
+import { ProjectSecretsPanel } from './ProjectSecretsPanel';
+
 export function Projects() {
   const list = useProjects();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -101,10 +103,10 @@ export function Projects() {
             onSelect={setSelectedId}
           />
           {selected ? (
-            <EnvironmentsPanel project={selected} />
+            <ProjectDetailTabs project={selected} />
           ) : (
             <Card className="p-10 text-center text-muted text-sm">
-              Pick a project to manage its environments.
+              Pick a project to manage its environments and bindings.
             </Card>
           )}
         </div>
@@ -186,6 +188,53 @@ function ProjectsList({
         })}
       </ul>
     </Card>
+  );
+}
+
+// --- right pane: tabbed detail (Environments + Secrets) --------------
+
+type DetailTab = 'environments' | 'secrets';
+
+function ProjectDetailTabs({ project }: { project: Project }) {
+  const [tab, setTab] = useState<DetailTab>('environments');
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-1 border-b border-border/60">
+        <TabButton active={tab === 'environments'} onClick={() => setTab('environments')}>
+          Environments
+        </TabButton>
+        <TabButton active={tab === 'secrets'} onClick={() => setTab('secrets')}>
+          Secrets
+        </TabButton>
+      </div>
+      {tab === 'environments' && <EnvironmentsPanel project={project} />}
+      {tab === 'secrets' && <ProjectSecretsPanel project={project} />}
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ' +
+        (active
+          ? 'text-accent border-accent'
+          : 'text-muted border-transparent hover:text-text')
+      }
+    >
+      {children}
+    </button>
   );
 }
 

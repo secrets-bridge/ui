@@ -42,6 +42,66 @@ export interface ProjectInput {
 }
 
 /**
+ * Caller-scoped project projection used by GET /users/me/projects.
+ * Drives the UI's project switcher dropdown (admin sees all, scoped
+ * callers see their granted set). See api#43 Slice D.
+ */
+export interface MyProject {
+  id: string;
+  name: string;
+  status: 'active' | 'archived';
+}
+
+/**
+ * Project ↔ secret binding (api#43 Slices A + C). One project can be
+ * bound to many secrets, and the same secret can be bound to many
+ * projects. The pair (project_id, secret_id) is unique.
+ *
+ * `allowed_keys`:
+ *   - `null`           → every key the secret exposes is allowed
+ *   - non-null array   → explicit allowlist; submit refuses any key
+ *                        outside this set with 403 `out_of_scope_key`
+ *
+ * `allowed_ops`:
+ *   - subset of {`read`, `patch`, `discover`}; submit refuses any op
+ *     outside this set with 403 `out_of_scope_op`
+ *
+ * `secret` is populated on List/Bind responses so the UI doesn't have
+ * to do a second fetch per row.
+ */
+export interface ProjectSecretBinding {
+  project_id: string;
+  secret_id: string;
+  allowed_keys: string[] | null;
+  allowed_ops: string[];
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+  secret?: {
+    id: string;
+    cluster_name: string;
+    provider_type: string;
+    secret_ref: string;
+    status: string;
+    labels?: Record<string, string>;
+  };
+}
+
+/** Body shape for POST /projects/:id/secrets. */
+export interface ProjectSecretBindingInput {
+  secret_id: string;
+  allowed_keys?: string[] | null;
+  allowed_ops?: string[];
+  created_by?: string;
+}
+
+/** Body shape for PUT /projects/:id/secrets/:secret_id. */
+export interface ProjectSecretBindingUpdate {
+  allowed_keys?: string[] | null;
+  allowed_ops?: string[];
+}
+
+/**
  * Environment — lifecycle boundary within a project (BRD §17). One
  * project carries N environments (`dev`, `uat`, `staging`, `prod`,
  * `other`). Mirrors `api/internal/handlers/tenancy.go::environmentBody`.
