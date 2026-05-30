@@ -38,6 +38,7 @@ import {
   useUserRoles,
 } from '../../api/assignments';
 import { useRoles } from '../../api/roles';
+import { useTeams, type Team } from '../../api/teams';
 import { useEnvironments, useProjects } from '../../api/tenancy';
 import { Button } from '../../ui/Button';
 import { Card } from '../../ui/Card';
@@ -50,6 +51,7 @@ export function Assignments() {
   const list = useUserRoles();
   const roles = useRoles();
   const projects = useProjects();
+  const teamLookup = useTeams();
   const revoke = useRevokeUserRole();
 
   const [filter, setFilter] = useState('');
@@ -68,6 +70,9 @@ export function Assignments() {
 
   const projectName = (id: string) =>
     projects.data?.find((p) => p.id === id)?.name ?? id.slice(0, 8) + '…';
+
+  const teamName = (id: string) =>
+    teamLookup.data?.find((t) => t.id === id)?.name ?? id.slice(0, 8) + '…';
 
   return (
     <div>
@@ -139,6 +144,7 @@ export function Assignments() {
                   row={r}
                   roleName={roleName(r.role_id)}
                   projectName={projectName}
+                  teamName={teamName}
                   onRevoke={() => setConfirmRevoke(r)}
                 />
               ))}
@@ -181,11 +187,13 @@ function AssignmentRow({
   row: r,
   roleName,
   projectName,
+  teamName,
   onRevoke,
 }: {
   row: UserRole;
   roleName: string;
   projectName: (id: string) => string;
+  teamName: (id: string) => string;
   onRevoke: () => void;
 }) {
   const scopeKeys = Object.entries(r.scope ?? {});
@@ -212,7 +220,11 @@ function AssignmentRow({
                 <span className="text-muted">{k}</span>
                 <span className="text-muted/50">=</span>
                 <span className="text-accent">
-                  {k === 'project_id' ? projectName(v) : v}
+                  {k === 'project_id'
+                    ? projectName(v)
+                    : k === 'team_id'
+                      ? teamName(v)
+                      : v}
                 </span>
               </span>
             ))}
@@ -264,6 +276,12 @@ const schema = z.object({
   role_id: z.string().uuid('pick a role'),
   // Scope inputs (all optional; empty stripped on submit)
   sc_project_id: z.string().uuid().optional().or(z.literal('')),
+  // team_id: when set, the api expands the grant to the team's
+  // descendant subtree via auth.EffectiveProjectAccess (api#50). This
+  // is the "section head over X" pattern — Alice grants Bob
+  // `secret.approve` scoped to team "Section", and Bob covers every
+  // team / project under Section automatically.
+  sc_team_id: z.string().uuid().optional().or(z.literal('')),
   sc_environment: z.string().max(120).optional(),
   sc_secret_ref_prefix: z.string().max(255).optional(),
   sc_provider_type: z.string().max(60).optional(),
@@ -282,6 +300,7 @@ function AssignmentForm({
   const roles = useRoles();
   const projects = useProjects();
   const envs = useEnvironments();
+  const teams = useTeams();
 
   const {
     register,
@@ -293,11 +312,18 @@ function AssignmentForm({
       user_id: '',
       role_id: '',
       sc_project_id: '',
+      sc_team_id: '',
       sc_environment: '',
       sc_secret_ref_prefix: '',
       sc_provider_type: '',
     },
   });
+
+  // Teams flattened with a depth-indent prefix so the dropdown shows
+  // the hierarchy without rendering an actual tree (browsers don't
+  // support nested <option>s). Built from a single buildIndentedTeams
+  // pass so editing a team's parent reorders the list automatically.
+  const teamOptions = useMemo(() => buildIndentedTeams(teams.data ?? []), [teams.data]);
 
   // Distinct environment names for the dropdown (the api scope key is
   // by name, not UUID; multiple projects can each have a "uat" env).
@@ -310,6 +336,7 @@ function AssignmentForm({
   const onValid: SubmitHandler<FormShape> = async (data) => {
     const scope: Record<string, string> = {};
     if (data.sc_project_id) scope.project_id = data.sc_project_id;
+    if (data.sc_team_id) scope.team_id = data.sc_team_id;
     if (data.sc_environment) scope.environment = data.sc_environment;
     if (data.sc_secret_ref_prefix)
       scope.secret_ref_prefix = data.sc_secret_ref_prefix;
@@ -369,6 +396,21 @@ function AssignmentForm({
                   {p.name}
                 </option>
               ))}
+          </select>
+        </Field>
+
+        <Field
+          label="Team"
+          error={errors.sc_team_id?.message}
+          hint="Grant applies to the team AND every descendant team's projects. Use for 'section head over X' — Alice grants Bob `secret.approve` scoped to team 'Section', and Bob covers every team/project under Section automatically."
+        >
+          <select {...register('sc_team_id')} className={inputCls}>
+            <option value="">(any team)</option>
+            {teamOptions.map((opt) => (
+              <option key={opt.team.id} value={opt.team.id}>
+                {opt.indentedLabel}
+              </option>
+            ))}
           </select>
         </Field>
 
@@ -476,4 +518,36 @@ function stringifyError(e: unknown): string {
   if (e instanceof ApiError) return `${e.status}: ${e.message}`;
   if (e instanceof Error) return e.message;
   return String(e);
+}
+
+// buildIndentedTeams takes the flat team list and produces a
+// preorder-traversal list with each entry decorated with a label
+// like "··· alpha-east-billing" so a flat <select> can display the
+// hierarchy. Detached subtrees become roots so they stay pickable.
+interface IndentedTeamOption {
+  team: Team;
+  indentedLabel: string;
+}
+
+function buildIndentedTeams(all: Team[]): IndentedTeamOption[] {
+  const ids = new Set(all.map((t) => t.id));
+  const byParent = new Map<string | null, Team[]>();
+  for (const t of all) {
+    const parent = t.parent_team_id && ids.has(t.parent_team_id) ? t.parent_team_id : null;
+    const bucket = byParent.get(parent) ?? [];
+    bucket.push(t);
+    byParent.set(parent, bucket);
+  }
+  const sorted = (arr: Team[]) => [...arr].sort((a, b) => a.name.localeCompare(b.name));
+  const out: IndentedTeamOption[] = [];
+  const walk = (parent: string | null, depth: number) => {
+    for (const t of sorted(byParent.get(parent) ?? [])) {
+      const prefix = depth === 0 ? '' : '· '.repeat(depth);
+      const archived = t.status === 'archived' ? ' (archived)' : '';
+      out.push({ team: t, indentedLabel: `${prefix}${t.name}${archived}` });
+      walk(t.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return out;
 }
