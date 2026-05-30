@@ -3,17 +3,18 @@
  * POST /api/v1/auth/login. Replaces the LoginStub.
  *
  * Hard rules (BRD §15):
- *   - The returned JWT MUST live in memory only. AuthContext stores
- *     it via setToken state; never persisted to localStorage,
- *     sessionStorage, IndexedDB, or cookies. Page reload deliberately
- *     signs the user out.
+ *   - The returned JWT MUST NEVER live in localStorage. localStorage
+ *     persists to disk across browser restarts and is read by every
+ *     script on the origin including extensions — exactly what a
+ *     long-lived bearer token should not touch.
+ *   - sessionStorage IS the stopgap until api P0-1 (HttpOnly refresh
+ *     cookie) lands. Survives page reload + same-tab nav; cleared on
+ *     tab close. Documented in AuthContext.
  *   - The password field uses `type="password"` (no DOM plaintext echo)
  *     + `autoComplete="current-password"` so the browser can autofill
  *     from its credential store but never the values from this session.
  *   - Local form state is cleared as soon as the submit promise
  *     settles (success OR failure).
- *   - No "remember me" checkbox by design — there's no surface to
- *     persist anything across reloads.
  *
  * The page lays out via the brand pattern: centered Card, LogoMark +
  * wordmark, tagline, brand-gradient submit button, ApiError surface.
@@ -194,8 +195,8 @@ export function Login() {
           </Button>
 
           <p className="text-[11px] text-muted/80 text-center pt-3 border-t border-border/60">
-            Token stays in memory only — never localStorage / sessionStorage.
-            Closing the tab signs you out.
+            Token lives in memory + sessionStorage (cleared on tab close).
+            Never localStorage.
           </p>
         </form>
       </div>

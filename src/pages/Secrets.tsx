@@ -37,6 +37,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { PageHeader } from '../ui/PageHeader';
 import { StatusPill } from '../ui/StatusPill';
+import { DiscoverDrawer } from './DiscoverDrawer';
 
 const PROVIDER_LABELS: Record<string, string> = {
   vault: 'HashiCorp Vault',
@@ -54,6 +55,7 @@ export function Secrets() {
 
   const myProjects = useMyProjects();
   const list = useSecrets(filter);
+  const [discoverOpen, setDiscoverOpen] = useState(false);
   const rows = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
   const selected = rows.find((r) => r.id === selectedId) ?? null;
@@ -113,11 +115,16 @@ export function Secrets() {
         title="Discovered secrets"
         description="What the agents have surfaced via discovery jobs. Native provider tags (Vault custom_metadata, AWS Tags, etc.) are preserved as filterable labels."
         actions={
-          hasFilter ? (
-            <Button variant="secondary" onClick={clear}>
-              Clear filters
+          <div className="flex items-center gap-2">
+            {hasFilter && (
+              <Button variant="secondary" onClick={clear}>
+                Clear filters
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => setDiscoverOpen(true)}>
+              Discover…
             </Button>
-          ) : undefined
+          </div>
         }
       />
 
@@ -303,6 +310,8 @@ export function Secrets() {
           <DetailsPane secret={selected} />
         </div>
       )}
+
+      {discoverOpen && <DiscoverDrawer onClose={() => setDiscoverOpen(false)} />}
     </div>
   );
 }
