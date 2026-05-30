@@ -28,10 +28,14 @@
  * their header so operators don't mistake them for live data.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
+import { useAuditEvents } from '../api/audit';
 import { api } from '../api/client';
+import { useRequests } from '../api/requests';
 import type { Agent } from '../api/types';
+import { useAuth } from '../auth/AuthContext';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { PageHeader } from '../ui/PageHeader';
@@ -39,71 +43,147 @@ import { StatusPill } from '../ui/StatusPill';
 
 export function Dashboard() {
   const agents = useAgentsSnapshot();
+  const { identity, hasPermission } = useAuth();
+  const me = identity?.id ?? '';
+
+  // Role-derived view shape. The page is tailored so a developer
+  // doesn't see admin-only or approver-only cards (or stale
+  // placeholder data). The fall-through "admin" view keeps the rich
+  // shape — agents + admin KPIs + everything.
+  const isApprover = hasPermission('secret.approve');
+  const isAdmin = hasPermission('team.edit') || hasPermission('role.edit');
+  const canRequest = hasPermission('secret.request');
+
+  // Real per-user counters from the live api. We always pull "my
+  // requests"; we also pull "all pending" only when the caller can
+  // actually approve (gate matches the Requests page).
+  const myRequestsQ = useRequests({ requester_id: me }, { enabled: !!me && canRequest });
+  const pendingQ = useRequests({ status: 'pending' }, { enabled: isApprover });
+
+  const myCounts = useMemo(() => {
+    const rows = myRequestsQ.data ?? [];
+    const by = (s: string) => rows.filter((r) => r.status === s).length;
+    return {
+      total: rows.length,
+      pending: by('pending'),
+      approved: by('approved'),
+      rejected: by('rejected'),
+      executed: by('executed'),
+    };
+  }, [myRequestsQ.data]);
+
+  const pendingMineToApprove = useMemo(() => {
+    const rows = pendingQ.data ?? [];
+    return rows.filter((r) => r.requester_id !== me).length;
+  }, [pendingQ.data, me]);
 
   return (
     <div>
-      <PageHeader title="Dashboard" description="" />
+      <PageHeader
+        title="Dashboard"
+        description={
+          isAdmin
+            ? 'Platform health + the queues your role gates.'
+            : isApprover
+              ? 'Your requests + the approvals waiting on you.'
+              : canRequest
+                ? 'Your requests and where they stand.'
+                : 'Welcome.'
+        }
+      />
 
-      {/* KPI row */}
+      {/* KPI row — tailored per role. Admins get the full quartet
+          including agent health; developers + approvers get focused
+          per-user numbers without the fake placeholders the old
+          dashboard carried. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Kpi
-          label="Pending Requests"
-          value="4"
-          accent={<DotLabel tone="warning">2 need review</DotLabel>}
-          preview
-        />
-        <Kpi
-          label="Providers Connected"
-          value="6"
-          accent={<span className="text-muted text-xs">Vault, AWS, Azure +3</span>}
-          preview
-        />
-        <Kpi
-          label="Agents Online"
-          value={
-            agents.loading
-              ? '…'
-              : `${agents.online} / ${agents.total}`
-          }
-          accent={
-            <DotLabel
-              tone={
-                agents.loading
-                  ? 'neutral'
-                  : agents.online === agents.total && agents.total > 0
-                    ? 'success'
-                    : 'warning'
-              }
-            >
-              {agents.loading
-                ? 'loading…'
-                : agents.total === 0
-                  ? 'no agents minted'
-                  : agents.online === agents.total
-                    ? 'all healthy'
-                    : `${agents.total - agents.online} stale`}
-            </DotLabel>
-          }
-        />
-        <Kpi
-          label="Secrets Synced · 24h"
-          value="1,284"
-          accent={<DotLabel tone="success">+0.6% vs prev</DotLabel>}
-          preview
-        />
+        {canRequest && (
+          <Kpi
+            label="My open requests"
+            value={String(myCounts.pending + myCounts.approved)}
+            accent={
+              <span className="text-muted text-xs">
+                {myCounts.pending} pending · {myCounts.approved} approved
+              </span>
+            }
+            to="/requests"
+          />
+        )}
+        {isApprover && (
+          <Kpi
+            label="Awaiting my review"
+            value={pendingQ.isLoading ? '…' : String(pendingMineToApprove)}
+            accent={
+              <DotLabel
+                tone={pendingMineToApprove === 0 ? 'success' : 'warning'}
+              >
+                {pendingMineToApprove === 0 ? 'queue empty' : 'open the queue'}
+              </DotLabel>
+            }
+            to="/requests"
+          />
+        )}
+        {canRequest && (
+          <Kpi
+            label="My executed"
+            value={String(myCounts.executed)}
+            accent={
+              <span className="text-muted text-xs">lifetime</span>
+            }
+            to="/requests"
+          />
+        )}
+        {isAdmin && (
+          <Kpi
+            label="Agents Online"
+            value={
+              agents.loading
+                ? '…'
+                : `${agents.online} / ${agents.total}`
+            }
+            accent={
+              <DotLabel
+                tone={
+                  agents.loading
+                    ? 'neutral'
+                    : agents.online === agents.total && agents.total > 0
+                      ? 'success'
+                      : 'warning'
+                }
+              >
+                {agents.loading
+                  ? 'loading…'
+                  : agents.total === 0
+                    ? 'no agents minted'
+                    : agents.online === agents.total
+                      ? 'all healthy'
+                      : `${agents.total - agents.online} stale`}
+              </DotLabel>
+            }
+            to="/agents"
+          />
+        )}
       </div>
 
-      {/* Two-column grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-6">
+      {/* Two-column grid — admins get the full layout; everyone else
+          sees just the cards relevant to their role. */}
+      <div
+        className={
+          isAdmin
+            ? 'grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-6'
+            : 'grid grid-cols-1 gap-6'
+        }
+      >
         <div className="space-y-6">
-          <PendingApprovalsCard />
-          <RecentAuditCard />
+          {isApprover && <PendingApprovalsCard />}
+          {canRequest && !isAdmin && <MyRequestsRecentCard />}
+          <RecentAuditCard scopeLabel={isAdmin ? 'all activity' : 'your activity'} />
         </div>
-        <div className="space-y-6">
-          <ProvidersHealthCard />
-          <AgentsSummaryCard agents={agents} />
-          <RequestsWeekCard />
-        </div>
+        {isAdmin && (
+          <div className="space-y-6">
+            <AgentsSummaryCard agents={agents} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -116,14 +196,16 @@ function Kpi({
   value,
   accent,
   preview,
+  to,
 }: {
   label: string;
   value: string;
   accent: React.ReactNode;
   preview?: boolean;
+  to?: string;
 }) {
-  return (
-    <Card className="p-5">
+  const inner = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <div className="text-muted text-xs uppercase tracking-wider font-medium">
           {label}
@@ -138,8 +220,18 @@ function Kpi({
         {value}
       </div>
       <div className="mt-2 text-xs">{accent}</div>
-    </Card>
+    </>
   );
+  if (to) {
+    return (
+      <Card className="p-0 transition-colors hover:border-accent/60">
+        <Link to={to} className="block p-5">
+          {inner}
+        </Link>
+      </Card>
+    );
+  }
+  return <Card className="p-5">{inner}</Card>;
 }
 
 function DotLabel({
@@ -259,198 +351,138 @@ function PendingApprovalsCard() {
 
 // --- Recent Audit Activity ------------------------------------------
 
-interface AuditRow {
-  time: string;
-  actor: string;
-  action: 'approved' | 'synced' | 'submitted' | 'denied';
-  resource: string;
-}
+function RecentAuditCard({ scopeLabel }: { scopeLabel: string }) {
+  const { identity, hasPermission } = useAuth();
+  const isPrivileged =
+    hasPermission('role.edit') ||
+    hasPermission('user_role.edit') ||
+    hasPermission('team.edit');
+  const actor = !isPrivileged && identity ? `user:${identity.id}` : undefined;
+  const list = useAuditEvents({ actor, limit: 10 });
+  const rows = (list.data ?? []).slice(0, 10);
 
-const AUDIT_DEMO_ROWS: AuditRow[] = [
-  { time: '09:42', actor: 'alice@corp', action: 'approved', resource: 'REQ-1042 · prod/db/password' },
-  { time: '09:31', actor: 'agent/prod-eu', action: 'synced', resource: 'Vault → Kubernetes (app-config)' },
-  { time: '09:18', actor: 'bob@corp', action: 'submitted', resource: 'prod/payments/stripe' },
-  { time: '08:57', actor: 'carol@corp', action: 'denied', resource: 'REQ-1039 · prod/root-token' },
-  { time: '08:40', actor: 'agent/prod-us', action: 'synced', resource: 'aws:prod/payments/stripe' },
-];
-
-const AUDIT_VARIANT: Record<
-  AuditRow['action'],
-  React.ComponentProps<typeof StatusPill>['variant']
-> = {
-  approved: 'success',
-  synced: 'accent',
-  submitted: 'pending',
-  denied: 'error',
-};
-
-function RecentAuditCard() {
   return (
     <Card className="overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-        <h3 className="text-text font-semibold">Recent Audit Activity</h3>
-        <StatusPill variant="neutral" tone="outline">
-          preview
-        </StatusPill>
+      <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2 justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="text-text font-semibold">Recent activity</h3>
+          <StatusPill variant="neutral" tone="outline">
+            {scopeLabel}
+          </StatusPill>
+        </div>
+        <Link
+          to="/audit"
+          className="text-[11px] text-accent hover:text-accent-bright"
+        >
+          full audit →
+        </Link>
       </div>
-      <ul>
-        {AUDIT_DEMO_ROWS.map((r) => (
-          <li
-            key={`${r.time}-${r.resource}`}
-            className="flex items-center gap-4 px-5 py-3 border-b border-border/40 last:border-0"
-          >
-            <span className="font-mono text-muted text-xs w-12 shrink-0">
-              {r.time}
-            </span>
-            <span className="font-mono text-text text-sm w-36 shrink-0 truncate">
-              {r.actor}
-            </span>
-            <span className="w-24 shrink-0">
-              <StatusPill variant={AUDIT_VARIANT[r.action]} tone="outline">
+      {list.isLoading && (
+        <div className="px-5 py-6 text-muted text-sm">Loading…</div>
+      )}
+      {list.data && rows.length === 0 && (
+        <div className="px-5 py-6 text-muted text-sm">No events yet.</div>
+      )}
+      {rows.length > 0 && (
+        <ul>
+          {rows.map((r) => (
+            <li
+              key={r.id}
+              className="flex items-center gap-4 px-5 py-3 border-b border-border/40 last:border-0"
+            >
+              <span className="font-mono text-muted text-xs w-12 shrink-0">
+                {shortTime(r.occurred_at)}
+              </span>
+              <span className="font-mono text-text text-sm w-36 shrink-0 truncate">
+                {r.actor}
+              </span>
+              <span className="text-muted text-xs font-mono truncate flex-1 min-w-0">
                 {r.action}
-              </StatusPill>
-            </span>
-            <span className="text-muted text-sm font-mono truncate flex-1 min-w-0">
-              {r.resource}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-// --- Providers Health -----------------------------------------------
-
-interface ProviderHealth {
-  name: string;
-  latency: string;
-  status: 'healthy' | 'sync';
-}
-
-const PROVIDER_HEALTH_DEMO: ProviderHealth[] = [
-  { name: 'HashiCorp Vault', latency: '12ms', status: 'healthy' },
-  { name: 'AWS Secrets Manager', latency: '28ms', status: 'healthy' },
-  { name: 'Azure Key Vault', latency: '41ms', status: 'healthy' },
-  { name: 'GCP Secret Manager', latency: '19ms', status: 'healthy' },
-  { name: 'Kubernetes ESO', latency: '8ms', status: 'healthy' },
-  { name: 'ArgoCD', latency: 'sync', status: 'sync' },
-];
-
-function ProvidersHealthCard() {
-  return (
-    <Card className="overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-        <h3 className="text-text font-semibold">Providers Health</h3>
-        <StatusPill variant="neutral" tone="outline">
-          preview
-        </StatusPill>
-      </div>
-      <ul>
-        {PROVIDER_HEALTH_DEMO.map((p) => (
-          <li
-            key={p.name}
-            className="flex items-center justify-between px-5 py-3 border-b border-border/40 last:border-0"
-          >
-            <span className="flex items-center gap-2.5 text-text text-sm">
-              <span
-                className={`inline-block w-2 h-2 rounded-full ${
-                  p.status === 'sync' ? 'bg-accent' : 'bg-success'
-                }`}
-              />
-              {p.name}
-            </span>
-            <span className="text-muted text-xs font-mono">{p.latency}</span>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-// --- Agents card (REAL data) ----------------------------------------
-
-function AgentsSummaryCard({ agents }: { agents: AgentsSnapshot }) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-center gap-2 mb-2">
-        <h3 className="text-text font-semibold">Agents</h3>
-      </div>
-      {agents.loading ? (
-        <div className="text-muted text-sm">Loading…</div>
-      ) : agents.error ? (
-        <div className="text-red-300 text-sm">{agents.error}</div>
-      ) : (
-        <>
-          <div className="text-text text-2xl font-bold">
-            {agents.total === 0
-              ? '0 / 0'
-              : `${agents.online} / ${agents.total}`}{' '}
-            <span className="text-accent text-base font-semibold">
-              {agents.total > 0 ? 'online' : 'agents'}
-            </span>
-          </div>
-          {agents.scopes.length > 0 ? (
-            <div className="text-muted text-xs mt-1">
-              {agents.scopes.slice(0, 4).join(' · ')}
-              {agents.scopes.length > 4 ? ' · …' : ''}
-            </div>
-          ) : agents.total > 0 ? (
-            <div className="text-muted text-xs mt-1">unscoped</div>
-          ) : (
-            <div className="text-muted text-xs mt-1">
-              Mint one with{' '}
-              <code className="font-mono">POST /api/v1/agents</code>.
-            </div>
-          )}
-          {agents.lastSeenAgo && (
-            <div className="text-muted/70 text-xs mt-2">
-              last check-in {agents.lastSeenAgo}
-            </div>
-          )}
-        </>
+              </span>
+              <span className="text-muted/70 text-[11px] font-mono truncate w-40 shrink-0 hidden md:inline">
+                {r.resource}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </Card>
   );
 }
 
-// --- Requests this week (placeholder bar chart) ---------------------
+function shortTime(iso?: string): string {
+  if (!iso) return '—';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '—';
+  const d = new Date(t);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
-const WEEK_DEMO = [
-  { d: 'M', v: 0.55 },
-  { d: 'T', v: 0.45 },
-  { d: 'W', v: 0.7 },
-  { d: 'T', v: 0.5 },
-  { d: 'F', v: 0.95 },
-  { d: 'S', v: 0.15 },
-  { d: 'S', v: 0.12 },
-];
+// --- My recent requests (developer view) ----------------------------
 
-function RequestsWeekCard() {
+function MyRequestsRecentCard() {
+  const { identity } = useAuth();
+  const me = identity?.id ?? '';
+  const q = useRequests({ requester_id: me }, { enabled: !!me });
+  const rows = (q.data ?? []).slice(0, 8);
   return (
     <Card className="overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-        <h3 className="text-text font-semibold">Requests this week</h3>
-        <StatusPill variant="neutral" tone="outline">
-          preview
-        </StatusPill>
+      <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between gap-2">
+        <h3 className="text-text font-semibold">My recent requests</h3>
+        <Link
+          to="/requests"
+          className="text-[11px] text-accent hover:text-accent-bright"
+        >
+          see all →
+        </Link>
       </div>
-      <div className="px-5 py-5">
-        <div className="flex items-end justify-between gap-2 h-32">
-          {WEEK_DEMO.map((b, i) => (
-            <div
-              key={i}
-              className="flex-1 flex flex-col items-center justify-end gap-2 h-full"
-            >
-              <div
-                className="w-full rounded-md bg-brand-gradient"
-                style={{ height: `${Math.round(b.v * 100)}%` }}
-              />
-              <div className="text-muted text-[11px]">{b.d}</div>
-            </div>
-          ))}
+      {q.isLoading && (
+        <div className="px-5 py-6 text-muted text-sm">Loading…</div>
+      )}
+      {q.data && rows.length === 0 && (
+        <div className="px-5 py-6 text-muted text-sm">
+          You haven&apos;t submitted any requests yet.{' '}
+          <Link to="/requests" className="text-accent">
+            Open the requests page
+          </Link>{' '}
+          to file one.
         </div>
-      </div>
+      )}
+      {rows.length > 0 && (
+        <ul>
+          {rows.map((r) => (
+            <li
+              key={r.id}
+              className="flex items-center gap-3 px-5 py-3 border-b border-border/40 last:border-0"
+            >
+              <Link
+                to={`/requests/${r.id}`}
+                className="font-mono text-accent hover:text-accent-bright text-xs w-20 shrink-0"
+              >
+                {r.id.slice(0, 8)}
+              </Link>
+              <span className="font-mono text-muted text-[11px] uppercase w-14 shrink-0">
+                {r.type}
+              </span>
+              <span className="font-mono text-text text-sm truncate flex-1 min-w-0">
+                {r.target_secret_ref}
+              </span>
+              <StatusPill
+                variant={
+                  r.status === 'approved' || r.status === 'executed'
+                    ? 'success'
+                    : r.status === 'rejected' || r.status === 'failed'
+                      ? 'cancelled'
+                      : 'warning'
+                }
+                tone="outline"
+              >
+                {r.status}
+              </StatusPill>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }
@@ -484,6 +516,39 @@ interface AgentsSnapshot {
   online: number;
   scopes: string[];
   lastSeenAgo?: string;
+}
+
+function AgentsSummaryCard({ agents }: { agents: AgentsSnapshot }) {
+  return (
+    <Card className="p-5 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-text font-semibold">Agents</h3>
+        <Link to="/agents" className="text-[11px] text-accent hover:text-accent-bright">
+          manage →
+        </Link>
+      </div>
+      <div className="text-text text-3xl font-bold tracking-tight">
+        {agents.loading ? '…' : `${agents.online} / ${agents.total}`}
+      </div>
+      <div className="text-muted text-xs">
+        {agents.loading
+          ? 'Loading…'
+          : agents.total === 0
+            ? 'No agents minted yet.'
+            : agents.online === agents.total
+              ? 'All agents have a fresh heartbeat.'
+              : `${agents.total - agents.online} agent(s) stale or pending — see the Agents page for the live badge.`}
+      </div>
+      {agents.lastSeenAgo && (
+        <div className="text-muted/70 text-[11px]">
+          Most recent heartbeat: {agents.lastSeenAgo} ago
+        </div>
+      )}
+      {agents.error && (
+        <div className="text-red-300 text-[11px]">{agents.error}</div>
+      )}
+    </Card>
+  );
 }
 
 function useAgentsSnapshot(): AgentsSnapshot {
