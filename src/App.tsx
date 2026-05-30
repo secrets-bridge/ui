@@ -5,6 +5,7 @@ import { queryClient } from './api/queryClient';
 import { AuthProvider } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import { Shell } from './layout/Shell';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import { Agents } from './pages/Agents';
 import { Audit } from './pages/Audit';
 import { Dashboard } from './pages/Dashboard';
@@ -23,6 +24,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <ErrorBoundary>
         <Routes>
         <Route path="/login" element={<Login />} />
         <Route
@@ -47,6 +49,7 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
         </Routes>
+        </ErrorBoundary>
       </AuthProvider>
     </QueryClientProvider>
   );

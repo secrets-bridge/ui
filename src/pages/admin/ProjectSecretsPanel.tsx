@@ -177,7 +177,12 @@ function BindingRow({
   onEdit: () => void;
   onUnbind: () => void;
 }) {
-  const allKeys = binding.allowed_keys === null;
+  // The api uses `omitempty` on the AllowedKeys pointer, so the field
+  // is absent (undefined) — not literally `null` — when "all keys are
+  // allowed". `== null` covers both shapes; treat both as the same
+  // "all keys" semantic the field documents.
+  const allKeys = binding.allowed_keys == null;
+  const keys = binding.allowed_keys ?? [];
   return (
     <tr className="border-t border-border/40">
       <td className="px-5 py-3 align-top">
@@ -200,7 +205,7 @@ function BindingRow({
           </StatusPill>
         ) : (
           <div className="flex flex-wrap gap-1">
-            {binding.allowed_keys!.map((k) => (
+            {keys.map((k) => (
               <StatusPill key={k} variant="neutral" tone="filled">
                 {k}
               </StatusPill>
