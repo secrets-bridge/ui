@@ -140,6 +140,7 @@ function AgentRow({
 }) {
   const revoked = a.status === 'revoked';
   const scopeEntries = Object.entries(a.scope ?? {});
+  const live = agentDisplayStatus(a);
   return (
     <tr className="border-b border-border/40 last:border-0 hover:bg-bg/20 align-top">
       <Td>
@@ -151,18 +152,29 @@ function AgentRow({
         </div>
       </Td>
       <Td>
-        <StatusPill
-          variant={
-            a.status === 'active'
-              ? 'success'
-              : a.status === 'stale'
-                ? 'warning'
-                : 'cancelled'
-          }
-          tone="outline"
-        >
-          {a.status}
-        </StatusPill>
+        <div className="flex items-center gap-2">
+          {live === 'online' && (
+            <span
+              aria-hidden
+              className="w-2 h-2 rounded-full bg-success animate-pulse"
+              title="Heartbeat received within the last 90s"
+            />
+          )}
+          <StatusPill
+            variant={
+              live === 'online'
+                ? 'success'
+                : live === 'pending'
+                  ? 'accent'
+                  : live === 'stale'
+                    ? 'warning'
+                    : 'cancelled'
+            }
+            tone="outline"
+          >
+            {live}
+          </StatusPill>
+        </div>
       </Td>
       <Td>
         {scopeEntries.length === 0 ? (
@@ -396,7 +408,10 @@ function MintDrawer({ onClose }: { onClose: () => void }) {
 
 // --- reveal-once panel ---------------------------------------------
 
+type DeployTab = 'env' | 'k8s' | 'helm';
+
 function RevealOncePanel({ response }: { response: MintAgentResponse }) {
+  const [tab, setTab] = useState<DeployTab>('helm');
   return (
     <div className="space-y-4">
       <div className="bg-yellow-400/10 border border-yellow-400/40 border-l-4 border-l-yellow-400 rounded-lg px-4 py-3 text-sm">
@@ -407,31 +422,128 @@ function RevealOncePanel({ response }: { response: MintAgentResponse }) {
           The agent secret is hashed in the database; this is the only
           moment the plaintext exists in the SPA. After you close this
           drawer it's gone — you'd have to revoke and mint a fresh
-          agent.
+          agent. Until the workload starts and heartbeats, the agent
+          row shows <code className="font-mono">pending</code>; once
+          the first heartbeat lands it flips to{' '}
+          <code className="font-mono">online</code>.
         </div>
       </div>
 
       <CopyField label="Agent ID" value={response.id} mono />
       <CopyField label="Agent secret" value={response.agent_secret} mono />
 
-      <div className="bg-bg/40 border border-border/60 rounded-lg p-4 space-y-2">
-        <div className="text-text font-medium text-sm">
-          Drop into the agent container
+      <div>
+        <div className="text-text font-medium text-sm mb-2">
+          Drop into the agent
         </div>
-        <pre className="text-[11px] text-muted overflow-x-auto font-mono whitespace-pre-wrap">
-{`SB_AGENT_ID=${response.id}
-SB_AGENT_SECRET=${response.agent_secret}
-SB_CLUSTER_NAME=<your-cluster-slug>`}
-        </pre>
-        <div className="text-[11px] text-muted/80">
-          For Kubernetes deployments, the recommended path is to write
-          these to a <code className="font-mono">Secret</code> and mount
-          it as env vars on the agent Deployment. See the agent README
-          for the full bootstrap chain.
+        <div className="flex gap-1 border-b border-border/60 mb-3">
+          <TabButton on={tab === 'helm'} onClick={() => setTab('helm')}>
+            Helm values
+          </TabButton>
+          <TabButton on={tab === 'k8s'} onClick={() => setTab('k8s')}>
+            Kubernetes Secret
+          </TabButton>
+          <TabButton on={tab === 'env'} onClick={() => setTab('env')}>
+            Env vars
+          </TabButton>
         </div>
+        {tab === 'helm' && <DeploySnippet snippet={helmValuesSnippet(response)} hint="Drop into your agent's per-cluster values file. The chart wires SB_AGENT_ID + SB_AGENT_SECRET from the identity bag automatically." />}
+        {tab === 'k8s' && <DeploySnippet snippet={k8sSecretSnippet(response)} hint="Apply with kubectl. The agent chart's identity.existingSecret value must reference this Secret's name." />}
+        {tab === 'env' && <DeploySnippet snippet={envSnippet(response)} hint="For non-k8s deployments (compose, systemd, bare binary). Export before launching the agent binary." />}
       </div>
     </div>
   );
+}
+
+function TabButton({
+  on,
+  onClick,
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'px-3 py-1.5 text-sm font-medium border-b-2 -mb-px transition-colors ' +
+        (on ? 'text-accent border-accent' : 'text-muted border-transparent hover:text-text')
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function DeploySnippet({ snippet, hint }: { snippet: string; hint: string }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <div className="bg-bg/40 border border-border/60 rounded-lg p-4 space-y-2">
+      <div className="flex justify-end">
+        <Button variant="secondary" size="sm" onClick={doCopy}>
+          {copied ? 'Copied!' : 'Copy'}
+        </Button>
+      </div>
+      <pre className="text-[11px] text-muted overflow-x-auto font-mono whitespace-pre-wrap break-all">
+        {snippet}
+      </pre>
+      <div className="text-[11px] text-muted/80">{hint}</div>
+    </div>
+  );
+}
+
+function envSnippet(r: MintAgentResponse): string {
+  return `SB_AGENT_ID=${r.id}
+SB_AGENT_SECRET=${r.agent_secret}
+SB_CLUSTER_NAME=<your-cluster-slug>`;
+}
+
+function k8sSecretSnippet(r: MintAgentResponse): string {
+  return `apiVersion: v1
+kind: Secret
+metadata:
+  name: secrets-bridge-agent
+  namespace: secrets-bridge-system
+type: Opaque
+stringData:
+  SB_AGENT_ID: ${r.id}
+  SB_AGENT_SECRET: ${r.agent_secret}`;
+}
+
+function helmValuesSnippet(r: MintAgentResponse): string {
+  return `# values.yaml for ghcr.io/secrets-bridge/charts/secrets-bridge-agent
+# Agent identity for this install: ${r.id}
+clusterName: <your-cluster-slug>
+cp:
+  endpoint: https://<your-cp-host>
+
+identity:
+  # Points the chart at a pre-existing Secret in the same namespace
+  # carrying SB_AGENT_ID + SB_AGENT_SECRET (see the Kubernetes Secret
+  # tab for the YAML to apply). The agent reads them via envFrom.
+  existingSecret: secrets-bridge-agent
+
+# For aws-sm discovery, supply tagFilter so ListSecrets is post-list
+# narrowed at the agent — ListSecrets in AWS does NOT honour
+# aws:ResourceTag IAM conditions.
+providers:
+  awsSecretsManager:
+    enabled: true
+    region: <your-region>
+    tagFilter:
+      Environment: production`;
 }
 
 function CopyField({
@@ -550,4 +662,39 @@ function stringifyError(e: unknown): string {
   if (e instanceof ApiError) return `${e.status}: ${e.message}`;
   if (e instanceof Error) return e.message;
   return String(e);
+}
+
+// agentDisplayStatus narrows the api's coarse status enum into a more
+// useful operational badge. The api keeps the field at active / stale
+// / revoked; the worker's agents-stale sweeper flips active → stale
+// after the cutoff. Here we ADD:
+//
+//   - pending  → minted but never heartbeated. The badge stays this
+//                way until the first /heartbeat lands. Critical UX
+//                for the onboarding flow — an admin who just minted
+//                the agent should see "pending" until the workload
+//                starts up successfully.
+//   - online   → heartbeat received within 90s. The agent's default
+//                interval is 30s; 90s gives a 3-tick buffer before
+//                we visually downgrade to "active" (no longer fresh
+//                but still under the api's stale cutoff).
+//   - stale    → api flipped to stale OR last_seen_at older than
+//                ~5 min (matches the default worker cutoff).
+//   - revoked  → unchanged from api.
+//   - active   → fallback when the agent has heartbeated but the
+//                page hasn't seen one within 90s.
+//
+// 'as const' so callers get a narrow union.
+export type AgentDisplayStatus = 'online' | 'pending' | 'active' | 'stale' | 'revoked';
+
+function agentDisplayStatus(a: Agent): AgentDisplayStatus {
+  if (a.status === 'revoked') return 'revoked';
+  if (!a.last_seen_at) return 'pending';
+  if (a.status === 'stale') return 'stale';
+  const seen = new Date(a.last_seen_at).getTime();
+  if (Number.isNaN(seen)) return 'active';
+  const ageMs = Date.now() - seen;
+  if (ageMs < 90_000) return 'online';
+  if (ageMs > 5 * 60_000) return 'stale';
+  return 'active';
 }

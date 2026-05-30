@@ -29,6 +29,13 @@ export function useAgents() {
   return useQuery({
     queryKey: agentsKey.all,
     queryFn: () => api.get<Agent[]>('/api/v1/agents'),
+    // Poll every 10s so the live `online` / `pending` / `stale` badge
+    // in the Agents table reflects fresh heartbeats. The api-side
+    // status is owned by the worker's agents-stale sweeper (cutoff
+    // 5min by default); the SPA's narrower `online` window (90s) is
+    // computed from last_seen_at, which we want fresh.
+    refetchInterval: 10_000,
+    refetchOnWindowFocus: true,
   });
 }
 
