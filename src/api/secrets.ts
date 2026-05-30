@@ -19,7 +19,7 @@
  * UI's filter chips match what the team set in Vault / AWS / etc.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
 
@@ -88,5 +88,52 @@ export function useSecrets(filter: SecretsFilter = {}) {
   return useQuery({
     queryKey: secretsKey.list(filter),
     queryFn: () => api.get<SecretsListResponse>(`/api/v1/secrets${suffix}`),
+  });
+}
+
+// --- discovery trigger (admin-only) ---------------------------------
+
+/**
+ * Shape of the discover-job payload accepted by POST /api/v1/jobs.
+ * The agent ignores any field it doesn't understand; the four
+ * recognised today are target_provider_type (required), region,
+ * scope, and label_selector.
+ */
+export interface DiscoverJobInput {
+  target_provider_type: string;
+  target_provider_config?: Record<string, unknown>;
+  scope?: string;
+  label_selector?: Record<string, string>;
+}
+
+export interface EnqueuedJob {
+  id: string;
+  correlation_id: string;
+  status: string;
+}
+
+/**
+ * Trigger a discovery sweep. Admin-only — the api gates POST /jobs
+ * behind the future RBAC enforcement (api#27 P0-2). Returns the
+ * enqueued job; the agent claims within ~5s.
+ */
+export function useTriggerDiscovery() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DiscoverJobInput) =>
+      api.post<EnqueuedJob>('/api/v1/jobs', {
+        job_type: 'discover',
+        payload: input,
+      }),
+    onSuccess: () => {
+      // The job is queued, not finished. Give the agent a beat to
+      // claim + complete (~5s claim interval + provider call) before
+      // refetching the catalog. If we invalidate immediately the user
+      // sees the OLD totals; a short delay matches the perceived
+      // "discovery is running" feel.
+      window.setTimeout(() => {
+        qc.invalidateQueries({ queryKey: secretsKey.all });
+      }, 5000);
+    },
   });
 }
