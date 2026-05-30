@@ -4,6 +4,9 @@ dist-ssr
 *.local
 .DS_Store
 
+# TypeScript incremental build state
+*.tsbuildinfo
+
 # editor cruft
 .vscode
 .idea
