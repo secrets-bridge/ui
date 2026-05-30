@@ -25,9 +25,10 @@
  * value-bearing field by the api's service layer — safe to render.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { ApiError } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
 import {
   type AuditEvent,
   type AuditFilter,
@@ -39,8 +40,27 @@ import { PageHeader } from '../ui/PageHeader';
 import { StatusPill } from '../ui/StatusPill';
 
 export function Audit() {
-  const [filter, setFilter] = useState<AuditFilter>({ limit: 200 });
-  const [draft, setDraft] = useState<AuditFilter>(filter);
+  const { identity, hasPermission } = useAuth();
+  const myActor = identity ? `user:${identity.id}` : '';
+  // "Privileged" callers can see every event in the audit log:
+  // admins (team.edit / role.edit / user_role.edit) and auditors who
+  // hold audit.read at a global scope. For everyone else we default
+  // the actor filter to their own user: prefix so they only see what
+  // THEY did, and we disable the Actor input so they can't widen it.
+  const isPrivileged = useMemo(
+    () =>
+      hasPermission('role.edit') ||
+      hasPermission('user_role.edit') ||
+      hasPermission('team.edit'),
+    [hasPermission],
+  );
+
+  const initial: AuditFilter = useMemo(
+    () => (isPrivileged ? { limit: 200 } : { limit: 200, actor: myActor }),
+    [isPrivileged, myActor],
+  );
+  const [filter, setFilter] = useState<AuditFilter>(initial);
+  const [draft, setDraft] = useState<AuditFilter>(initial);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const list = useAuditEvents(filter);
@@ -61,7 +81,12 @@ export function Audit() {
   };
 
   const clear = () => {
-    const fresh: AuditFilter = { limit: 200 };
+    // Non-privileged users CAN'T widen the actor — clearing preserves
+    // the "user:<me>" lock so a developer never sees other users'
+    // events via this page.
+    const fresh: AuditFilter = isPrivileged
+      ? { limit: 200 }
+      : { limit: 200, actor: myActor };
     setFilter(fresh);
     setDraft(fresh);
     setSelectedId(null);
@@ -87,7 +112,11 @@ export function Audit() {
     <div>
       <PageHeader
         title="Audit log"
-        description="Immutable record of who did what to which resource. Append-only at the schema layer (NFR-07)."
+        description={
+          isPrivileged
+            ? 'Immutable record of who did what to which resource. Append-only at the schema layer (NFR-07).'
+            : 'Your audit events — every action you took or that happened to you. Append-only at the schema layer (NFR-07).'
+        }
         actions={
           hasFilter ? (
             <Button variant="secondary" onClick={clear}>
@@ -105,6 +134,8 @@ export function Audit() {
             value={draft.actor ?? ''}
             onChange={(v) => setDraft({ ...draft, actor: v })}
             placeholder="user:alice / admin / agent:<id>"
+            disabled={!isPrivileged}
+            disabledHint="Locked to your own events. Ask an admin if you need to investigate someone else's actions."
           />
           <FilterField
             label="Action"
@@ -356,12 +387,16 @@ function FilterField({
   onChange,
   placeholder,
   mono,
+  disabled,
+  disabledHint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   mono?: boolean;
+  disabled?: boolean;
+  disabledHint?: string;
 }) {
   return (
     <div className="space-y-1">
@@ -373,13 +408,19 @@ function FilterField({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        disabled={disabled}
+        title={disabled ? disabledHint : undefined}
         className={
           'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 ' +
-          (mono ? 'font-mono' : '')
+          (mono ? 'font-mono ' : '') +
+          (disabled ? 'opacity-60 cursor-not-allowed' : '')
         }
         autoComplete="off"
         spellCheck={false}
       />
+      {disabled && disabledHint && (
+        <div className="text-[11px] text-muted/80 italic">{disabledHint}</div>
+      )}
     </div>
   );
 }

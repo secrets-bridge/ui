@@ -48,11 +48,15 @@ type TypeFilter = 'all' | AccessRequest['type'];
 
 export function Requests() {
   const navigate = useNavigate();
-  const { identity } = useAuth();
+  const { identity, hasPermission } = useAuth();
   const me = identity?.id ?? '';
+  // Approver queue is only meaningful when the caller actually holds
+  // secret.approve. For everyone else it's noise — hide the section so
+  // a scoped developer's Requests page is just My-requests.
+  const canApprove = hasPermission('secret.approve');
 
   const myRequests = useRequests({ requester_id: me });
-  const allPending = useRequests({ status: 'pending' });
+  const allPending = useRequests({ status: 'pending' }, { enabled: canApprove });
 
   const [status, setStatus] = useState<StatusFilter>('all');
   const [type, setType] = useState<TypeFilter>('all');
@@ -149,34 +153,38 @@ export function Requests() {
         )}
       </Card>
 
-      <div className="flex items-center gap-2 mb-3">
-        <h2 className="text-text text-base font-semibold">Approver queue</h2>
-        <StatusPill variant="accent" tone="outline">
-          secret.approve
-        </StatusPill>
-      </div>
-      <p className="text-muted text-xs mb-4">
-        Oldest first (FIFO). Reject requires a reason. Self-approval is
-        blocked unless the workflow allows it.
-      </p>
+      {canApprove && (
+        <>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-text text-base font-semibold">Approver queue</h2>
+            <StatusPill variant="accent" tone="outline">
+              secret.approve
+            </StatusPill>
+          </div>
+          <p className="text-muted text-xs mb-4">
+            Oldest first (FIFO). Reject requires a reason. Self-approval is
+            blocked unless the workflow allows it.
+          </p>
 
-      {allPending.isError && (
-        <ErrorBanner title="Failed to load approver queue" err={allPending.error} />
-      )}
-      {allPending.isLoading && (
-        <div className="text-muted text-sm">Loading queue…</div>
-      )}
-      {allPending.data && queue.length === 0 && (
-        <Card className="p-10 text-center text-muted text-sm">
-          The queue is empty. No requests are awaiting your decision.
-        </Card>
-      )}
+          {allPending.isError && (
+            <ErrorBanner title="Failed to load approver queue" err={allPending.error} />
+          )}
+          {allPending.isLoading && (
+            <div className="text-muted text-sm">Loading queue…</div>
+          )}
+          {allPending.data && queue.length === 0 && (
+            <Card className="p-10 text-center text-muted text-sm">
+              The queue is empty. No requests are awaiting your decision.
+            </Card>
+          )}
 
-      <div className="space-y-4">
-        {queue.map((r) => (
-          <ApproverQueueCard key={r.id} row={r} />
-        ))}
-      </div>
+          <div className="space-y-4">
+            {queue.map((r) => (
+              <ApproverQueueCard key={r.id} row={r} />
+            ))}
+          </div>
+        </>
+      )}
 
       {submitting && (
         <SubmitRequestDrawer

@@ -46,7 +46,7 @@ export interface ListFilter {
   status?: AccessRequest['status'];
 }
 
-export function useRequests(filter: ListFilter = {}) {
+export function useRequests(filter: ListFilter = {}, opts?: { enabled?: boolean }) {
   const qs = new URLSearchParams();
   if (filter.requester_id) qs.set('requester_id', filter.requester_id);
   if (filter.status) qs.set('status', filter.status);
@@ -54,6 +54,7 @@ export function useRequests(filter: ListFilter = {}) {
   return useQuery({
     queryKey: requestsKey.list(filter),
     queryFn: () => api.get<AccessRequest[]>(`/api/v1/requests${suffix}`),
+    enabled: opts?.enabled ?? true,
   });
 }
 
