@@ -25,12 +25,13 @@
  *     to keep the form readable; advanced operators can still curl.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm, useFieldArray, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import { ApiError } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
 import {
   useSubmitPatchRequest,
   useSubmitReadRequest,
@@ -40,7 +41,7 @@ import {
   useMyProjects,
   useProjectSecrets,
 } from '../api/tenancy';
-import type { PatchRequestInput, ReadRequestInput } from '../api/types';
+import type { PatchRequestInput, ProjectSecretBinding, ReadRequestInput } from '../api/types';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
 import { StatusPill } from '../ui/StatusPill';
@@ -104,6 +105,17 @@ export function SubmitRequestDrawer({
   const envs = useEnvironments();
   const submitRead = useSubmitReadRequest();
   const submitPatch = useSubmitPatchRequest();
+  const { hasPermission } = useAuth();
+
+  // Mode toggle. Default 'bound': the form drives provider type +
+  // secret_ref from the caller's project_secrets bindings. 'free-form'
+  // is the admin escape hatch for the onboarding case (no bindings
+  // exist yet) or when the caller holds the perm globally. Admins
+  // (team.edit holders) start on free-form by default since they're
+  // usually the ones creating the first request against a new ref.
+  const [mode, setMode] = useState<'bound' | 'free-form'>(
+    hasPermission('team.edit') ? 'free-form' : 'bound',
+  );
 
   const {
     register,
@@ -111,6 +123,7 @@ export function SubmitRequestDrawer({
     control,
     watch,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<FormShape>({
     resolver: zodResolver(schema),
@@ -141,6 +154,54 @@ export function SubmitRequestDrawer({
       b.secret?.secret_ref === targetRef.trim() &&
       b.secret?.provider_type === providerType,
   );
+
+  // Bound-mode state: which binding the user picked from the dropdown.
+  // Identified by secret_id within the project. When the user picks
+  // one, we setValue() into the existing form fields so the rest of
+  // the form (provider config + keys + submit body) keeps working
+  // unchanged — bound mode is a UX overlay, not a parallel form path.
+  const [boundSecretId, setBoundSecretId] = useState<string>('');
+  const boundBinding: ProjectSecretBinding | undefined = useMemo(
+    () => bindings.data?.find((b) => b.secret_id === boundSecretId),
+    [bindings.data, boundSecretId],
+  );
+
+  // Apply the bound selection to the form fields. provider config is
+  // tricky because the api stores it on the secret row (cluster_name,
+  // labels) but not as a renderable config string; we don't try to
+  // reconstruct it here. The agent's resolver chain picks up the right
+  // config from chart values, so leaving provider_config_value empty is
+  // safe — the bound flow doesn't need it on the wire.
+  useEffect(() => {
+    if (mode !== 'bound' || !boundBinding?.secret) return;
+    setValue('target_provider_type', boundBinding.secret.provider_type);
+    setValue('target_secret_ref', boundBinding.secret.secret_ref);
+  }, [mode, boundBinding, setValue]);
+
+  // Clear bound selection when project changes (the new project may
+  // not have the same secret bound) or when the user flips to
+  // free-form (so it doesn't silently re-apply on flip-back).
+  useEffect(() => {
+    setBoundSecretId('');
+  }, [projectId, mode]);
+
+  // When in bound mode, force the flow type to the first allowed op
+  // on the picked binding so the form can't submit an op the api will
+  // refuse at the gate. Falls back to 'read' when no binding picked.
+  useEffect(() => {
+    if (mode !== 'bound' || !boundBinding) return;
+    const ops = boundBinding.allowed_ops ?? [];
+    if (ops.length === 0) return;
+    if (!ops.includes(flowType)) {
+      // 'read' or 'patch' — pick whichever is in the binding.
+      const next = (ops.includes('read') ? 'read' : 'patch') as FlowType;
+      setValue('type', next);
+    }
+    // intentionally watching flowType so a user-driven flip away from
+    // the allowed set immediately gets corrected; not adding the form
+    // value as a setter dependency loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, boundBinding, flowType]);
 
   const { fields, append, remove } = useFieldArray({
     control,
@@ -291,79 +352,125 @@ export function SubmitRequestDrawer({
           </p>
         </div>
 
-        {/* Target */}
-        <Section title="Target">
-          <Field label="Provider type" error={errors.target_provider_type?.message}>
-            <select
-              {...register('target_provider_type')}
-              className={inputCls}
-            >
-              {PROVIDER_TYPES.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field
-            label="Provider config"
-            hint={PROVIDER_CONFIG_HINT[providerType] ?? 'optional knob'}
-            error={errors.provider_config_value?.message}
-          >
-            <input
-              type="text"
-              {...register('provider_config_value')}
-              className={inputCls + ' font-mono'}
-              placeholder={providerType === 'vault' ? 'secret' : ''}
-              autoComplete="off"
-              spellCheck={false}
+        {/* Target — bound vs free-form switcher */}
+        <Section
+          title="Target"
+          aside={
+            <div className="flex gap-1">
+              <ModeChip
+                on={mode === 'bound'}
+                onClick={() => setMode('bound')}
+                label="From my bindings"
+              />
+              <ModeChip
+                on={mode === 'free-form'}
+                onClick={() => setMode('free-form')}
+                label="Free-form"
+              />
+            </div>
+          }
+        >
+          {mode === 'bound' ? (
+            <BoundTargetFields
+              projects={projects.data ?? []}
+              bindings={bindings.data ?? []}
+              projectId={projectId ?? ''}
+              registerProject={register('project_id')}
+              boundSecretId={boundSecretId}
+              onBoundSecretIdChange={setBoundSecretId}
             />
-          </Field>
-
-          <Field
-            label="Secret reference"
-            error={errors.target_secret_ref?.message}
-            hint="The path or name the provider uses (no leading slash). E.g. `prod/db/password` for Vault or `prod/payments/stripe` for AWS SM."
-          >
-            <input
-              type="text"
-              {...register('target_secret_ref')}
-              className={inputCls + ' font-mono'}
-              placeholder="prod/db/password"
-              autoComplete="off"
-              spellCheck={false}
-            />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Project (optional)">
-              <select {...register('project_id')} className={inputCls}>
-                <option value="">(any)</option>
-                {projects.data
-                  ?.filter((p) => p.status === 'active')
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
+          ) : (
+            <>
+              <Field label="Provider type" error={errors.target_provider_type?.message}>
+                <select {...register('target_provider_type')} className={inputCls}>
+                  {PROVIDER_TYPES.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
                     </option>
                   ))}
-              </select>
-            </Field>
-            <Field label="Environment (optional)">
-              <input
-                list="submit-env-options"
-                {...register('environment')}
-                className={inputCls}
-                placeholder="uat"
-                autoComplete="off"
-              />
-              <datalist id="submit-env-options">
-                {envNames.map((n) => (
-                  <option key={n} value={n} />
+                </select>
+              </Field>
+
+              <Field
+                label="Provider config"
+                hint={PROVIDER_CONFIG_HINT[providerType] ?? 'optional knob'}
+                error={errors.provider_config_value?.message}
+              >
+                <input
+                  type="text"
+                  {...register('provider_config_value')}
+                  className={inputCls + ' font-mono'}
+                  placeholder={providerType === 'vault' ? 'secret' : ''}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </Field>
+
+              <Field
+                label="Secret reference"
+                error={errors.target_secret_ref?.message}
+                hint="The path or name the provider uses (no leading slash). E.g. `prod/db/password` for Vault or `prod/payments/stripe` for AWS SM."
+              >
+                <input
+                  type="text"
+                  {...register('target_secret_ref')}
+                  className={inputCls + ' font-mono'}
+                  placeholder="prod/db/password"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Project (optional)">
+                  <select {...register('project_id')} className={inputCls}>
+                    <option value="">(any)</option>
+                    {projects.data
+                      ?.filter((p) => p.status === 'active')
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label="Environment (optional)">
+                  <input
+                    list="submit-env-options"
+                    {...register('environment')}
+                    className={inputCls}
+                    placeholder="uat"
+                    autoComplete="off"
+                  />
+                  <datalist id="submit-env-options">
+                    {envNames.map((n) => (
+                      <option key={n} value={n} />
+                    ))}
+                  </datalist>
+                </Field>
+              </div>
+            </>
+          )}
+
+          {/* Pinned details under either mode */}
+          {mode === 'bound' && boundBinding?.secret && (
+            <div className="bg-bg/40 border border-border/60 rounded-lg p-3 space-y-1 text-[11px]">
+              <div className="text-muted">
+                Provider: <span className="text-accent font-mono">{boundBinding.secret.provider_type}</span>
+                {' · '}
+                Cluster: <span className="text-accent font-mono">{boundBinding.secret.cluster_name}</span>
+              </div>
+              <div className="text-muted">
+                Ref: <span className="text-text font-mono break-all">{boundBinding.secret.secret_ref}</span>
+              </div>
+              <div className="text-muted">
+                Allowed ops:{' '}
+                {(boundBinding.allowed_ops ?? []).map((op) => (
+                  <span key={op} className="font-mono text-accent mr-2">{op}</span>
                 ))}
-              </datalist>
-            </Field>
-          </div>
+              </div>
+            </div>
+          )}
         </Section>
 
         {/* Keys */}
@@ -579,6 +686,85 @@ function Field({
       )}
       {error && <div className="text-xs text-red-300">{error}</div>}
     </div>
+  );
+}
+
+function ModeChip({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'px-2.5 py-1 text-[11px] rounded-full transition-colors ' +
+        (on
+          ? 'bg-accent/15 text-accent border border-accent/40'
+          : 'bg-bg/40 text-muted border border-border hover:text-text')
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
+function BoundTargetFields({
+  projects,
+  bindings,
+  projectId,
+  registerProject,
+  boundSecretId,
+  onBoundSecretIdChange,
+}: {
+  projects: { id: string; name: string; status: 'active' | 'archived' }[];
+  bindings: ProjectSecretBinding[];
+  projectId: string;
+  registerProject: ReturnType<ReturnType<typeof useForm<FormShape>>['register']>;
+  boundSecretId: string;
+  onBoundSecretIdChange: (id: string) => void;
+}) {
+  return (
+    <>
+      <Field
+        label="Project"
+        hint="Limited to the projects your role scope covers. If you don't see one you should have, ask an admin to grant it on /admin/assignments."
+      >
+        <select {...registerProject} className={inputCls}>
+          <option value="">— pick a project —</option>
+          {projects
+            .filter((p) => p.status === 'active')
+            .map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+        </select>
+      </Field>
+
+      {projectId && (
+        <Field
+          label="Bound secret"
+          hint={
+            bindings.length === 0
+              ? 'This project has no secret bindings yet. Switch to free-form mode (an admin can bind one via /admin/projects → Secrets tab).'
+              : 'Picking a binding auto-fills provider type + ref. Flow type below is gated to the binding’s allowed ops.'
+          }
+        >
+          <select
+            value={boundSecretId}
+            onChange={(e) => onBoundSecretIdChange(e.target.value)}
+            className={inputCls + ' font-mono'}
+            disabled={bindings.length === 0}
+          >
+            <option value="">— pick a bound secret —</option>
+            {bindings.map((b) => (
+              <option key={b.secret_id} value={b.secret_id}>
+                {b.secret?.secret_ref ?? b.secret_id}
+                {b.secret?.provider_type ? ` (${b.secret.provider_type})` : ''}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+    </>
   );
 }
 
