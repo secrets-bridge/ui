@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import { VersionChip } from '../ui/VersionChip';
 import { LogoMark } from '../ui/LogoMark';
 
@@ -30,12 +31,19 @@ import { LogoMark } from '../ui/LogoMark';
 export function Shell() {
   const { identity, hasPermission, logout, meStatus } = useAuth();
   const navigate = useNavigate();
+  const [signOutOpen, setSignOutOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  // Gate the Sign Out click so rapid double/triple-clicks don't fire
-  // duplicate /auth/logout POSTs. The api endpoint is idempotent so
-  // duplicates are safe, but they show up as noise in the audit log.
-  const handleSignOut = async () => {
+  // Sign Out is a one-click destructive action in the sidebar — easy
+  // to hit while exploring the user/profile area. A confirmation
+  // modal turns it into an explicit, two-step intent. Matches the
+  // pattern used by AWS Console / GitHub / Stripe Dashboard.
+  //
+  // The button itself only opens the modal; the actual /auth/logout
+  // POST fires from the modal's Confirm CTA. `signingOut` gates the
+  // CTA so double-clicks inside the modal can't fire duplicates,
+  // and the existing api-level idempotency is still the backstop.
+  const confirmSignOut = async () => {
     if (signingOut) return;
     setSigningOut(true);
     try {
@@ -47,6 +55,7 @@ export function Shell() {
       // net for the rare case where logout rejects without changing
       // state.
       setSigningOut(false);
+      setSignOutOpen(false);
     }
   };
 
@@ -146,7 +155,7 @@ export function Shell() {
             </button>
             <button
               type="button"
-              onClick={handleSignOut}
+              onClick={() => setSignOutOpen(true)}
               disabled={signingOut}
               aria-busy={signingOut}
               className="w-full text-[11px] text-muted hover:text-text px-2 py-1.5 rounded-lg hover:bg-bg/30 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
@@ -181,6 +190,20 @@ export function Shell() {
           <Outlet />
         </div>
       </main>
+
+      {signOutOpen && (
+        <ConfirmModal
+          title="Sign out of SecretsBridge?"
+          body="You'll need to sign in again to come back. Any in-flight work isn't lost — requests, audit events, and approvals all live server-side."
+          confirmText="Sign out"
+          danger
+          loading={signingOut}
+          onCancel={() => {
+            if (!signingOut) setSignOutOpen(false);
+          }}
+          onConfirm={confirmSignOut}
+        />
+      )}
     </div>
   );
 }
