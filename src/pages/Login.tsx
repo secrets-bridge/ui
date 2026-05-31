@@ -19,7 +19,7 @@
  *     settles (success OR failure).
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -52,7 +52,7 @@ type FormShape = z.infer<typeof schema>;
 export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { refresh } = useAuth();
+  const { identity, meStatus, refresh } = useAuth();
   const login = useLogin();
   const oidc = useOidcAvailable();
 
@@ -62,6 +62,21 @@ export function Login() {
   // round-trip via the `return_to` query param on /auth/oidc/start.
   const returnTo =
     (location.state as { from?: { pathname?: string } })?.from?.pathname || '/';
+
+  // Bounce away from /login as soon as identity hydrates. Covers
+  // two cases:
+  //   1. User completed OIDC callback → api set the cookie → browser
+  //      landed back on /login somehow (browser-back or operator
+  //      manually typed /login while signed in) → identity flips to
+  //      ready → we redirect to dashboard.
+  //   2. User had a live session in another tab and opened /login;
+  //      same flip, same redirect.
+  // Gated on meStatus===ready so we never preempt the loading phase.
+  useEffect(() => {
+    if (meStatus === 'ready' && identity) {
+      navigate(returnTo, { replace: true });
+    }
+  }, [meStatus, identity, navigate, returnTo]);
 
   const {
     register,
