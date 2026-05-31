@@ -61,6 +61,14 @@ export function ConfirmModal({
             <div className="text-red-200/90 text-xs">{error.message}</div>
           </div>
         )}
+        {error != null && !(error instanceof ApiError) && (
+          <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
+            <div className="text-red-300 font-semibold mb-0.5">Network error</div>
+            <div className="text-red-200/90 text-xs">
+              {error instanceof Error ? error.message : String(error)}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between pt-2 border-t border-border/60">
           <Button variant="secondary" size="md" onClick={onCancel}>
@@ -86,5 +94,8 @@ function statusLabel(s: number): string {
   if (s === 404) return 'Not found';
   if (s === 400) return 'Bad request';
   if (s === 500) return 'Server error';
+  if (s === 502) return 'Bad gateway';
+  if (s === 503) return 'Service unavailable';
+  if (s === 504) return 'Gateway timeout';
   return 'Error';
 }

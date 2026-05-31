@@ -33,6 +33,7 @@ export function Shell() {
   const navigate = useNavigate();
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<unknown>(null);
 
   // Sign Out is a one-click destructive action in the sidebar — easy
   // to hit while exploring the user/profile area. A confirmation
@@ -46,23 +47,33 @@ export function Shell() {
   const confirmSignOut = async () => {
     if (signingOut) return;
     setSigningOut(true);
+    setSignOutError(null);
     try {
       await logout();
-      // Explicit navigate so the user lands on /login the moment the
-      // POST completes, instead of waiting for RequireAuth to bounce
-      // via the refetched /users/me. Defensive against any future
-      // retry / hydration tweak that would otherwise hold the user
-      // on a now-unauthenticated page.
-      navigate('/login', { replace: true });
-    } finally {
-      // logout removes the /users/me cache → next render shows
-      // meStatus='idle' and RequireAuth bounces to /login, unmounting
-      // this component before the timer fires. The reset is a safety
-      // net for the rare case where logout rejects without changing
-      // state.
-      setSigningOut(false);
+      // Success path — the api revoked the session and cleared the
+      // cookie. Navigate explicitly so the user lands on /login the
+      // moment the POST completes, instead of waiting for RequireAuth
+      // to bounce via the refetched /users/me.
       setSignOutOpen(false);
+      navigate('/login', { replace: true });
+    } catch (err) {
+      // Failure path — api returned 5xx (ALB restart blip, Postgres
+      // timeout, etc.) or the network call itself failed. The user is
+      // still authenticated server-side, so DON'T pretend logout
+      // worked: keep the modal open and surface the error via the
+      // existing ConfirmModal error banner. The user can retry; if
+      // they cancel, the cancel handler is gated on !signingOut so
+      // they can still bail out.
+      setSignOutError(err);
+    } finally {
+      setSigningOut(false);
     }
+  };
+
+  const cancelSignOut = () => {
+    if (signingOut) return;
+    setSignOutError(null);
+    setSignOutOpen(false);
   };
 
   // Sidebar entries gated by the live permission set. Each entry
@@ -200,13 +211,16 @@ export function Shell() {
       {signOutOpen && (
         <ConfirmModal
           title="Sign out of SecretsBridge?"
-          body="You'll need to sign in again to come back. Any in-flight work isn't lost — requests, audit events, and approvals all live server-side."
-          confirmText="Sign out"
+          body={
+            signOutError
+              ? "Sign out didn't go through — your session is still active. The api returned an error; you can retry, or cancel to stay signed in."
+              : "You'll need to sign in again to come back. Any in-flight work isn't lost — requests, audit events, and approvals all live server-side."
+          }
+          confirmText={signOutError ? 'Retry sign out' : 'Sign out'}
           danger
           loading={signingOut}
-          onCancel={() => {
-            if (!signingOut) setSignOutOpen(false);
-          }}
+          error={signOutError}
+          onCancel={cancelSignOut}
           onConfirm={confirmSignOut}
         />
       )}
