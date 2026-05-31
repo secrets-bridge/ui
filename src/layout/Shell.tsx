@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
@@ -29,6 +30,25 @@ import { LogoMark } from '../ui/LogoMark';
 export function Shell() {
   const { identity, hasPermission, logout, meStatus } = useAuth();
   const navigate = useNavigate();
+  const [signingOut, setSigningOut] = useState(false);
+
+  // Gate the Sign Out click so rapid double/triple-clicks don't fire
+  // duplicate /auth/logout POSTs. The api endpoint is idempotent so
+  // duplicates are safe, but they show up as noise in the audit log.
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await logout();
+    } finally {
+      // logout removes the /users/me cache → next render shows
+      // meStatus='idle' and RequireAuth bounces to /login, unmounting
+      // this component before the timer fires. The reset is a safety
+      // net for the rare case where logout rejects without changing
+      // state.
+      setSigningOut(false);
+    }
+  };
 
   // Sidebar entries gated by the live permission set. Each entry
   // can declare one or more required permissions; the item renders
@@ -125,11 +145,14 @@ export function Shell() {
               </div>
             </button>
             <button
-              onClick={logout}
-              className="w-full text-[11px] text-muted hover:text-text px-2 py-1.5 rounded-lg hover:bg-bg/30 transition-colors text-left"
+              type="button"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              aria-busy={signingOut}
+              className="w-full text-[11px] text-muted hover:text-text px-2 py-1.5 rounded-lg hover:bg-bg/30 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               title="Sign out"
             >
-              Sign out
+              {signingOut ? 'Signing out…' : 'Sign out'}
             </button>
             <div className="flex justify-center pt-1">
               <VersionChip />
