@@ -1,6 +1,20 @@
 /**
  * API client for the secrets-bridge Control Plane.
  *
+ * Auth model (Slice C, ui#TBD): the api sets an HttpOnly Secure
+ * SameSite=Strict cookie on successful login (POST /auth/login) or
+ * OIDC callback (GET /auth/oidc/callback). Every subsequent request
+ * carries that cookie automatically; the SPA never sees the token
+ * value. `credentials: 'include'` is required so the cookie crosses
+ * the boundary when api + ui are on different origins (e.g. local
+ * dev with Vite on :5173 and api on :8080). On same-origin
+ * deployments this is a no-op.
+ *
+ * Legacy `Authorization: Bearer` + `X-User-Id` paths were removed in
+ * Slice C; the api still accepts them for the rest of the
+ * transition (back-compat shim in middleware.AuthWith) but the SPA
+ * no longer sends either.
+ *
  * Base URL strategy: relative URLs by default (`/api/v1/...`) so the
  * SPA works on same-origin deployments without any config. Operators
  * who run the UI on a different origin from the API set
@@ -27,28 +41,22 @@ if (buildTimeBase) {
   }
 }
 
+/**
+ * Slice C: the auth-token / identity providers are no-ops kept ONLY
+ * for back-compat with consumers that still call them during the
+ * transition. They MUST be removed once every caller has been
+ * audited. The cookie set by the api is the real auth surface; no
+ * provider runs in this file.
+ */
 export type AuthTokenProvider = () => string | null;
 export type IdentityProvider = () => string | null;
 
-let currentToken: AuthTokenProvider = () => null;
-let currentIdentity: IdentityProvider = () => null;
-
-/**
- * Wire the auth token source. Called by AuthContext on login / logout.
- * Token MUST live in memory only — NEVER persisted to localStorage.
- */
-export function setAuthTokenProvider(p: AuthTokenProvider) {
-  currentToken = p;
+export function setAuthTokenProvider(_p: AuthTokenProvider): void {
+  // no-op — Bearer token path removed in Slice C
 }
 
-/**
- * Wire the identity source. Today the api gates admin write endpoints
- * by reading `X-User-Id` (stub identity, NOT a security boundary —
- * swaps to OIDC `sub` claim when api#26 lands). The client injects it
- * automatically when an identity is signed in.
- */
-export function setIdentityProvider(p: IdentityProvider) {
-  currentIdentity = p;
+export function setIdentityProvider(_p: IdentityProvider): void {
+  // no-op — X-User-Id header removed in Slice C
 }
 
 export class ApiError extends Error {
@@ -78,16 +86,17 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     ...opts.headers,
   };
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
-  const token = currentToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const userId = currentIdentity();
-  if (userId && !headers['X-User-Id']) headers['X-User-Id'] = userId;
 
   const resp = await fetch(url, {
     method: opts.method ?? 'GET',
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-    credentials: 'same-origin',
+    // Slice C: cookie carries auth. 'include' so the cookie crosses
+    // origins on cross-origin dev (Vite on :5173 + api on :8080) and
+    // is a safe no-op on same-origin prod where the cookie is sent
+    // anyway. Required to be paired with the api's CORS config in
+    // cross-origin deployments.
+    credentials: 'include',
     signal: opts.signal,
   });
 
