@@ -1,23 +1,22 @@
 /**
- * Login page (`/login`) — real email + password against
- * POST /api/v1/auth/login. Replaces the LoginStub.
+ * Login page (`/login`).
  *
- * Hard rules (BRD §15):
- *   - The returned JWT MUST NEVER live in localStorage. localStorage
- *     persists to disk across browser restarts and is read by every
- *     script on the origin including extensions — exactly what a
- *     long-lived bearer token should not touch.
- *   - sessionStorage IS the stopgap until api P0-1 (HttpOnly refresh
- *     cookie) lands. Survives page reload + same-tab nav; cleared on
- *     tab close. Documented in AuthContext.
- *   - The password field uses `type="password"` (no DOM plaintext echo)
- *     + `autoComplete="current-password"` so the browser can autofill
- *     from its credential store but never the values from this session.
- *   - Local form state is cleared as soon as the submit promise
+ * Slice C: cookie-only auth. The api sets an HttpOnly cookie on
+ * successful login and the SPA never sees the token value. After a
+ * successful submit we call `auth.refresh()` (re-fetches /users/me)
+ * and navigate away.
+ *
+ * SSO button: when the api advertises an OIDC issuer (probe at
+ * `useOidcAvailable`), a primary "Sign in with SSO" button appears
+ * above the local form. Clicking it redirects to
+ * `/api/v1/auth/oidc/start?return_to=<current url>`. After IdP +
+ * callback land, the same cookie is set and the SPA boots normally.
+ *
+ * Hard rules retained from earlier slices:
+ *   - The password field uses `type="password"` + autoComplete so
+ *     the browser can autofill but the SPA never logs it.
+ *   - Local form state cleared as soon as the submit promise
  *     settles (success OR failure).
- *
- * The page lays out via the brand pattern: centered Card, LogoMark +
- * wordmark, tagline, brand-gradient submit button, ApiError surface.
  */
 
 import { useState } from 'react';
@@ -28,6 +27,7 @@ import { z } from 'zod';
 
 import { ApiError } from '../api/client';
 import { useLogin } from '../api/auth';
+import { useOidcAvailable } from '../api/oidc';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../ui/Button';
 import { LogoMark } from '../ui/LogoMark';
@@ -52,10 +52,16 @@ type FormShape = z.infer<typeof schema>;
 export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login: setIdentity } = useAuth();
+  const { refresh } = useAuth();
   const login = useLogin();
+  const oidc = useOidcAvailable();
 
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // Where to send the user after sign-in. Preserved across the OIDC
+  // round-trip via the `return_to` query param on /auth/oidc/start.
+  const returnTo =
+    (location.state as { from?: { pathname?: string } })?.from?.pathname || '/';
 
   const {
     register,
@@ -70,32 +76,18 @@ export function Login() {
   const onValid: SubmitHandler<FormShape> = async (data) => {
     setServerError(null);
     try {
-      const r = await login.mutateAsync(data);
-      // Token in memory ONLY. AuthContext.login is the chokepoint —
-      // it wires the api client's identity provider so subsequent
-      // requests carry the Bearer header.
-      setIdentity(
-        {
-          id: r.user.id,
-          email: r.user.email,
-          display_name: r.user.display_name || r.user.email,
-          // Empty until AuthProvider's /users/me hydration lands.
-          // Until then, every permission-gated nav item / button
-          // stays hidden — fail-closed by design.
-          permissions: [],
-        },
-        r.token,
-      );
+      await login.mutateAsync(data);
+      // The api set the HttpOnly session cookie on its 200 response.
+      // The SPA never sees the token value. Refresh /users/me so
+      // AuthContext flips to `meStatus === 'ready'`, then navigate.
+      refresh();
 
       // Best-effort: drop the typed password from form state
       // immediately. React Hook Form's reset clears its internal
       // store; the input nodes re-render with empty values.
       reset({ email: '', password: '' });
 
-      const to =
-        (location.state as { from?: { pathname?: string } })?.from?.pathname ||
-        '/';
-      navigate(to, { replace: true });
+      navigate(returnTo, { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         // The api always returns generic "invalid credentials" on
@@ -135,9 +127,27 @@ export function Login() {
           <div>
             <h1 className="text-text text-lg font-semibold">Sign in</h1>
             <p className="text-muted text-xs mt-1">
-              Local-admin login. OIDC will land with api#26.
+              {oidc.enabled
+                ? 'Use single sign-on or the local-admin form below.'
+                : 'Local-admin login.'}
             </p>
           </div>
+
+          {oidc.enabled && (
+            <>
+              <a
+                href={`/api/v1/auth/oidc/start?return_to=${encodeURIComponent(returnTo)}`}
+                className="block w-full text-center bg-accent hover:bg-accent/90 text-bg font-semibold text-sm rounded-lg px-4 py-2.5"
+              >
+                Sign in with SSO
+              </a>
+              <div className="flex items-center gap-3 text-[10px] text-muted/80 uppercase tracking-wider">
+                <div className="flex-1 h-px bg-border" />
+                <span>or local admin</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+            </>
+          )}
 
           <div className="space-y-1">
             <label className="block text-xs text-muted font-medium uppercase tracking-wider">
@@ -194,8 +204,8 @@ export function Login() {
           </Button>
 
           <p className="text-[11px] text-muted/80 text-center pt-3 border-t border-border/60">
-            Token lives in memory + sessionStorage (cleared on tab close).
-            Never localStorage.
+            Sessions are server-side. The cookie is HttpOnly + SameSite=Strict.
+            No token ever lives in JS storage.
           </p>
         </form>
       </div>
