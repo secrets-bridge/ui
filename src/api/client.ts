@@ -62,11 +62,35 @@ export function setIdentityProvider(_p: IdentityProvider): void {
 export class ApiError extends Error {
   status: number;
   body?: unknown;
-  constructor(status: number, message: string, body?: unknown) {
+  // Slice D — set when the api returned 401 with
+  // `WWW-Authenticate: step-up ...`. Callers detect this to redirect
+  // through /auth/oidc/start?step_up=mfa instead of dropping the
+  // user to the login page.
+  stepUp: boolean;
+  constructor(status: number, message: string, body?: unknown, stepUp = false) {
     super(message);
     this.status = status;
     this.body = body;
+    this.stepUp = stepUp;
   }
+}
+
+/**
+ * Redirect the browser to the api's OIDC step-up flow. Used by
+ * handlers that catch a step-up ApiError; the IdP re-prompts for
+ * MFA and the callback stamps `last_mfa_at` on the same session
+ * row (no new cookie). After the IdP round trip the SPA lands back
+ * on `returnTo` and the caller can retry.
+ *
+ * Same-origin builds: a relative URL is fine. Cross-origin builds
+ * (api on a different host than the SPA) use the VITE_API_BASE_URL.
+ */
+export function redirectToStepUp(returnTo?: string): void {
+  const target =
+    returnTo ?? window.location.pathname + window.location.search + window.location.hash;
+  const params = new URLSearchParams({ step_up: 'mfa', return_to: target });
+  const base = buildTimeBase ? buildTimeBase.replace(/\/$/, '') : '';
+  window.location.href = `${base}/api/v1/auth/oidc/start?${params.toString()}`;
 }
 
 interface RequestOptions {
@@ -119,7 +143,13 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
       if (typeof obj.message === 'string') message = obj.message;
       else if (typeof obj.error === 'string') message = obj.error;
     }
-    throw new ApiError(resp.status, message, parsed);
+    // Slice D — detect the api's step-up challenge so the calling
+    // mutation can redirect through /auth/oidc/start?step_up=mfa
+    // rather than showing the user a generic "unauthorized" toast.
+    const stepUp =
+      resp.status === 401 &&
+      (resp.headers.get('WWW-Authenticate') ?? '').toLowerCase().includes('step-up');
+    throw new ApiError(resp.status, message, parsed, stepUp);
   }
   return parsed as T;
 }
