@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
+import { VersionChip } from '../ui/VersionChip';
 import { LogoMark } from '../ui/LogoMark';
 
 /**
@@ -130,6 +131,9 @@ export function Shell() {
             >
               Sign out
             </button>
+            <div className="flex justify-center pt-1">
+              <VersionChip />
+            </div>
           </div>
         )}
       </aside>
