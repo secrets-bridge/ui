@@ -31,6 +31,14 @@ COPY public ./public
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 
+# Version stamping for the in-SPA "v0.1.0 · abc1234" chip. CI passes
+# both via --build-arg so the production image carries the exact
+# build identity even though the docker context has no .git folder.
+ARG SB_BUILD_VERSION=""
+ARG SB_BUILD_GIT_SHA=""
+ENV SB_BUILD_VERSION=$SB_BUILD_VERSION
+ENV SB_BUILD_GIT_SHA=$SB_BUILD_GIT_SHA
+
 RUN npm run build
 
 # ─────────────────────────────────────────────────────────────────

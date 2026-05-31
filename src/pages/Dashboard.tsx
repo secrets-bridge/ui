@@ -39,6 +39,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { PageHeader } from '../ui/PageHeader';
+import { VersionChip } from '../ui/VersionChip';
 import { StatusPill } from '../ui/StatusPill';
 
 export function Dashboard() {
@@ -90,6 +91,7 @@ export function Dashboard() {
                 ? 'Your requests and where they stand.'
                 : 'Welcome.'
         }
+        actions={<VersionChip />}
       />
 
       {/* KPI row — tailored per role. Admins get the full quartet
