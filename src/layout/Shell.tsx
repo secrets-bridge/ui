@@ -48,6 +48,12 @@ export function Shell() {
     setSigningOut(true);
     try {
       await logout();
+      // Explicit navigate so the user lands on /login the moment the
+      // POST completes, instead of waiting for RequireAuth to bounce
+      // via the refetched /users/me. Defensive against any future
+      // retry / hydration tweak that would otherwise hold the user
+      // on a now-unauthenticated page.
+      navigate('/login', { replace: true });
     } finally {
       // logout removes the /users/me cache → next render shows
       // meStatus='idle' and RequireAuth bounces to /login, unmounting

@@ -29,7 +29,7 @@ import { createContext, useCallback, useContext, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { api } from '../api/client';
+import { api, ApiError } from '../api/client';
 import { meKey, useMe } from '../api/me';
 import type { MeResponse } from '../api/types';
 
@@ -83,12 +83,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     : null;
 
   // Map the query state to the auth state machine. A 401 surfaces as
-  // an unauthenticated session, not a generic error.
+  // an unauthenticated session ('idle'), not a generic error — the
+  // user just needs to sign in. Status is read from ApiError.status
+  // directly; the regex over error.message used to live here but the
+  // api returns {"error":"authentication required"} on 401 so the
+  // message-based check always failed and 401s mapped to 'error'.
   const meStatus: AuthState['meStatus'] = (() => {
     if (meQuery.isLoading || meQuery.isFetching) return 'loading';
     if (meQuery.isError) {
-      const msg = String((meQuery.error as Error | undefined)?.message ?? '');
-      if (/^401\b/.test(msg) || /unauthorized/i.test(msg)) return 'idle';
+      const err = meQuery.error;
+      if (err instanceof ApiError && err.status === 401) return 'idle';
       return 'error';
     }
     if (meQuery.data) return 'ready';

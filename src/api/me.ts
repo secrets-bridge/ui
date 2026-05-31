@@ -15,7 +15,7 @@
 
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
-import { api } from './client';
+import { api, ApiError } from './client';
 import type { MeResponse } from './types';
 
 export const meKey = {
@@ -33,9 +33,17 @@ export function useMe(opts?: { enabled?: boolean }): UseQueryResult<MeResponse, 
     enabled: opts?.enabled ?? true,
     staleTime: 60_000,
     retry: (failureCount, error) => {
-      // 401 / 404 / 422 are permanent for this token — don't retry.
-      const msg = String(error?.message ?? '');
-      if (/^4(0[14]|22)/.test(msg)) return false;
+      // 401 / 404 / 422 are permanent for this session — don't retry.
+      // Check ApiError.status directly; the message regex used to live
+      // here matched against "HTTP 401" but the api returns
+      // {"error":"authentication required"} on 401, so the regex never
+      // fired and the SPA spent ~3-7s spinning on retries after every
+      // logout before bouncing to /login.
+      if (error instanceof ApiError) {
+        if (error.status === 401 || error.status === 404 || error.status === 422) {
+          return false;
+        }
+      }
       return failureCount < 2;
     },
   });
