@@ -51,11 +51,28 @@ export function Shell() {
     try {
       await logout();
       // Success path — the api revoked the session and cleared the
-      // cookie. Navigate explicitly so the user lands on /login the
-      // moment the POST completes, instead of waiting for RequireAuth
-      // to bounce via the refetched /users/me.
+      // cookie. Use window.location.assign for a HARD navigation
+      // instead of react-router's navigate(): logout() synchronously
+      // calls queryClient.removeQueries which notifies the useMe
+      // observer, which schedules a re-render. In React 18's
+      // automatic batching, a navigate() call sandwiched between
+      // that observer notification and the next render can be eaten
+      // — UAT round 4 (2026-05-31) reproduced exactly that: modal
+      // closed, location.pathname stayed at /, identity gone
+      // (verified via /users/me 401), Dashboard kept rendering with
+      // stale chrome.
+      //
+      // window.location.assign side-steps the whole problem: it
+      // forces the browser to reload /login from scratch. All
+      // in-memory state (React tree, TanStack Query cache, any
+      // half-set Zustand store, whatever) is gone. The next boot is
+      // the canonical signed-out state.
+      //
+      // This is the right cost trade for logout specifically: the
+      // user is starting over anyway, so paying for one full SPA
+      // boot is fine. Don't apply this pattern to other navigations.
       setSignOutOpen(false);
-      navigate('/login', { replace: true });
+      window.location.assign('/login');
     } catch (err) {
       // Failure path — api returned 5xx (ALB restart blip, Postgres
       // timeout, etc.) or the network call itself failed. The user is
