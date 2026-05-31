@@ -105,15 +105,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   const logout = useCallback(async () => {
-    try {
-      await api.post('/api/v1/auth/logout');
-    } catch {
-      // Network failure shouldn't trap the user — clearing local
-      // identity is the user-visible effect either way.
-    }
+    // Let the api call throw on failure. Callers (Shell.confirmSignOut)
+    // surface the error so the user knows the session is still alive
+    // and gets a Retry option, instead of being silently stranded on a
+    // page that still has their data + cookie.
+    //
+    // We intentionally do NOT clear the /users/me cache on failure: if
+    // the api 5xx'd, the user is still authenticated server-side, and
+    // wiping the local identity would be a lie that makes the next nav
+    // 401-loop. Only on success do we remove the cache so RequireAuth
+    // bounces cleanly.
+    await api.post('/api/v1/auth/logout');
     queryClient.removeQueries({ queryKey: meKey.all });
-    // After remove, the next render shows meStatus === 'idle' so
-    // ProtectedRoute kicks the user back to /login.
   }, [queryClient]);
 
   const hasPermission = useCallback(
