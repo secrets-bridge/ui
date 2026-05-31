@@ -70,6 +70,20 @@ jobs:
             org.opencontainers.image.source=https://github.com/secrets-bridge/ui
             org.opencontainers.image.licenses=Apache-2.0
 
+      - name: Resolve build version
+        id: version
+        run: |
+          # Strip the leading `v` from semver tags so the in-SPA chip
+          # renders `v1.2.3` rather than `vv1.2.3`. Branch / dispatch
+          # builds fall back to the package.json version (typically
+          # `0.1.0-dev`).
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            v=$(node -p "require('./package.json').version")
+            echo "value=$v" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build + push
         uses: docker/build-push-action@v6
         with:
@@ -79,6 +93,15 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Build-args forwarded into the build stage so the SPA's
+          # vite.config bakes the real CI version + SHA into
+          # `import.meta.env.VITE_APP_VERSION` / `_GIT_SHA`. The
+          # Dockerfile (ui#41) drops them as ENVs that vite.config
+          # reads via process.env. Builds before ui#41 lands just
+          # ignore them silently.
+          build-args: |
+            SB_BUILD_VERSION=${{ steps.version.outputs.value }}
+            SB_BUILD_GIT_SHA=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
