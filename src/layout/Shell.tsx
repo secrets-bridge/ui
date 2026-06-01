@@ -333,7 +333,15 @@ function roleLabelFor(perms: string[]): string {
   if (perms.includes('role.edit') || perms.includes('user_role.edit')) return 'Platform admin';
   if (perms.includes('secret.approve')) return 'Approver';
   if (perms.includes('secret.request')) return 'Developer';
-  if (perms.length === 0) return 'Loading…';
+  // perms.length === 0 reaches here only for a fully-hydrated user
+  // who genuinely has zero grants (e.g. a JIT-provisioned OIDC user
+  // not yet in any mapped group). The avatar+name button is gated on
+  // `identity`, which is null during hydration — so we never render
+  // this label while /users/me is in flight. Showing 'Loading…' here
+  // was misleading: it implied the SPA was still working when it
+  // wasn't, and stuck forever for zero-role users. 'No role' is the
+  // honest signal.
+  if (perms.length === 0) return 'No role';
   return 'Member';
 }
 
