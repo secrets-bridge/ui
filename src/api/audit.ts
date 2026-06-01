@@ -19,7 +19,16 @@ import { api } from './client';
 
 export interface AuditEvent {
   id: string;
+  // Raw actor string — `user:<uuid>` / `agent:<uuid>` / `system:<kind>`.
+  // Forensic anchor, always present; UIs may render the friendlier
+  // `actor_display` field instead and keep `actor` as a tooltip.
   actor: string;
+  // Human-readable rendering resolved by the api at response time:
+  // user email (or display name), agent name, or a fixed "System (…)"
+  // label. Falls back to a short placeholder when the underlying record
+  // is missing (deleted user / revoked agent). Never empty for a
+  // non-empty `actor`.
+  actor_display: string;
   action: string;
   resource: string;
   status: 'success' | 'failure' | 'denied';
