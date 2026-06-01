@@ -23,6 +23,13 @@
  *
  * Wire shape: `metadata` is opaque jsonb pre-stripped of any
  * value-bearing field by the api's service layer — safe to render.
+ *
+ * Actor column: api#62 enriches each row with `actor_display` — the
+ * user's email (or display name), the agent's name, or a fixed
+ * "System (…)" label. The raw `actor` string (`user:<uuid>`,
+ * `agent:<uuid>`, `system:<kind>`) stays available as a forensic
+ * anchor and is rendered underneath the display label + exposed as a
+ * `title` tooltip on hover.
  */
 
 import { useMemo, useState } from 'react';
@@ -275,7 +282,7 @@ function AuditRow({
         <div className="text-muted/70 mt-0.5">{formatDate(e.occurred_at)}</div>
       </Td>
       <Td>
-        <span className="font-mono text-text text-sm break-all">{e.actor}</span>
+        <ActorCell display={e.actor_display} raw={e.actor} />
       </Td>
       <Td>
         <span className="font-mono text-accent text-sm break-all">
@@ -332,7 +339,19 @@ function DetailsPane({
       </div>
       <dl className="px-5 py-4 space-y-2.5 text-sm">
         <Row k="When" v={`${formatDate(event.occurred_at)} ${formatTime(event.occurred_at)}`} />
-        <Row k="Actor" mono v={event.actor} />
+        <Row
+          k="Actor"
+          v={
+            <div className="space-y-0.5">
+              <div className="text-text text-sm break-all">
+                {event.actor_display || event.actor}
+              </div>
+              <div className="text-muted/70 text-[11px] font-mono break-all">
+                {event.actor}
+              </div>
+            </div>
+          }
+        />
         <Row k="Action" mono v={<span className="text-accent">{event.action}</span>} />
         <Row k="Resource" mono v={event.resource} />
         <Row
@@ -447,6 +466,32 @@ function ActivePill({
         ×
       </button>
     </span>
+  );
+}
+
+// Renders the table cell for an audit row's actor: human label on top,
+// raw `user:<uuid>` / `agent:<uuid>` / `system:<kind>` underneath in a
+// dimmer font for forensic anchoring + copy-paste into the actor
+// filter. The raw string is also exposed via `title` so hovering shows
+// the full UUID even when truncated.
+function ActorCell({ display, raw }: { display: string; raw: string }) {
+  // api#62 always populates `actor_display`, but old records or test
+  // fixtures might not — fall back to the raw string for the top line
+  // so the column never goes blank.
+  const top = display || raw;
+  // Skip the second line when display IS the raw string (unknown
+  // actor shape: e.g. `admin`, legacy seeded values), otherwise we'd
+  // render the same text twice.
+  const showRaw = display && display !== raw;
+  return (
+    <div className="space-y-0.5" title={raw}>
+      <div className="text-text text-sm break-all">{top}</div>
+      {showRaw && (
+        <div className="text-muted/70 text-[11px] font-mono break-all">
+          {raw}
+        </div>
+      )}
+    </div>
   );
 }
 
