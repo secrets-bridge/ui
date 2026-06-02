@@ -41,6 +41,12 @@ export interface Identity {
   // Until /users/me resolves this stays empty; every nav gate +
   // gated button stays hidden (fail-closed).
   permissions: string[];
+  // True when the user has at least one MFA factor enrolled (api
+  // Slice H5 + api#67). UI uses this to nudge users toward /me/mfa
+  // and to surface the "Add factor" badge in the sidebar. Until
+  // /users/me resolves this stays false (fail-closed — pushes to
+  // enroll rather than implying a factor exists).
+  mfa_enrolled: boolean;
 }
 
 interface AuthState {
@@ -79,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: meQuery.data.email,
         display_name: meQuery.data.display_name || meQuery.data.email,
         permissions: meQuery.data.permissions,
+        mfa_enrolled: meQuery.data.mfa_enrolled,
       }
     : null;
 

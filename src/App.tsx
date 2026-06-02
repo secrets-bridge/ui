@@ -11,6 +11,7 @@ import { Audit } from './pages/Audit';
 import { Dashboard } from './pages/Dashboard';
 import { Login } from './pages/Login';
 import { Me } from './pages/Me';
+import { MFASettings } from './pages/MFASettings';
 import { RequestDetail } from './pages/RequestDetail';
 import { Requests } from './pages/Requests';
 import { Secrets } from './pages/Secrets';
@@ -43,6 +44,7 @@ export function App() {
           <Route path="/secrets" element={<Secrets />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="/me" element={<Me />} />
+          <Route path="/me/mfa" element={<MFASettings />} />
           <Route path="/admin/projects" element={<Projects />} />
           <Route path="/admin/teams" element={<Teams />} />
           <Route path="/admin/roles" element={<Roles />} />
