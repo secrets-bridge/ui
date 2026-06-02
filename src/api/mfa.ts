@@ -206,3 +206,75 @@ export function useWebAuthnRegisterFinish() {
     },
   });
 }
+
+// --- step-up challenge + verify (Slice H4 → I2) ---------------------
+
+/**
+ * The challenge endpoint's response shape. `options` is only present
+ * for kind=webauthn and carries the W3C
+ * `PublicKeyCredentialRequestOptions` shape (same envelope as
+ * registration's `CredentialCreation`).
+ */
+export interface MFAChallengeResponse {
+  challenge_id: string;
+  kind: MFAFactorKind;
+  options?: WebAuthnCredentialRequestOptionsJSON;
+}
+
+/**
+ * Mirrors the relevant subset of `protocol.CredentialAssertion`.
+ * We type loosely — same posture as the registration shape.
+ */
+export interface WebAuthnCredentialRequestOptionsJSON {
+  publicKey: {
+    challenge: string;
+    timeout?: number;
+    rpId?: string;
+    allowCredentials?: Array<{ type: string; id: string; transports?: string[] }>;
+    userVerification?: string;
+  };
+}
+
+/**
+ * Mint a step-up challenge of the requested kind. Returns 412
+ * `mfa_enrollment_required` when the user has no factor of any kind
+ * (SPA routes to /me/mfa); 412 `mfa_kind_not_enrolled` when they have
+ * factors but none of the requested kind (SPA can hint "try the
+ * other kind").
+ */
+export function useMFAChallenge() {
+  return useMutation({
+    mutationFn: (input: { kind: MFAFactorKind }) =>
+      api.post<MFAChallengeResponse>('/api/v1/auth/mfa/challenge', input),
+  });
+}
+
+/**
+ * Verify the step-up challenge. On success the api stamps
+ * `last_mfa_at` on the user's CURRENT session — the next Tier-2 op
+ * passes the `RequireFreshMFA` gate. The 204 response means "you're
+ * fresh; retry your original action."
+ *
+ * `factor_id` is REQUIRED for kind=totp; the WebAuthn path matches
+ * via the credential id inside `response`.
+ */
+export interface MFAVerifyRequest {
+  challenge_id: string;
+  factor_id?: string;
+  code?: string;
+  response?: unknown;
+}
+
+export function useMFAVerify() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: MFAVerifyRequest) =>
+      api.post<void>('/api/v1/auth/mfa/verify', input),
+    onSuccess: () => {
+      // Last-used timestamps change; the factor list cache becomes
+      // stale. /users/me doesn't carry last_mfa_at directly so we
+      // skip invalidating it.
+      qc.invalidateQueries({ queryKey: mfaKey.factors });
+    },
+  });
+}

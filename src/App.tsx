@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { queryClient } from './api/queryClient';
 import { AuthProvider } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
+import { StepUpModalProvider } from './auth/StepUpModal';
 import { Shell } from './layout/Shell';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { Agents } from './pages/Agents';
@@ -33,7 +34,9 @@ export function App() {
         <Route
           element={
             <RequireAuth>
-              <Shell />
+              <StepUpModalProvider>
+                <Shell />
+              </StepUpModalProvider>
             </RequireAuth>
           }
         >
