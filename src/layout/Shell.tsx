@@ -187,6 +187,29 @@ export function Shell() {
                 </div>
               </div>
             </button>
+            {/* Slice I1: MFA enrollment shortcut. When the user has no
+                enrolled factor, render a louder "Add factor" CTA so
+                brand-new users don't have to discover /me/mfa via the
+                412 dead-end on a Tier-2 op. When enrolled, render a
+                quieter "Security" link for managing factors. */}
+            <button
+              type="button"
+              onClick={() => navigate('/me/mfa')}
+              className={
+                'w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg transition-colors text-left text-[11px] ' +
+                (identity.mfa_enrolled
+                  ? 'text-muted hover:text-text hover:bg-bg/30'
+                  : 'text-accent hover:text-accent-bright hover:bg-accent/10 border border-accent/30')
+              }
+              title={
+                identity.mfa_enrolled
+                  ? 'Manage your MFA factors'
+                  : 'Enroll a security key or authenticator app'
+              }
+            >
+              <span>{identity.mfa_enrolled ? 'Security' : 'Add MFA factor'}</span>
+              {!identity.mfa_enrolled && <span aria-hidden="true">→</span>}
+            </button>
             <button
               type="button"
               onClick={() => setSignOutOpen(true)}

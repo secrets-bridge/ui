@@ -83,6 +83,13 @@ export interface MeResponse {
   permissions: string[];
   teams: MeTeam[];
   projects: MyProject[];
+  // True when the user has at least one MFA factor (TOTP or
+  // WebAuthn) enrolled. Slice H5 / api#67. SPA reads this after
+  // login to decide whether to nudge the user toward /me/mfa;
+  // the api's step-up middleware uses the same check to return
+  // 412 mfa_enrollment_required on Tier-2 ops when the user has
+  // no factor.
+  mfa_enrolled: boolean;
 }
 
 /**
