@@ -36,7 +36,9 @@ Slice C landed the cookie-only swap. The SPA **never holds a token**:
 
 **OIDC sign-in is auto-discovered.** `useOidcAvailable()` (`src/api/oidc.ts`) probes `/auth/oidc/start` with `redirect: 'manual'`. The Login page conditionally renders "Sign in with SSO" when the api advertises OIDC.
 
-**Step-up auth is global.** Tier 2 ops (approve / reject / reveal-wrap) can return `401 + WWW-Authenticate: step-up`. The global `queryCache` + `mutationCache` `onError` handlers in `src/api/queryClient.ts` detect `ApiError.stepUp = true` and redirect through `/api/v1/auth/oidc/start?step_up=mfa&return_to=<current>`. The IdP re-prompts MFA, the api stamps `last_mfa_at` on the SAME session row (cookie unchanged), and the browser returns to the original page.
+**App-MFA step-up is global** (Slices H–I + K-fix-2). Tier 2 ops (approve / reject / reveal-wrap) can return `401 + WWW-Authenticate: step-up`. `routeAuthSignals` inside `src/api/client.ts::request()` routes EVERY API call (TanStack-hooked OR direct `await api.get(...)`) through the same step-up modal singleton — `requestStepUp()` returns a promise the fetch layer awaits, and on `'verified'` the original request **auto-retries** so the caller's `await` resolves with the success value as if MFA never happened. N concurrent 401s share ONE modal via module-scoped pending-promise dedup. The 412 `mfa_enrollment_required` and 401 `factor_compromised` shapes route to `/me/mfa` and `/login` respectively.
+
+**My Projects sidebar (Slice L5).** The dev-facing entry point. `useMe()` returns each project's environments inline; the per-env page (`/projects/:id/env/:env_id`) shows secret key names + a Reveal CTA (non_prod) or Request CTA (any env). Routes through the L4 endpoints (`/projects/:id/environments/:env_id/{secrets,request,direct-reveal}`); a 403 from direct-reveal (PROD env / policy denied / perm missing) surfaces as an inline `ApiError.message`.
 
 ## Hard rules
 
