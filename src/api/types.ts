@@ -42,14 +42,33 @@ export interface ProjectInput {
 }
 
 /**
+ * Slice L4 — per-env shape returned alongside a project on
+ * `/users/me/projects` (api#80). The SPA renders these as drilldown
+ * nodes under each project in the sidebar tree and uses `kind` to
+ * pick the right CTA on the project page (Reveal vs Request).
+ */
+export interface MyEnvironment {
+  id: string;
+  name: string;
+  /** Hard safety classification from Slice L1. */
+  kind: 'non_prod' | 'prod';
+  risk_level: number;
+}
+
+/**
  * Caller-scoped project projection used by GET /users/me/projects.
  * Drives the UI's project switcher dropdown (admin sees all, scoped
  * callers see their granted set). See api#43 Slice D.
+ *
+ * Slice L4 added the `environments` field. The list is present when
+ * the server is L4+ (always today); when absent, the SPA renders the
+ * project as a leaf with no drilldown.
  */
 export interface MyProject {
   id: string;
   name: string;
   status: 'active' | 'archived';
+  environments?: MyEnvironment[];
 }
 
 /**
