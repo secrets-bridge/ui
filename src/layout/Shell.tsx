@@ -147,6 +147,14 @@ export function Shell() {
             {showAudit && <NavItem to="/audit" label="Audit" />}
           </NavGroup>
 
+          {/* Slice L5 — My Projects tree. The dev-facing entry-point;
+              consumes /users/me/projects which now (Slice L4) returns
+              each project's environments inline. */}
+          <SectionLabel>My Projects</SectionLabel>
+          <NavGroup>
+            <NavItem to="/projects" label="All projects" end />
+          </NavGroup>
+
           {anyAdmin && (
             <>
               <SectionLabel>Admin</SectionLabel>
