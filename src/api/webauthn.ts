@@ -17,7 +17,10 @@
  * conflicting on this one.
  */
 
-import type { WebAuthnCredentialCreationOptionsJSON } from './mfa';
+import type {
+  WebAuthnCredentialCreationOptionsJSON,
+  WebAuthnCredentialRequestOptionsJSON,
+} from './mfa';
 
 // --- base64url <-> ArrayBuffer --------------------------------------
 
@@ -121,6 +124,28 @@ function decodeUserHandle(
   throw new Error('webauthn: user.id shape not recognised');
 }
 
+/**
+ * Convert the go-webauthn JSON assertion shape into the W3C
+ * `PublicKeyCredentialRequestOptions` the browser API expects for
+ * `navigator.credentials.get()`. Slice I2 step-up flow.
+ */
+export function toRequestOptions(
+  json: WebAuthnCredentialRequestOptionsJSON
+): PublicKeyCredentialRequestOptions {
+  const pk = json.publicKey;
+  return {
+    challenge: base64UrlToBuffer(pk.challenge),
+    timeout: pk.timeout,
+    rpId: pk.rpId,
+    allowCredentials: pk.allowCredentials?.map((c) => ({
+      type: c.type as PublicKeyCredentialType,
+      id: base64UrlToBuffer(c.id),
+      transports: c.transports as AuthenticatorTransport[] | undefined,
+    })),
+    userVerification: pk.userVerification as UserVerificationRequirement | undefined,
+  };
+}
+
 // --- attestation response → JSON wire shape -------------------------
 
 /**
@@ -150,6 +175,32 @@ export function attestationResponseToJSON(
         typeof (r as unknown as { getTransports?: () => string[] }).getTransports === 'function'
           ? (r as unknown as { getTransports: () => string[] }).getTransports()
           : undefined,
+    },
+  };
+}
+
+/**
+ * Serialise the browser's `PublicKeyCredential` (with embedded
+ * `AuthenticatorAssertionResponse`) into the JSON shape go-webauthn
+ * parses via `ParseCredentialRequestResponseBytes`. Slice I2.
+ */
+export function assertionResponseToJSON(
+  cred: PublicKeyCredential
+): Record<string, unknown> {
+  const r = cred.response as AuthenticatorAssertionResponse;
+  return {
+    id: cred.id,
+    rawId: bytesToBase64Url(cred.rawId),
+    type: cred.type,
+    authenticatorAttachment: cred.authenticatorAttachment ?? undefined,
+    clientExtensionResults: cred.getClientExtensionResults?.() ?? {},
+    response: {
+      authenticatorData: bytesToBase64Url(r.authenticatorData),
+      clientDataJSON: bytesToBase64Url(r.clientDataJSON),
+      signature: bytesToBase64Url(r.signature),
+      // The user handle is optional — only present for resident-key
+      // credentials. WebAuthn spec returns null for non-resident keys.
+      userHandle: r.userHandle ? bytesToBase64Url(r.userHandle) : null,
     },
   };
 }
