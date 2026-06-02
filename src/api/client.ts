@@ -106,7 +106,7 @@ interface RequestOptions {
   signal?: AbortSignal;
 }
 
-async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0): Promise<T> {
   if (!path.startsWith('/api/')) {
     throw new Error(`API path must start with /api/: ${path}`);
   }
@@ -156,33 +156,47 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
       resp.status === 401 &&
       (resp.headers.get('WWW-Authenticate') ?? '').toLowerCase().includes('step-up');
     const apiErr = new ApiError(resp.status, message, parsed, stepUp);
-    routeAuthSignals(apiErr);
+
+    // Step-up: await the modal flow. On 'verified', RE-ISSUE the
+    // original request so the caller's await resolves with the
+    // success value as if MFA never happened. On 'cancelled', fall
+    // through to throw so the dialog can show the inline error.
+    // `attempt === 0` guards against an infinite retry loop in the
+    // pathological case where the api still 401-step-ups after a
+    // successful verify.
+    if (apiErr.stepUp && attempt === 0) {
+      const outcome = await requestStepUp();
+      if (outcome === 'verified') {
+        return request<T>(path, opts, attempt + 1);
+      }
+      throw apiErr;
+    }
+
+    // Non-step-up MFA-shaped errors navigate away (enrollment to
+    // /me/mfa; compromised to /login). Fire-and-forget routing,
+    // then throw so the caller still sees the error.
+    routeNonStepUpSignals(apiErr);
     throw apiErr;
   }
   return parsed as T;
 }
 
 /**
- * Route MFA-shaped errors through the SPA singletons before the
- * caller's try/catch sees them.
+ * Route the two MFA-shaped errors that DON'T retry through the SPA
+ * singletons before the caller's try/catch sees them.
  *
- * Why at this layer (not in the QueryClient interceptor): direct
- * fetch helpers (e.g. `revealWrap` in RequestDetail) bypass TanStack
- * Query's onError hooks. Doing the routing here means EVERY call
- * — whether it goes through a `useQuery` / `useMutation` hook or a
- * raw `await api.get(...)` in a component — triggers the same
- * singleton. The singletons are idempotent (the modal's `setOpen`
- * is no-op when already open; `navigate('/me/mfa')` is no-op when
- * already there), so re-routing from a TanStack onError is harmless.
+ * Step-up (`401 + WWW-Authenticate: step-up`) is handled inline in
+ * `request()` because it's the only one that can RECOVER without
+ * leaving the page — modal opens, user verifies, request retries.
+ * The other two navigate away (enrollment → /me/mfa, compromised →
+ * /login) so there's nothing to await — fire-and-forget routing,
+ * then the original error still throws so the caller sees it.
  *
- * Stays single-source-of-truth: the queryClient.ts onError handlers
- * were removed in the same change so the routing can't drift.
+ * Lives in this layer (not in TanStack onError) so direct fetch
+ * helpers (e.g. `revealWrap`) trigger the same SPA-wide flow as
+ * hooked calls — single source of truth for MFA error routing.
  */
-function routeAuthSignals(err: ApiError): void {
-  if (err.stepUp) {
-    requestStepUp();
-    return;
-  }
+function routeNonStepUpSignals(err: ApiError): void {
   const message = (err.message ?? '').toLowerCase();
   if (err.status === 412 && message.includes('mfa_enrollment_required')) {
     requestEnrollment();

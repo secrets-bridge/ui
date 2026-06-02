@@ -40,6 +40,7 @@ import { assertionResponseToJSON, toRequestOptions } from '../api/webauthn';
 import { Button } from '../ui/Button';
 import { useAuth } from './AuthContext';
 import {
+  resolveStepUp,
   setCompromisedHandler,
   setEnrollmentRequiredHandler,
   setStepUpHandler,
@@ -51,6 +52,15 @@ export function StepUpModalProvider({ children }: { children: React.ReactNode })
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { logout } = useAuth();
+
+  // Closing the modal MUST resolve the pending step-up promise so
+  // client.ts can decide whether to retry (verified) or throw the
+  // original 401 (cancelled). The outcome distinguishes the two —
+  // every exit path in the modal passes the right value.
+  const close = useCallback((outcome: 'verified' | 'cancelled') => {
+    resolveStepUp(outcome);
+    setOpen(false);
+  }, []);
 
   useEffect(() => {
     setStepUpHandler(() => setOpen(true));
@@ -77,37 +87,49 @@ export function StepUpModalProvider({ children }: { children: React.ReactNode })
   return (
     <>
       {children}
-      {open && <StepUpModal onClose={() => setOpen(false)} />}
+      {open && (
+        <StepUpModal
+          onCancel={() => close('cancelled')}
+          onVerified={() => close('verified')}
+        />
+      )}
     </>
   );
 }
 
 // --- modal ----------------------------------------------------------
 
-function StepUpModal({ onClose }: { onClose: () => void }) {
+function StepUpModal({
+  onCancel,
+  onVerified,
+}: {
+  onCancel: () => void;
+  onVerified: () => void;
+}) {
   const navigate = useNavigate();
   const factors = useMFAFactors();
   const [stage, setStage] = useState<Stage>('picker');
   const [pickedFactor, setPickedFactor] = useState<MFAFactor | null>(null);
   const [pickedKind, setPickedKind] = useState<MFAFactorKind | null>(null);
 
-  // Escape closes — same UX as ConfirmModal.
+  // Escape closes as a cancel — user explicitly bailed.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCancel();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onCancel]);
 
   // Auto-navigate to /me/mfa if the factor list resolves and the user
-  // has zero — they shouldn't see the picker at all.
+  // has zero — they shouldn't see the picker at all. That's a cancel
+  // from the step-up perspective (no verify can happen here).
   useEffect(() => {
     if (factors.data && factors.data.length === 0) {
       navigate('/me/mfa');
-      onClose();
+      onCancel();
     }
-  }, [factors.data, navigate, onClose]);
+  }, [factors.data, navigate, onCancel]);
 
   const start = useCallback(
     (kind: MFAFactorKind, factor?: MFAFactor) => {
@@ -122,7 +144,7 @@ function StepUpModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         className="absolute inset-0 bg-bg/80 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={onCancel}
         aria-label="Close"
       />
       <div className="relative bg-surface border border-border rounded-2xl w-[480px] max-w-full p-6 space-y-4 shadow-2xl">
@@ -146,15 +168,15 @@ function StepUpModal({ onClose }: { onClose: () => void }) {
             factors={(factors.data ?? []).filter((f) => f.kind === 'totp')}
             initialFactor={pickedFactor}
             onBack={() => setStage('picker')}
-            onSuccess={onClose}
+            onSuccess={onVerified}
           />
         )}
         {stage === 'webauthn' && pickedKind === 'webauthn' && (
-          <WebAuthnVerify onBack={() => setStage('picker')} onSuccess={onClose} />
+          <WebAuthnVerify onBack={() => setStage('picker')} onSuccess={onVerified} />
         )}
 
         <div className="flex items-center justify-end pt-3 border-t border-border/60">
-          <Button variant="secondary" size="sm" onClick={onClose}>
+          <Button variant="secondary" size="sm" onClick={onCancel}>
             Cancel
           </Button>
         </div>
