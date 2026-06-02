@@ -28,6 +28,12 @@
  *   misconfigured build fails fast.
  */
 
+import {
+  requestCompromisedFlow,
+  requestEnrollment,
+  requestStepUp,
+} from '../auth/stepUp';
+
 const buildTimeBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '';
 
 if (buildTimeBase) {
@@ -149,9 +155,42 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     const stepUp =
       resp.status === 401 &&
       (resp.headers.get('WWW-Authenticate') ?? '').toLowerCase().includes('step-up');
-    throw new ApiError(resp.status, message, parsed, stepUp);
+    const apiErr = new ApiError(resp.status, message, parsed, stepUp);
+    routeAuthSignals(apiErr);
+    throw apiErr;
   }
   return parsed as T;
+}
+
+/**
+ * Route MFA-shaped errors through the SPA singletons before the
+ * caller's try/catch sees them.
+ *
+ * Why at this layer (not in the QueryClient interceptor): direct
+ * fetch helpers (e.g. `revealWrap` in RequestDetail) bypass TanStack
+ * Query's onError hooks. Doing the routing here means EVERY call
+ * — whether it goes through a `useQuery` / `useMutation` hook or a
+ * raw `await api.get(...)` in a component — triggers the same
+ * singleton. The singletons are idempotent (the modal's `setOpen`
+ * is no-op when already open; `navigate('/me/mfa')` is no-op when
+ * already there), so re-routing from a TanStack onError is harmless.
+ *
+ * Stays single-source-of-truth: the queryClient.ts onError handlers
+ * were removed in the same change so the routing can't drift.
+ */
+function routeAuthSignals(err: ApiError): void {
+  if (err.stepUp) {
+    requestStepUp();
+    return;
+  }
+  const message = (err.message ?? '').toLowerCase();
+  if (err.status === 412 && message.includes('mfa_enrollment_required')) {
+    requestEnrollment();
+    return;
+  }
+  if (err.status === 401 && message.includes('factor_compromised')) {
+    requestCompromisedFlow();
+  }
 }
 
 export const api = {
