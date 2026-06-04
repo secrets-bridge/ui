@@ -158,10 +158,14 @@ function SecretRow({
         mode === 'reveal'
           ? await directReveal.mutateAsync(body)
           : await submitRequest.mutateAsync(body);
-      // For both shapes the SPA navigates to the request detail page —
-      // a Reveal lands as status=approved + waits for wraps; a Request
-      // lands as pending and shows approvers.
-      navigate(`/requests/${resp.request_id}`);
+      // Reveal (auto-approved) → bulk reveal session page (Slice M4).
+      // Request (pending approval) → request detail page where the
+      // user sees approval state + can come back later to reveal.
+      if (mode === 'reveal') {
+        navigate(`/projects/${projectId}/env/${envId}/reveal/${resp.request_id}`);
+      } else {
+        navigate(`/requests/${resp.request_id}`);
+      }
     } catch (err) {
       if (err instanceof ApiError) {
         setSubmitError(`${err.status} · ${err.message}`);
