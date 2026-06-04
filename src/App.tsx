@@ -17,6 +17,7 @@ import { MyProjects } from './pages/MyProjects';
 import { ProjectEnv } from './pages/ProjectEnv';
 import { RequestDetail } from './pages/RequestDetail';
 import { Requests } from './pages/Requests';
+import { RevealSession } from './pages/RevealSession';
 import { Secrets } from './pages/Secrets';
 import { Assignments } from './pages/admin/Assignments';
 import { Integrations } from './pages/admin/Integrations';
@@ -52,6 +53,10 @@ export function App() {
           <Route path="/me/mfa" element={<MFASettings />} />
           <Route path="/projects" element={<MyProjects />} />
           <Route path="/projects/:id/env/:env_id" element={<ProjectEnv />} />
+          <Route
+            path="/projects/:id/env/:env_id/reveal/:request_id"
+            element={<RevealSession />}
+          />
           <Route path="/admin/projects" element={<Projects />} />
           <Route path="/admin/teams" element={<Teams />} />
           <Route path="/admin/roles" element={<Roles />} />
