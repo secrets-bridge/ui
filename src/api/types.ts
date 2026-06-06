@@ -224,6 +224,32 @@ export interface ProviderConnectionBindingInput {
 }
 
 /**
+ * EPIC Q (api#99) — joined binding response from
+ * GET /projects/:id/provider-connection-bindings. The api joins to
+ * environments + provider_connections server-side so the per-project
+ * card renders in one round-trip. Sanitized projection: NO scope,
+ * NO auth_method, NO discovery fields.
+ */
+export interface ProjectProviderConnectionBinding {
+  id: string;
+  provider_connection_id: string;
+  project_id: string;
+  environment_id: string | null;
+  environment_name?: string;
+  environment_kind?: 'non_prod' | 'prod';
+  connection_name?: string;
+  connection_type?: string;
+  purpose?: string;
+  created_at?: string;
+}
+
+/** Body shape for POST /projects/:id/provider-connection-bindings. */
+export interface ProjectProviderConnectionBindingInput {
+  provider_connection_id: string;
+  environment_id: string; // REQUIRED — scoped binders never create project-wide bindings.
+}
+
+/**
  * Body returned with a 409 connection_in_use response. Drives the
  * "Delete anyway" disabled state in the delete confirm modal.
  */

@@ -35,6 +35,7 @@ import { Card, CardBody, CardHeader } from '../ui/Card';
 import { PageHeader } from '../ui/PageHeader';
 import { StatusPill } from '../ui/StatusPill';
 import { CrossTeamSubmitDrawer } from './CrossTeamSubmitDrawer';
+import { ProviderConnectionsCard } from './ProviderConnectionsCard';
 
 export function ProjectEnv() {
   const { id: projectId, env_id: envId } = useParams<{ id: string; env_id: string }>();
@@ -121,6 +122,8 @@ export function ProjectEnv() {
           </CardBody>
         </Card>
       )}
+
+      <ProviderConnectionsCard project={project} env={env} />
 
       <Card>
         <CardHeader>
