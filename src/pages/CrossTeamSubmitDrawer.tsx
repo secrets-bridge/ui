@@ -1,0 +1,354 @@
+/**
+ * Slice N5 — cross-team request submit drawer.
+ *
+ * Hosted from ProjectEnv.tsx as the third CTA (alongside Reveal +
+ * Request access). Form shape per §5 design:
+ *
+ *   - target: team → project → environment (cascading)
+ *   - destination: provider_connection (from SOURCE project bindings)
+ *                 + secret_ref + dynamic key chip list
+ *   - justification (≥10 chars)
+ *
+ * Hard rules:
+ *   - NO secret values in the body (key NAMES only).
+ *   - Stable 403 codes routed through `crossTeamErrorMessage` to
+ *     friendly toasts; falls through to api's own message otherwise.
+ */
+
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+import { ApiError } from '../api/client';
+import {
+  crossTeamErrorMessage,
+  useProviderConnections,
+  useSubmitCrossTeam,
+  type SubmitCrossTeamInput,
+} from '../api/crossTeam';
+import { useEnvironmentsForProject, useProjects } from '../api/tenancy';
+import { useTeams } from '../api/teams';
+import { Button } from '../ui/Button';
+import type { MyProject } from '../api/types';
+
+interface Props {
+  sourceProject: MyProject;
+  onClose: () => void;
+}
+
+export function CrossTeamSubmitDrawer({ sourceProject, onClose }: Props) {
+  const navigate = useNavigate();
+  const teams = useTeams();
+  const projects = useProjects();
+
+  // Target picker state. Cascading: team chosen → projects filtered to
+  // that team's owner_team_id → environment list narrowed to the
+  // chosen target project.
+  const [targetTeamID, setTargetTeamID] = useState('');
+  const [targetProjectID, setTargetProjectID] = useState('');
+  const [targetEnvID, setTargetEnvID] = useState('');
+
+  const targetProjects = useMemo(
+    () =>
+      (projects.data ?? []).filter(
+        (p) => p.owner_team_id === targetTeamID && p.status === 'active',
+      ),
+    [projects.data, targetTeamID],
+  );
+  const targetEnvs = useEnvironmentsForProject(
+    targetProjectID || undefined,
+  );
+
+  // Destination picker — provider connections come from the SOURCE
+  // project (cross-team values land in source's workload, not the
+  // target team's).
+  const provConns = useProviderConnections(sourceProject.id);
+  const [destProvConnID, setDestProvConnID] = useState('');
+  const [destSecretRef, setDestSecretRef] = useState('');
+  const [destKeysInput, setDestKeysInput] = useState('');
+  const destKeys = useMemo(
+    () =>
+      destKeysInput
+        .split(/[\s,]+/)
+        .map((k) => k.trim())
+        .filter(Boolean),
+    [destKeysInput],
+  );
+
+  const [justification, setJustification] = useState('');
+
+  const submit = useSubmitCrossTeam();
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const valid =
+    !!targetTeamID &&
+    !!targetProjectID &&
+    !!targetEnvID &&
+    !!destProvConnID &&
+    destSecretRef.trim().length > 0 &&
+    destKeys.length > 0 &&
+    justification.trim().length >= 10;
+
+  const onSubmit = async () => {
+    setSubmitError(null);
+    if (!valid) return;
+    const body: SubmitCrossTeamInput = {
+      target_team_id: targetTeamID,
+      target_project_id: targetProjectID,
+      target_environment_id: targetEnvID,
+      destination_provider_connection_id: destProvConnID,
+      destination_secret_ref: destSecretRef.trim(),
+      destination_keys: destKeys,
+      justification: justification.trim(),
+    };
+    try {
+      const resp = await submit.mutateAsync(body);
+      navigate(`/requests/${resp.id}`);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const code = extractErrorCode(err);
+        setSubmitError(
+          crossTeamErrorMessage(code) ?? `${err.status} · ${err.message}`,
+        );
+      } else if (err instanceof Error) {
+        setSubmitError(err.message);
+      } else {
+        setSubmitError(String(err));
+      }
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-40 flex">
+      <button
+        className="flex-1 bg-bg/80 backdrop-blur-sm"
+        onClick={onClose}
+        aria-label="Close"
+      />
+      <aside className="w-[520px] max-w-full h-full bg-surface border-l border-border overflow-y-auto p-6 space-y-5">
+        <div>
+          <h2 className="text-text text-xl font-bold tracking-tight">
+            New cross-team request
+          </h2>
+          <p className="text-muted text-sm mt-1">
+            Ask another team to provide values you don't have direct
+            access to. Their value provider fills the form; an approver
+            (and security, if the policy requires it) verifies before
+            the values land in your provider.
+          </p>
+          <p className="text-muted text-xs mt-2">
+            Source project: <span className="text-text">{sourceProject.name}</span>
+          </p>
+        </div>
+
+        <section className="space-y-3">
+          <h3 className="text-text font-semibold text-sm uppercase tracking-wider">
+            Target
+          </h3>
+          <Select
+            label="Team"
+            value={targetTeamID}
+            onChange={(v) => {
+              setTargetTeamID(v);
+              setTargetProjectID('');
+              setTargetEnvID('');
+            }}
+            options={[
+              { value: '', label: 'Select a team…' },
+              ...(teams.data ?? [])
+                .filter((t) => t.status === 'active')
+                .map((t) => ({ value: t.id, label: t.name })),
+            ]}
+          />
+          <Select
+            label="Project"
+            value={targetProjectID}
+            onChange={(v) => {
+              setTargetProjectID(v);
+              setTargetEnvID('');
+            }}
+            disabled={!targetTeamID}
+            options={[
+              { value: '', label: 'Select a project…' },
+              ...targetProjects.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+          />
+          <Select
+            label="Environment"
+            value={targetEnvID}
+            onChange={setTargetEnvID}
+            disabled={!targetProjectID}
+            options={[
+              { value: '', label: 'Select an environment…' },
+              ...(targetEnvs.data ?? []).map((e) => ({
+                value: e.id,
+                label: `${e.name} (${e.type})`,
+              })),
+            ]}
+          />
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-text font-semibold text-sm uppercase tracking-wider">
+            Destination
+          </h3>
+          <p className="text-muted text-xs">
+            Values will be written by the agent to your workload's
+            secret store. Pick the provider connection bound to your
+            source project.
+          </p>
+          <Select
+            label="Provider connection"
+            value={destProvConnID}
+            onChange={setDestProvConnID}
+            options={[
+              { value: '', label: 'Select a provider connection…' },
+              ...(provConns.data ?? []).map((c) => ({
+                value: c.id,
+                label: `${c.label} (${c.provider_type})`,
+              })),
+            ]}
+          />
+          <Field label="Secret reference">
+            <input
+              type="text"
+              value={destSecretRef}
+              onChange={(e) => setDestSecretRef(e.target.value)}
+              placeholder="e.g. billing/prod/db"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            />
+          </Field>
+          <Field
+            label="Keys to fill"
+            hint={`${destKeys.length} key${destKeys.length === 1 ? '' : 's'} • comma- or space-separated`}
+          >
+            <input
+              type="text"
+              value={destKeysInput}
+              onChange={(e) => setDestKeysInput(e.target.value)}
+              placeholder="DB_PASSWORD, DB_USER"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            />
+            {destKeys.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1.5">
+                {destKeys.map((k) => (
+                  <span
+                    key={k}
+                    className="bg-accent/15 text-accent text-[11px] rounded-full px-2 py-0.5 font-mono"
+                  >
+                    {k}
+                  </span>
+                ))}
+              </div>
+            )}
+          </Field>
+        </section>
+
+        <section className="space-y-2">
+          <Field
+            label="Justification"
+            hint={`${justification.trim().length} / 10 minimum`}
+          >
+            <textarea
+              value={justification}
+              onChange={(e) => setJustification(e.target.value)}
+              placeholder="Why does your workload need these values? (visible to approvers + value provider)"
+              rows={3}
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            />
+          </Field>
+        </section>
+
+        {submitError && (
+          <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2 text-sm text-red-200">
+            {submitError}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
+          <Button variant="secondary" size="md" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => void onSubmit()}
+            disabled={!valid || submit.isPending}
+          >
+            {submit.isPending ? 'Submitting…' : 'Submit request'}
+          </Button>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+interface SelectOption {
+  value: string;
+  label: string;
+}
+
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: SelectOption[];
+  disabled?: boolean;
+}) {
+  return (
+    <Field label={label}>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-50"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+          {label}
+        </label>
+        {hint && <span className="text-[11px] text-muted">{hint}</span>}
+      </div>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Pulls a stable error code from an ApiError's body when the api
+ * returned `{"code": "<slug>", "error": "..."}`. Used by the cross-team
+ * 403 routing per §6 design.
+ */
+export function extractErrorCode(err: ApiError): string | undefined {
+  if (err.body && typeof err.body === 'object') {
+    const obj = err.body as { code?: unknown };
+    if (typeof obj.code === 'string') return obj.code;
+  }
+  return undefined;
+}
