@@ -243,6 +243,14 @@ export const PROVIDER_CONNECTION_ERROR_MESSAGES: Record<string, string> = {
   project_id_required: 'A project_id is required.',
   discovery_already_running: 'Discovery is already running for this connection.',
   out_of_scope_project: "You don’t have access to this project.",
+  // EPIC Q (api#99) — scoped binding codes.
+  connection_not_self_service_bindable:
+    'This connection is not enabled for self-service binding.',
+  prod_binding_not_allowed_for_scope:
+    'Production provider bindings are managed by the platform team.',
+  out_of_scope_binding:
+    "You don't have permission to bind on this project + environment.",
+  environment_id_required: 'Pick an environment before binding.',
 };
 
 export function providerConnectionErrorMessage(
