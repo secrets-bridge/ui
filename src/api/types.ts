@@ -146,6 +146,94 @@ export interface ProjectSecretBinding {
   };
 }
 
+/**
+ * EPIC P — Provider Connection (admin projection).
+ * Returned by GET /provider-connections (admin path) + GET /:id.
+ * NEVER carries credentials in any field; `scope` is metadata only.
+ */
+export interface ProviderConnection {
+  id: string;
+  name: string;
+  type: string;
+  cluster_name?: string;
+  description?: string;
+  status: 'active' | 'disabled';
+  scope: Record<string, unknown>;
+  auth_method?: string;
+  discover_enabled: boolean;
+  discover_interval_seconds: number;
+  last_discover_at?: string | null;
+  last_discover_status?: 'success' | 'failure' | 'running' | null;
+  last_discover_started_at?: string | null;
+  last_discover_error?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Body shape for POST /provider-connections + PUT /:id.
+ * `type` immutable post-create per §5 sign-off; the edit form
+ * disables it. `name` editable. `scope` metadata only — handlers +
+ * service enforce credential-shaped + secret-shaped value refusal.
+ */
+export interface ProviderConnectionInput {
+  name: string;
+  type: string;
+  cluster_name?: string;
+  description?: string;
+  status?: 'active' | 'disabled';
+  scope: Record<string, unknown>;
+  auth_method?: string;
+  discover_enabled?: boolean;
+  discover_interval_seconds?: number;
+}
+
+/**
+ * Sanitized projection returned by GET /provider-connections when
+ * `project_id` is present (developer dropdown path). Per §4 lock the
+ * projection includes ONLY {id, name, type} — no scope, no auth_method,
+ * no discovery fields, no cluster_name. Powers the cross-team submit
+ * drawer's destination dropdown.
+ */
+export interface ProviderConnectionSummary {
+  id: string;
+  name: string;
+  type: string;
+}
+
+/**
+ * Project/env binding for a provider connection. Listed under the
+ * connection's "Bindings" sub-panel in the edit drawer. `environment_id`
+ * absent (or null) means the binding covers every environment in the
+ * project (project-wide binding); present means it's scoped to one env.
+ */
+export interface ProviderConnectionBinding {
+  id: string;
+  provider_connection_id: string;
+  project_id: string;
+  environment_id?: string | null;
+  project_name?: string;
+  environment_name?: string;
+  created_at?: string;
+}
+
+/** Body shape for POST /provider-connections/:id/bindings. */
+export interface ProviderConnectionBindingInput {
+  project_id: string;
+  environment_id?: string | null;
+}
+
+/**
+ * Body returned with a 409 connection_in_use response. Drives the
+ * "Delete anyway" disabled state in the delete confirm modal.
+ */
+export interface ConnectionInUseBody {
+  error_code: 'connection_in_use';
+  message: string;
+  bindings_count: number;
+  open_requests_count: number;
+}
+
 /** Body shape for POST /projects/:id/secrets. */
 export interface ProjectSecretBindingInput {
   secret_id: string;

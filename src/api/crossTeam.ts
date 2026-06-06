@@ -163,30 +163,27 @@ export function useInboxCount(opts?: { enabled?: boolean }) {
 }
 
 /**
- * Provider connections visible inside the source project. Powers the
- * destination dropdown on the cross-team submit form per §5: the
- * picker queries the SOURCE project's bindings (NOT the target's) — the
- * cross-team flow ships values to where the source workload lives.
+ * Provider connections bound to the source project (+ env). EPIC P
+ * (api#92) rewired this endpoint:
+ *
+ *   - Auth is `secret.request` scoped to (project, env) — out of scope
+ *     callers see 403 out_of_scope_project, which the drawer surfaces
+ *     as the empty-state CTA per §5.
+ *   - Response shape is sanitized `{id, name, type}` only — no scope,
+ *     no auth_method, no discovery fields.
+ *   - With `environment_id` set, the api returns env-specific + project-
+ *     wide bindings; without it, project-wide only. Drawer threads the
+ *     env id from its route param so the developer's dropdown narrows
+ *     to what's actually consumable in this env.
+ *
+ * The hook re-exports `useProviderConnectionsForProject` from the new
+ * `providerConnections.ts` module so cross-team callers see the locked
+ * EPIC P shape without depending on its admin-CRUD surface.
  */
-export interface ProviderConnectionSummary {
-  id: string;
-  label: string; // human-readable e.g. "vault-prod"
-  provider_type: string;
-}
-
-export function useProviderConnections(
-  projectID?: string,
-  opts?: { enabled?: boolean },
-) {
-  const qs = projectID ? `?project_id=${encodeURIComponent(projectID)}` : '';
-  return useQuery({
-    queryKey: ['provider-connections', projectID ?? 'all'],
-    queryFn: () =>
-      api.get<ProviderConnectionSummary[]>(`/api/v1/provider-connections${qs}`),
-    enabled: opts?.enabled ?? !!projectID,
-    staleTime: 30_000,
-  });
-}
+export {
+  useProviderConnectionsForProject as useProviderConnections,
+} from './providerConnections';
+export type { ProviderConnectionSummary } from './types';
 
 /**
  * Stable 403 error codes the cross-team flow returns per §6 design.

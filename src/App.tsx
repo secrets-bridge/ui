@@ -25,6 +25,7 @@ import { Assignments } from './pages/admin/Assignments';
 import { Integrations } from './pages/admin/Integrations';
 import { Policies } from './pages/admin/Policies';
 import { Projects } from './pages/admin/Projects';
+import { ProviderConnections } from './pages/admin/ProviderConnections';
 import { Roles } from './pages/admin/Roles';
 import { Teams } from './pages/admin/Teams';
 import { Workflows } from './pages/admin/Workflows';
@@ -67,6 +68,7 @@ export function App() {
           <Route path="/admin/assignments" element={<Assignments />} />
           <Route path="/admin/workflows" element={<Workflows />} />
           <Route path="/admin/policies" element={<Policies />} />
+          <Route path="/admin/provider-connections" element={<ProviderConnections />} />
           <Route path="/admin/integrations" element={<Integrations />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

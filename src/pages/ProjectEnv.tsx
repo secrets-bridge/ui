@@ -154,6 +154,7 @@ export function ProjectEnv() {
       {crossTeamOpen && (
         <CrossTeamSubmitDrawer
           sourceProject={project as MyProject}
+          sourceEnvironmentID={envId}
           onClose={() => setCrossTeamOpen(false)}
         />
       )}
