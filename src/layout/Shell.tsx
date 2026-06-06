@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
+import { useInboxCount } from '../api/crossTeam';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { VersionChip } from '../ui/VersionChip';
 import { LogoMark } from '../ui/LogoMark';
@@ -114,6 +115,14 @@ export function Shell() {
   //
   // Dashboard + /me are always visible (no gate).
   const showRequests = hasPermission('secret.request') || hasPermission('secret.approve');
+  // Slice N5 — Inbox (cross-team value-provision queue) is gated on
+  // `secret.value.provide` at ANY scope. Fail-closed: until /users/me
+  // resolves, the entry stays hidden. The badge count query is also
+  // gated on the same flag so we don't fire it for users who can't see
+  // the inbox.
+  const showInbox = hasPermission('secret.value.provide');
+  const inboxCount = useInboxCount({ enabled: showInbox });
+  const inboxBadge = showInbox ? inboxCount.data?.total : undefined;
   const showAgents = hasPermission('agent.list');
   const showSecrets = hasPermission('secret.list');
   const showAudit = hasPermission('audit.read');
@@ -142,6 +151,9 @@ export function Shell() {
           <NavGroup>
             <NavItem to="/" label="Dashboard" end />
             {showRequests && <NavItem to="/requests" label="Requests" />}
+            {showInbox && (
+              <NavItem to="/inbox" label="Inbox" badge={inboxBadge} />
+            )}
             {showAgents && <NavItem to="/agents" label="Agents" />}
             {showSecrets && <NavItem to="/secrets" label="Secrets" />}
             {showAudit && <NavItem to="/audit" label="Audit" />}

@@ -305,6 +305,7 @@ function AssignmentForm({
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<FormShape>({
     resolver: zodResolver(schema),
@@ -333,6 +334,21 @@ function AssignmentForm({
     return Array.from(set).sort();
   }, [envs.data]);
 
+  // Slice N5 — value_provider is team-scoped by design. The role
+  // controls who can be on a team's inbox; granting it globally hands
+  // every team's inbox to one user. Require a team pick OR a
+  // type-to-confirm "global".
+  const watchedRoleID = watch('role_id');
+  const watchedTeamID = watch('sc_team_id');
+  const selectedRole = roles.data?.find((r) => r.id === watchedRoleID);
+  const isValueProviderRole = selectedRole?.name === 'value_provider';
+  const teamPicked = !!watchedTeamID;
+  const [globalConfirmTyped, setGlobalConfirmTyped] = useState('');
+  const showGlobalScopeGate =
+    isValueProviderRole && !teamPicked;
+  const globalGateOpen = showGlobalScopeGate;
+  const globalConfirmOk = globalConfirmTyped.trim() === 'global';
+
   const onValid: SubmitHandler<FormShape> = async (data) => {
     const scope: Record<string, string> = {};
     if (data.sc_project_id) scope.project_id = data.sc_project_id;
@@ -341,6 +357,12 @@ function AssignmentForm({
     if (data.sc_secret_ref_prefix)
       scope.secret_ref_prefix = data.sc_secret_ref_prefix;
     if (data.sc_provider_type) scope.provider_type = data.sc_provider_type;
+
+    // Slice N5 — enforce the value_provider team-pick rule here too
+    // (defense in depth alongside the submit-button gate).
+    if (isValueProviderRole && !data.sc_team_id && !globalConfirmOk) {
+      return;
+    }
 
     const body: UserRoleInput = {
       user_id: data.user_id,
@@ -456,6 +478,27 @@ function AssignmentForm({
         </Field>
       </fieldset>
 
+      {globalGateOpen && (
+        <div className="bg-yellow-400/10 border border-yellow-400/40 border-l-4 border-l-yellow-400 rounded-lg px-3 py-3 text-xs space-y-2">
+          <p className="text-yellow-200 font-semibold">
+            value_provider with no team scope = global inbox access
+          </p>
+          <p className="text-yellow-200/90">
+            Without a team pick, this user becomes a value provider for{' '}
+            <em>every</em> team's cross-team inbox. That's almost never
+            what you want — assign a specific team in Scope, or type{' '}
+            <span className="font-mono">global</span> below to override.
+          </p>
+          <input
+            type="text"
+            value={globalConfirmTyped}
+            onChange={(e) => setGlobalConfirmTyped(e.target.value)}
+            placeholder="type `global` to confirm"
+            className="w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+          />
+        </div>
+      )}
+
       {grant.error instanceof ApiError && (
         <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
           {grant.error.status}: {grant.error.message}
@@ -475,7 +518,10 @@ function AssignmentForm({
           type="submit"
           variant="primary"
           size="md"
-          disabled={grant.isPending}
+          disabled={
+            grant.isPending ||
+            (isValueProviderRole && !teamPicked && !globalConfirmOk)
+          }
         >
           {grant.isPending ? 'Saving…' : 'Grant'}
         </Button>

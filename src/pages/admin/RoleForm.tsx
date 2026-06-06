@@ -118,9 +118,33 @@ export function RoleForm({
     [catalog.data, selected],
   );
 
-  const toggle = (p: string) => {
-    const next = selectedSet.has(p) ? selected.filter((x) => x !== p) : [...selected, p].sort();
+  // Slice N5 — type-to-confirm gate for high-blast-radius permissions.
+  // Today only `secret.security.approve` triggers it (the security
+  // approver bypasses the source-side workflow on cross-team rows).
+  // Future high-blast perms can be added to the set without further UI.
+  const TYPE_TO_CONFIRM_PERMS = new Set(['secret.security.approve']);
+  const [pendingConfirmPerm, setPendingConfirmPerm] = useState<string | null>(null);
+  const [confirmTyped, setConfirmTyped] = useState('');
+
+  const commitToggle = (p: string) => {
+    const next = selectedSet.has(p)
+      ? selected.filter((x) => x !== p)
+      : [...selected, p].sort();
     setValue('permissions', next, { shouldDirty: true });
+  };
+
+  const toggle = (p: string) => {
+    // Removing a sensitive perm is free; granting it requires type-to-
+    // confirm. The api still validates server-side.
+    if (
+      TYPE_TO_CONFIRM_PERMS.has(p) &&
+      !selectedSet.has(p)
+    ) {
+      setPendingConfirmPerm(p);
+      setConfirmTyped('');
+      return;
+    }
+    commitToggle(p);
   };
 
   const addCustom = (raw: string) => {
@@ -262,6 +286,61 @@ export function RoleForm({
           Cancel
         </button>
       </div>
+      {pendingConfirmPerm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            className="absolute inset-0 bg-bg/80 backdrop-blur-sm"
+            onClick={() => setPendingConfirmPerm(null)}
+            aria-label="Close"
+          />
+          <div className="relative bg-surface border border-border rounded-2xl w-[480px] max-w-full p-6 space-y-3 shadow-2xl">
+            <div className="text-text font-bold text-lg tracking-tight">
+              Add a high-blast-radius permission
+            </div>
+            <p className="text-muted text-sm">
+              You're about to grant{' '}
+              <span className="font-mono text-text">{pendingConfirmPerm}</span>{' '}
+              to this role. A holder bypasses the source-side workflow on
+              cross-team requests — only grant it to security-cleared
+              reviewers.
+            </p>
+            <p className="text-muted text-xs">
+              Type <span className="font-mono text-text">{pendingConfirmPerm}</span>{' '}
+              to confirm.
+            </p>
+            <input
+              type="text"
+              autoFocus
+              value={confirmTyped}
+              onChange={(e) => setConfirmTyped(e.target.value)}
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            />
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
+              <button
+                type="button"
+                onClick={() => setPendingConfirmPerm(null)}
+                className="text-muted hover:text-text px-3 py-2 rounded border border-border text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={confirmTyped.trim() !== pendingConfirmPerm}
+                onClick={() => {
+                  if (confirmTyped.trim() === pendingConfirmPerm) {
+                    commitToggle(pendingConfirmPerm);
+                    setPendingConfirmPerm(null);
+                    setConfirmTyped('');
+                  }
+                }}
+                className="bg-red-500/90 hover:bg-red-500 text-bg disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded text-sm font-medium"
+              >
+                Grant {pendingConfirmPerm}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

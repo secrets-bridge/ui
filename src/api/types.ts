@@ -191,8 +191,18 @@ export interface EnvironmentInput {
 export interface AccessRequest {
   id: string;
   requester_id: string;
-  type: 'patch' | 'read';
-  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired' | 'executed' | 'failed';
+  type: 'patch' | 'read' | 'cross_team';
+  status:
+    | 'pending'
+    | 'pending_values'
+    | 'pending_verification'
+    | 'approved'
+    | 'rejected'
+    | 'refused'
+    | 'cancelled'
+    | 'expired'
+    | 'executed'
+    | 'failed';
   justification: string;
   target_provider_type: string;
   target_secret_ref: string;
@@ -205,6 +215,34 @@ export interface AccessRequest {
   created_at: string;
   updated_at?: string;
   approvals?: Approval[];
+
+  // ---- Slice N: cross_team-only fields. Absent on patch/read rows.
+  /** Team the request was assigned to for value provision. */
+  target_team_id?: string;
+  target_team_name?: string;
+  /** Project the request was assigned to (within target team). */
+  target_project_id?: string;
+  target_project_name?: string;
+  target_environment_id?: string;
+  target_environment_name?: string;
+  /** Where Team B's values will be written by the agent. */
+  destination_provider_connection_id?: string;
+  destination_provider_label?: string;
+  destination_secret_ref?: string;
+  destination_keys?: string[];
+  /** Source project (the requester's project). */
+  source_project_id?: string;
+  source_project_name?: string;
+  /** Workflow semantics frozen at submit. */
+  snap_requires_security_approval?: boolean;
+  snap_min_approvers?: number;
+  /** Fill window. */
+  fill_expires_at?: string;
+  filled_by_user_id?: string;
+  filled_at?: string;
+  fill_comment?: string;
+  refused_by_user_id?: string;
+  refused_at?: string;
 }
 
 /**

@@ -28,19 +28,28 @@ import {
   type EnvSecretKey,
 } from '../api/devSecrets';
 import { useMe } from '../api/me';
-import type { MyEnvironment } from '../api/types';
+import { useAuth } from '../auth/AuthContext';
+import type { MyEnvironment, MyProject } from '../api/types';
 import { Button } from '../ui/Button';
 import { Card, CardBody, CardHeader } from '../ui/Card';
 import { PageHeader } from '../ui/PageHeader';
 import { StatusPill } from '../ui/StatusPill';
+import { CrossTeamSubmitDrawer } from './CrossTeamSubmitDrawer';
 
 export function ProjectEnv() {
   const { id: projectId, env_id: envId } = useParams<{ id: string; env_id: string }>();
   const me = useMe();
   const secrets = useEnvSecrets(projectId, envId);
+  const { hasPermission } = useAuth();
+  const [crossTeamOpen, setCrossTeamOpen] = useState(false);
 
   const project = me.data?.projects.find((p) => p.id === projectId);
   const env = project?.environments?.find((e) => e.id === envId);
+
+  // Slice N5 — third CTA shows when the caller can submit cross-team
+  // requests. The permission is independent of the per-row Reveal /
+  // Request access perms.
+  const showCrossTeamCTA = hasPermission('secret.request');
 
   if (me.isLoading) {
     return (
@@ -89,6 +98,30 @@ export function ProjectEnv() {
         }
       />
 
+      {showCrossTeamCTA && (
+        <Card>
+          <CardBody className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-text font-semibold text-sm">
+                Need a value from another team?
+              </h3>
+              <p className="text-muted text-xs mt-0.5">
+                Open a cross-team request: another team's value provider
+                fills it, an approver verifies, then the agent writes it
+                to your provider.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setCrossTeamOpen(true)}
+            >
+              New cross-team request
+            </Button>
+          </CardBody>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <h3 className="text-text font-semibold">Secrets</h3>
@@ -117,6 +150,13 @@ export function ProjectEnv() {
           ))}
         </CardBody>
       </Card>
+
+      {crossTeamOpen && (
+        <CrossTeamSubmitDrawer
+          sourceProject={project as MyProject}
+          onClose={() => setCrossTeamOpen(false)}
+        />
+      )}
     </div>
   );
 }

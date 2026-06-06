@@ -10,6 +10,8 @@ import { ErrorBoundary } from './ui/ErrorBoundary';
 import { Agents } from './pages/Agents';
 import { Audit } from './pages/Audit';
 import { Dashboard } from './pages/Dashboard';
+import { Inbox } from './pages/Inbox';
+import { InboxFill } from './pages/InboxFill';
 import { Login } from './pages/Login';
 import { Me } from './pages/Me';
 import { MFASettings } from './pages/MFASettings';
@@ -47,6 +49,8 @@ export function App() {
           <Route path="/agents" element={<Agents />} />
           <Route path="/requests" element={<Requests />} />
           <Route path="/requests/:id" element={<RequestDetail />} />
+          <Route path="/inbox" element={<Inbox />} />
+          <Route path="/inbox/:request_id" element={<InboxFill />} />
           <Route path="/secrets" element={<Secrets />} />
           <Route path="/audit" element={<Audit />} />
           <Route path="/me" element={<Me />} />
