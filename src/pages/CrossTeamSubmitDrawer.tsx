@@ -16,7 +16,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
 import {
@@ -27,15 +27,28 @@ import {
 } from '../api/crossTeam';
 import { useEnvironmentsForProject, useProjects } from '../api/tenancy';
 import { useTeams } from '../api/teams';
+import { useAuth } from '../auth/AuthContext';
 import { Button } from '../ui/Button';
 import type { MyProject } from '../api/types';
 
 interface Props {
   sourceProject: MyProject;
+  /**
+   * Source environment id. Threaded through to the provider-connections
+   * dropdown so the api returns env-specific + project-wide bindings
+   * (EPIC P §4). Optional because the drawer can also be opened from
+   * project-level surfaces that don't carry an env context.
+   */
+  sourceEnvironmentID?: string;
   onClose: () => void;
 }
 
-export function CrossTeamSubmitDrawer({ sourceProject, onClose }: Props) {
+export function CrossTeamSubmitDrawer({
+  sourceProject,
+  sourceEnvironmentID,
+  onClose,
+}: Props) {
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const teams = useTeams();
   const projects = useProjects();
@@ -59,9 +72,14 @@ export function CrossTeamSubmitDrawer({ sourceProject, onClose }: Props) {
   );
 
   // Destination picker — provider connections come from the SOURCE
-  // project (cross-team values land in source's workload, not the
-  // target team's).
-  const provConns = useProviderConnections(sourceProject.id);
+  // project + env (cross-team values land in source's workload, not the
+  // target team's). EPIC P returns a sanitized {id, name, type}
+  // projection scoped to (project, env); empty list triggers the §5
+  // empty-state CTA below, branched by integration.edit permission.
+  const provConns = useProviderConnections(
+    sourceProject.id,
+    sourceEnvironmentID,
+  );
   const [destProvConnID, setDestProvConnID] = useState('');
   const [destSecretRef, setDestSecretRef] = useState('');
   const [destKeysInput, setDestKeysInput] = useState('');
@@ -204,10 +222,33 @@ export function CrossTeamSubmitDrawer({ sourceProject, onClose }: Props) {
               { value: '', label: 'Select a provider connection…' },
               ...(provConns.data ?? []).map((c) => ({
                 value: c.id,
-                label: `${c.label} (${c.provider_type})`,
+                label: `${c.name} (${c.type})`,
               })),
             ]}
           />
+          {provConns.data && provConns.data.length === 0 && (
+            <div className="rounded-lg border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted space-y-1">
+              <div className="text-text font-medium">
+                No provider connections are bound to this project / environment.
+              </div>
+              {hasPermission('integration.edit') ? (
+                <div>
+                  <Link
+                    to="/admin/provider-connections"
+                    className="text-accent hover:text-accent-bright underline"
+                  >
+                    Manage provider connections
+                  </Link>{' '}
+                  and bind one to this project to enable cross-team writes.
+                </div>
+              ) : (
+                <div>
+                  Ask your platform / admin team to bind a provider
+                  connection to this project.
+                </div>
+              )}
+            </div>
+          )}
           <Field label="Secret reference">
             <input
               type="text"

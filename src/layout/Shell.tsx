@@ -177,6 +177,12 @@ export function Shell() {
                 {showAssignments && <NavItem to="/admin/assignments" label="Assignments" />}
                 {showWorkflows && <NavItem to="/admin/workflows" label="Workflows" />}
                 {showPolicies && <NavItem to="/admin/policies" label="Policies" />}
+                {showIntegrations && (
+                  <NavItem
+                    to="/admin/provider-connections"
+                    label="Provider connections"
+                  />
+                )}
                 {showIntegrations && <NavItem to="/admin/integrations" label="Integrations" />}
               </NavGroup>
             </>
