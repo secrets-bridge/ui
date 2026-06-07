@@ -556,6 +556,70 @@ export interface PolicyInput {
 }
 
 /**
+ * EPIC R (api#108) Slice R3 — projection from
+ * `GET /api/v1/projects/:projectID/policy-rules[/:ruleID]`.
+ *
+ * Mirrors `internal/handlers/project_policy_rules.go::policyRuleProjection`.
+ *
+ * §4 correction 1 sanitization:
+ *   - Inherited platform rules (`is_platform_inherited=true`,
+ *     `project_id=null`) carry `selector_keys` ONLY; the `selector`
+ *     field is OMITTED server-side. Scoped users see WHICH selector
+ *     keys constrain the platform rule, never the values.
+ *   - Scoped rules (`is_platform_inherited=false`,
+ *     `project_id=<this project>`) carry the full `selector` map.
+ *
+ * `workflow_name` is hydrated client-side from `useWorkflows()` (same
+ * key as the admin page so navigation between them is cache-free).
+ */
+export interface PolicyRule {
+  id: string;
+  name: string;
+  project_id: string | null;
+  is_platform_inherited: boolean;
+  selector_keys: string[];
+  /** Present ONLY when the rule belongs to this project. */
+  selector?: Record<string, unknown>;
+  priority: number;
+  workflow_id: string;
+  enabled: boolean;
+  is_system: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * Body shape for `POST /api/v1/projects/:projectID/policy-rules`.
+ *
+ * Selector is constrained by the guided form per §5 Q14: it carries
+ * `project_id` (filled by the form), either `environment_kind=non_prod`
+ * OR `environment_id`, and optional `secret_ref_prefix`. The api
+ * re-validates every gate.
+ */
+export interface AuthorPolicyRuleInput {
+  name: string;
+  selector: Record<string, unknown>;
+  priority: number;
+  workflow_id: string;
+  enabled: boolean;
+}
+
+/**
+ * Body shape for `PUT /api/v1/projects/:projectID/policy-rules/:ruleID`.
+ *
+ * All fields optional (omitted = preserve). Per §3 Q9 lock, explicit
+ * empty `{}` selector is REJECTED by the api with
+ * `policy_scope_too_broad.reason=selector_empty`.
+ */
+export interface UpdatePolicyRuleInput {
+  name?: string;
+  selector?: Record<string, unknown>;
+  priority?: number;
+  workflow_id?: string;
+  enabled?: boolean;
+}
+
+/**
  * ArgoCD endpoint (BRD §26 — read-only GitOps visibility integration).
  * Mirrors `internal/handlers/gitops.go::argocdEndpointResponse`.
  *

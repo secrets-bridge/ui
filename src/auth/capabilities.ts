@@ -96,3 +96,94 @@ export function canUnbindBinding(
   }
   return { allowed: false, via: null, reason: 'no_perm' };
 }
+
+/* ------------------------------------------------------------------ */
+/* EPIC R (api#108) Slice R3 — scoped policy authoring                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Capability output for the project policies page.
+ *
+ * Per §5 correction 2 from the design pass: `policy.edit` does NOT
+ * auto-cover `policy.author`, server-side OR as a UI shortcut. The two
+ * permissions stay distinct; the project-anchored authoring CTA
+ * appears ONLY for `policy.author` holders. `policy.edit` holders
+ * see an admin shortcut (separate helper below) instead.
+ */
+export interface PolicyAuthorCapability {
+  allowed: boolean;
+  /**
+   * The permission that carried the action.
+   *
+   *   - `'policy.author'` — project-anchored URLs
+   *     (POST /projects/:id/policy-rules)
+   *   - `null` — actor lacks scoped author; caller hides the CTA.
+   *
+   * Note that `'policy.edit'` is deliberately NOT a value here —
+   * platform admins use `/admin/policies` for global rules; the
+   * scoped page does NOT cross-trip them into the scoped route.
+   */
+  via: 'policy.author' | null;
+  reason?: 'no_perm' | 'platform_owned';
+}
+
+/**
+ * Can the actor author scoped policy rules on the given project?
+ *
+ * The `permissions` array is the actor's deduped set (typically pulled
+ * from `useAuth().identity?.permissions`). The helper does NOT call
+ * `useAuth` itself so it stays pure + testable.
+ *
+ * Today we treat `policy.author` as a global flag — the api re-checks
+ * `EffectiveProjectAccess(policy.author, projectID)` server-side. When
+ * the SPA gains a per-project capability cache (api#27 RBAC P0-2),
+ * this helper picks the project from the cache instead.
+ */
+export function canAuthorProjectPolicy(
+  permissions: readonly string[] | undefined,
+  _project: { id: string },
+): PolicyAuthorCapability {
+  const perms = permissions ?? [];
+  if (perms.includes('policy.author')) {
+    return { allowed: true, via: 'policy.author' };
+  }
+  return { allowed: false, via: null, reason: 'no_perm' };
+}
+
+/**
+ * Can the actor edit / delete THIS specific policy rule via the
+ * scoped route?
+ *
+ * Returns `{allowed: false, reason: 'platform_owned'}` for inherited
+ * platform rules (`is_platform_inherited=true`) regardless of perms —
+ * even admins acting on the project page route to `/admin/policies`,
+ * NOT through the project-anchored URLs. Keeps the routes from
+ * mode-switching by perm.
+ */
+export function canEditPolicyRule(
+  permissions: readonly string[] | undefined,
+  rule: { is_platform_inherited: boolean; is_system: boolean },
+): PolicyAuthorCapability {
+  if (rule.is_platform_inherited || rule.is_system) {
+    return { allowed: false, via: null, reason: 'platform_owned' };
+  }
+  const perms = permissions ?? [];
+  if (perms.includes('policy.author')) {
+    return { allowed: true, via: 'policy.author' };
+  }
+  return { allowed: false, via: null, reason: 'no_perm' };
+}
+
+/**
+ * Does the actor hold global `policy.edit`?
+ *
+ * Drives the §5 Q15 admin shortcut on the project policies page —
+ * `policy.edit` holders see a "Manage at /admin/policies" link in the
+ * empty state; pure `policy.author` users do not.
+ */
+export function canManagePlatformPolicy(
+  permissions: readonly string[] | undefined,
+): boolean {
+  const perms = permissions ?? [];
+  return perms.includes('policy.edit');
+}
