@@ -132,6 +132,11 @@ export function Shell() {
   const showWorkflows = hasPermission('workflow.edit');
   const showPolicies = hasPermission('policy.edit');
   const showIntegrations = hasPermission('integration.edit');
+  // EPIC R (api#108) Slice R3 — sidebar entry gated by policy.author
+  // ONLY per §5 correction 2. policy.edit holders use /admin/policies
+  // for global rules; the project-anchored URL is NEVER auto-surfaced
+  // for admin perms.
+  const showProjectPolicies = hasPermission('policy.author');
   const anyAdmin = showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showIntegrations;
 
   return (
@@ -165,6 +170,9 @@ export function Shell() {
           <SectionLabel>My Projects</SectionLabel>
           <NavGroup>
             <NavItem to="/projects" label="All projects" end />
+            {showProjectPolicies && (
+              <NavItem to="/projects/policies" label="Project policies" />
+            )}
           </NavGroup>
 
           {anyAdmin && (
