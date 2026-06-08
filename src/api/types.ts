@@ -568,17 +568,30 @@ export interface Policy {
   priority: number;
   enabled: boolean;
   is_system?: boolean;
+  /** R-follow-up #3 — anchor fields surfaced on the admin projection. */
+  project_id?: string | null;
+  team_id?: string | null;
   created_at?: string;
   updated_at?: string;
 }
 
-/** Body shape for POST + PUT /policies. */
+/**
+ * Body shape for POST + PUT /policies.
+ *
+ * R-follow-up #3 — admin form can target a specific anchor:
+ *   - both nil → platform-global rule (legacy default)
+ *   - project_id set → project-scoped rule
+ *   - team_id set → team-scoped rule (cascades subtree-down)
+ * Mutually exclusive; server-side validation enforces.
+ */
 export interface PolicyInput {
   name: string;
   selector: Record<string, string>;
   workflow_id: string;
   priority: number;
   enabled: boolean;
+  project_id?: string | null;
+  team_id?: string | null;
 }
 
 /**
@@ -602,16 +615,105 @@ export interface PolicyRule {
   id: string;
   name: string;
   project_id: string | null;
+  /**
+   * R-follow-up #3 (api#114) — non-null when the rule is team-anchored
+   * (cascading down into this project's view). Present on inherited
+   * rows; null on own project-scoped rows + platform-inherited rows.
+   */
+  team_id?: string | null;
+  /** R-follow-up #3 — populated for team-inherited rows via server-side JOIN. */
+  team_name?: string;
   is_platform_inherited: boolean;
+  /**
+   * R-follow-up #3 — true when the rule is a team rule cascading into
+   * this project's view (team_id is set + not the project's own).
+   * Inherited rows (platform OR team) omit the `selector` field.
+   */
+  is_team_inherited?: boolean;
   selector_keys: string[];
-  /** Present ONLY when the rule belongs to this project. */
+  /** Present ONLY when the rule belongs to this project (not inherited). */
   selector?: Record<string, unknown>;
   priority: number;
   workflow_id: string;
+  /** R-follow-up #3 — populated via server-side JOIN; SPA reads from envelope (no N+1). */
+  workflow_name?: string;
   enabled: boolean;
   is_system: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+/**
+ * R-follow-up #3 (api#126) — team-anchored policy rule envelope.
+ * Mirrors PolicyRule's project shape. Inherited rows (platform or
+ * ancestor-team) omit `selector` for the same selector-leakage
+ * defense.
+ */
+export interface TeamPolicyRule {
+  id: string;
+  name: string;
+  team_id?: string | null;
+  team_name?: string;
+  workflow_id: string;
+  workflow_name?: string;
+  is_platform_inherited: boolean;
+  /** True when the rule belongs to an ANCESTOR team of the URL teamID. */
+  is_ancestor_inherited: boolean;
+  selector_keys: string[];
+  /** Present ONLY when the rule belongs to the URL team (own row). */
+  selector?: Record<string, unknown>;
+  priority: number;
+  enabled: boolean;
+  is_system: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/**
+ * R-follow-up #3 — single-rule response envelope.
+ * Carries the live priority_cap (R-follow-up #2 §3 — SPA Author
+ * drawer reads from envelope so a stale fallback never happens).
+ */
+export interface TeamPolicyRuleResponse {
+  rule: TeamPolicyRule;
+  priority_cap: number;
+}
+
+/**
+ * R-follow-up #3 — list response envelope.
+ */
+export interface TeamPolicyRulesListResponse {
+  rules: TeamPolicyRule[];
+  priority_cap: number;
+}
+
+/** Body shape for POST /api/v1/teams/:teamID/policy-rules. */
+export interface AuthorTeamPolicyRuleInput {
+  name: string;
+  selector: Record<string, unknown>;
+  priority: number;
+  workflow_id: string;
+  enabled: boolean;
+}
+
+/** Body shape for PUT /api/v1/teams/:teamID/policy-rules/:ruleID. */
+export interface UpdateTeamPolicyRuleInput {
+  name?: string;
+  selector?: Record<string, unknown>;
+  priority?: number;
+  workflow_id?: string;
+  enabled?: boolean;
+}
+
+/**
+ * R-follow-up #3 (api#126) — response shape for
+ * GET /api/v1/users/me/policy-author-team-coverage.
+ * SPA reads this to drive sidebar visibility + canAuthorTeamPolicy
+ * without walking the team tree client-side.
+ */
+export interface MyPolicyAuthorTeamCoverage {
+  global: boolean;
+  team_ids: string[];
 }
 
 /**

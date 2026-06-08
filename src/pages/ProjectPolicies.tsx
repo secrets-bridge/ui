@@ -109,8 +109,12 @@ export function ProjectPolicies() {
   const authorCap = canAuthorProjectPolicy(identity?.permissions, project);
   const showAdminShortcut = canManagePlatformPolicy(identity?.permissions);
 
-  const scopedRules = (list.data ?? []).filter((r) => !r.is_platform_inherited);
-  const inheritedRules = (list.data ?? []).filter((r) => r.is_platform_inherited);
+  const scopedRules = (list.data ?? []).filter(
+    (r) => !r.is_platform_inherited && !r.is_team_inherited,
+  );
+  const inheritedRules = (list.data ?? []).filter(
+    (r) => r.is_platform_inherited || r.is_team_inherited,
+  );
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -126,7 +130,9 @@ export function ProjectPolicies() {
 
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold">Inherited from platform</h3>
+          <h3 className="text-text font-semibold">
+            Inherited (platform + team)
+          </h3>
           <span className="text-muted text-xs">
             {inheritedRules.length} rule{inheritedRules.length === 1 ? '' : 's'}
           </span>
@@ -134,7 +140,7 @@ export function ProjectPolicies() {
         <CardBody>
           {inheritedRules.length === 0 ? (
             <p className="text-sm text-muted">
-              No platform global rules apply to this project.
+              No platform or team rules apply to this project.
             </p>
           ) : (
             <ul className="divide-y divide-border">
@@ -145,13 +151,21 @@ export function ProjectPolicies() {
                 >
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="rounded bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
-                        platform
+                      <span
+                        className="rounded bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted"
+                        title={
+                          r.is_team_inherited && r.team_name
+                            ? `From team ${r.team_name}`
+                            : undefined
+                        }
+                      >
+                        {r.is_team_inherited ? 'team' : 'platform'}
                       </span>
                       <span className="text-sm text-text">{r.name}</span>
                     </div>
                     <div className="mt-1 text-[12px] text-muted">
-                      priority {r.priority} · workflow {workflowName(r.workflow_id)}
+                      priority {r.priority} · workflow{' '}
+                      {r.workflow_name ?? workflowName(r.workflow_id)}
                       {r.selector_keys.length > 0 && (
                         <>
                           {' · selector keys: '}
@@ -163,7 +177,9 @@ export function ProjectPolicies() {
                     </div>
                   </div>
                   <div className="text-[11px] text-muted/80 italic pt-1">
-                    Read-only · use /admin/policies
+                    {r.is_team_inherited
+                      ? `Read-only · manage on team page${r.team_name ? ` (${r.team_name})` : ''}`
+                      : 'Read-only · use /admin/policies'}
                   </div>
                 </li>
               ))}

@@ -42,6 +42,9 @@ const POLICY_RULE_ERROR_MESSAGES: Record<string, string> = {
   // mutation) AND the Author drawer when the live-cap read fails (the
   // `platform_setting_unavailable` path drives the §3 correction 2
   // FAIL-CLOSED banner).
+  // R-follow-up #3 (api#126) — team-anchored authoring surface.
+  team_not_found: 'Team not found.',
+  out_of_scope_team_policy: "You don't have policy.author on this team.",
   unknown_platform_setting: 'Platform setting not found.',
   invalid_platform_setting:
     'Value is outside the allowed range. Refresh and try again.',
@@ -64,6 +67,13 @@ const POLICY_SCOPE_TOO_BROAD_REASON_MESSAGES: Record<string, string> = {
     'Selector cannot be empty. Add at least an environment constraint.',
   env_kind_id_inconsistent:
     'environment_kind and environment_id must agree (both non-prod).',
+  // R-follow-up #3 (api#125) — strict team-rule selector safety.
+  team_selector_pins_project:
+    'Team rules cannot pin selector.project_id — use the project authoring page for project-specific rules.',
+  team_selector_pins_environment_id:
+    'Team rules cannot pin selector.environment_id — use environment_kind=non_prod instead.',
+  team_selector_pins_team_id:
+    'Team rules cannot pin selector.team_id in v1 — the team URL is the source of truth.',
 };
 
 /**
