@@ -84,6 +84,7 @@ export function Policies() {
               <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
                 <tr className="border-b border-border/60">
                   <Th>Name</Th>
+                  <Th>Anchor</Th>
                   <Th>Selector</Th>
                   <Th>Workflow</Th>
                   <Th>Priority</Th>
@@ -176,6 +177,11 @@ function PolicyRow({
             </StatusPill>
           )}
         </div>
+      </Td>
+      <Td>
+        <span className="text-[11px] uppercase tracking-wide text-muted">
+          {p.team_id ? 'team' : p.project_id ? 'project' : 'platform'}
+        </span>
       </Td>
       <Td>
         {selectorKeys.length === 0 ? (

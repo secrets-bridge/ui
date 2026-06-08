@@ -174,6 +174,16 @@ export function Shell() {
             {showProjectPolicies && (
               <NavItem to="/projects/policies" label="Project policies" />
             )}
+            {/* R-follow-up #3 (api#114) — Team policies entry. Coverage
+                is server-resolved via /me/policy-author-team-coverage;
+                the sidebar uses the same broad policy.author flag as
+                Project policies and relies on the page to render the
+                appropriate empty state when the actor doesn't actually
+                cover any team. Sidebar-side scope-aware filtering can
+                land later once coverage stream is hot on every nav. */}
+            {showProjectPolicies && (
+              <NavItem to="/teams/policies" label="Team policies" />
+            )}
           </NavGroup>
 
           {anyAdmin && (

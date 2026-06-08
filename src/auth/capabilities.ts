@@ -162,13 +162,57 @@ export function canAuthorProjectPolicy(
  */
 export function canEditPolicyRule(
   permissions: readonly string[] | undefined,
-  rule: { is_platform_inherited: boolean; is_system: boolean },
+  rule: {
+    is_platform_inherited: boolean;
+    /** R-follow-up #3 — inherited from a team rule cascading into a project view. */
+    is_team_inherited?: boolean;
+    /** R-follow-up #3 — inherited from an ancestor team in a team view. */
+    is_ancestor_inherited?: boolean;
+    is_system: boolean;
+  },
 ): PolicyAuthorCapability {
-  if (rule.is_platform_inherited || rule.is_system) {
+  const inherited =
+    rule.is_platform_inherited ||
+    rule.is_team_inherited === true ||
+    rule.is_ancestor_inherited === true;
+  if (inherited || rule.is_system) {
     return { allowed: false, via: null, reason: 'platform_owned' };
   }
   const perms = permissions ?? [];
   if (perms.includes('policy.author')) {
+    return { allowed: true, via: 'policy.author' };
+  }
+  return { allowed: false, via: null, reason: 'no_perm' };
+}
+
+/* ------------------------------------------------------------------ */
+/* R-follow-up #3 (api#114) — team-scoped policy authoring            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Can the actor author scoped policy rules on the given team?
+ *
+ * Per §5 C3: consumes the actor's resolved team coverage (the team_ids
+ * the `policy.author` grants cover, subtree-expanded by the api's
+ * `EffectiveTeamAccess`). The SPA pulls this via
+ * `useMyPolicyAuthorTeamCoverage`. Passing `global: true` covers every
+ * team.
+ *
+ * §5 C4 lock — `policy.edit` does NOT auto-allow on the team URL
+ * family. Platform admins use `/admin/policies` for team rules; the
+ * team page is `policy.author` only.
+ */
+export function canAuthorTeamPolicy(
+  coverage: { global: boolean; team_ids: readonly string[] } | undefined,
+  teamID: string,
+): PolicyAuthorCapability {
+  if (!coverage) {
+    return { allowed: false, via: null, reason: 'no_perm' };
+  }
+  if (coverage.global) {
+    return { allowed: true, via: 'policy.author' };
+  }
+  if (coverage.team_ids.includes(teamID)) {
     return { allowed: true, via: 'policy.author' };
   }
   return { allowed: false, via: null, reason: 'no_perm' };
