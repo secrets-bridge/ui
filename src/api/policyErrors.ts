@@ -32,6 +32,11 @@ const POLICY_RULE_ERROR_MESSAGES: Record<string, string> = {
     'Priority is reserved for platform policy rules. Use a value below the cap.',
   policy_environment_not_in_project:
     "The selector's environment does not belong to this project.",
+  // R-follow-up #1 (api#118) — closes the §5 correction 3 gap: scoped
+  // authors hit this when they pick a workflow platform admin hasn't
+  // opted into the scoped surface yet.
+  workflow_not_authorable_for_scope:
+    'The selected workflow is not enabled for scoped policy authoring. Pick another or ask platform to enable it.',
 };
 
 /**

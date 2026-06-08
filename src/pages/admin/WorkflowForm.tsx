@@ -31,6 +31,7 @@ const schema = z.object({
   allow_self_approval: z.boolean(),
   notification_channels_csv: z.string().optional(),
   enabled: z.boolean(),
+  scoped_policy_authorable: z.boolean(),
 });
 
 type FormShape = z.infer<typeof schema>;
@@ -55,6 +56,9 @@ const defaults: FormShape = {
   allow_self_approval: false,
   notification_channels_csv: '',
   enabled: true,
+  // R-follow-up #1 (api#118) — default-deny on Create. On edit the
+  // useEffect below reseeds from `initial.scoped_policy_authorable`.
+  scoped_policy_authorable: false,
 };
 
 export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitError }: Props) {
@@ -62,7 +66,7 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    formState: { errors, dirtyFields },
   } = useForm<FormShape>({
     resolver: zodResolver(schema),
     defaultValues: defaults,
@@ -82,6 +86,13 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
         allow_self_approval: initial.allow_self_approval,
         notification_channels_csv: (initial.notification_channels ?? []).join(', '),
         enabled: initial.enabled,
+        // R-follow-up #1 (api#118) §3 safety correction: when the
+        // loaded Workflow has no scoped_policy_authorable field
+        // (older api response during rolling deploy), seed the
+        // checkbox at false — but we ALSO track whether the field
+        // was present so the submit can decide to OMIT vs SEND it
+        // (see onValid below).
+        scoped_policy_authorable: initial.scoped_policy_authorable ?? false,
       });
     } else {
       reset(defaults);
@@ -107,6 +118,26 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
       notification_channels: channels,
       enabled: data.enabled,
     };
+    // R-follow-up #1 (api#118) §3 safety correction (rolling-deploy
+    // + older-api defense):
+    //
+    //   - On Create: always send the explicit value (default false
+    //     when admin doesn't touch the checkbox).
+    //   - On Edit: only send the field when (a) the loaded api
+    //     response already had it OR (b) the admin TOUCHED the
+    //     checkbox during this edit (dirtyFields tracks that).
+    //
+    // Otherwise OMIT — the api's UpdateWorkflow Get-then-merges and
+    // preserves the existing value. Without this guard, older SPA
+    // builds upgrading mid-deploy would silently opt every workflow
+    // OUT on the next edit.
+    const isCreate = !initial;
+    const initialHadField =
+      initial?.scoped_policy_authorable !== undefined;
+    const touched = !!dirtyFields.scoped_policy_authorable;
+    if (isCreate || initialHadField || touched) {
+      body.scoped_policy_authorable = data.scoped_policy_authorable;
+    }
     await onSubmit(body);
   };
 
@@ -154,6 +185,29 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
         <Toggle label="Require justification" {...register('require_justification')} />
         <Toggle label="Allow self-approval" {...register('allow_self_approval')} />
         <Toggle label="Enabled" {...register('enabled')} />
+      </div>
+
+      {/* R-follow-up #1 (api#118) — Scoped author access section at
+          the BOTTOM per §3 Q9 lock. This is a permission-surface
+          flag, not a workflow-behaviour flag, so it sits visually
+          apart from the TTL + Enabled cluster above. */}
+      <div className="pt-4 border-t border-border space-y-2">
+        <div>
+          <div className="text-xs uppercase tracking-wide text-muted/80 font-semibold">
+            Scoped author access
+          </div>
+        </div>
+        <Toggle
+          label="Available for scoped policy authoring"
+          {...register('scoped_policy_authorable')}
+        />
+        <p className="text-[11px] text-muted leading-relaxed">
+          When checked, this workflow appears in the dropdown on{' '}
+          <span className="font-mono text-text/80">/projects/:id/policies</span>{' '}
+          for users with <span className="font-mono text-text/80">policy.author</span>.
+          When unchecked, it stays admin-only and visible only on{' '}
+          <span className="font-mono text-text/80">/admin/policies</span>. Default off.
+        </p>
       </div>
 
       {submitError instanceof ApiError && (

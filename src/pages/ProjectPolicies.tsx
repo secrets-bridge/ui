@@ -38,7 +38,10 @@ import type {
   MyEnvironment,
   PolicyRule,
 } from '../api/types';
-import { useWorkflows } from '../api/workflows';
+import {
+  useScopedAuthorableWorkflows,
+  useWorkflows,
+} from '../api/workflows';
 import {
   canAuthorProjectPolicy,
   canEditPolicyRule,
@@ -322,16 +325,14 @@ function AuthorPolicyDrawer({
   onClose: () => void;
 }) {
   const author = useAuthorPolicyRule(projectId);
-  const workflows = useWorkflows();
-
-  // §5 correction 3 — defensive workflow dropdown filter for v1.
-  // Show enabled + non-system workflows only. The eventual
-  // `workflow_definitions.scoped_policy_authorable` flag (R-follow-up
-  // #1) replaces this with an opt-in curated list.
-  const eligibleWorkflows = useMemo(
-    () => (workflows.data ?? []).filter((w) => w.enabled && !w.is_system),
-    [workflows.data],
-  );
+  // R-follow-up #1 (api#118) — Server-side curated list replaces the
+  // EPIC R §5 correction 3 defensive client-side filter. The api
+  // returns only workflows where enabled=true AND
+  // scoped_policy_authorable=true; platform admin curates the
+  // surface via the admin Workflows page. No client-side filtering
+  // needed; the SPA renders what arrives.
+  const workflows = useScopedAuthorableWorkflows();
+  const eligibleWorkflows = workflows.data ?? [];
 
   const {
     register,
