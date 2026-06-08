@@ -430,6 +430,15 @@ export interface Workflow {
   is_default?: boolean;
   enabled: boolean;
   is_system?: boolean;
+  /**
+   * R-follow-up #1 (api#118) — opt-in flag exposing this workflow to
+   * scoped policy authors on `/projects/:id/policies`. Default `false`.
+   * Optional for rolling-deploy safety: the api always returns the
+   * field, but older api responses (pre-migration 0035) won't have
+   * it. SPA reads it for the [scoped] chip on the admin Workflows
+   * list + the WorkflowForm checkbox initial value.
+   */
+  scoped_policy_authorable?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -451,6 +460,23 @@ export interface WorkflowInput {
   allow_self_approval: boolean;
   notification_channels: string[];
   enabled: boolean;
+  /**
+   * R-follow-up #1 (api#118) — explicit opt-in for the scoped policy
+   * authoring surface. `true` / `false` flip the flag; `null` or
+   * `undefined` PRESERVES the current value on PUT (the api does a
+   * Get-then-merge when the field is omitted).
+   *
+   * §3 safety correction: the WorkflowForm MUST NOT default this to
+   * `false` on edit when the loaded Workflow object has no
+   * `scoped_policy_authorable` field (older api response during
+   * rolling deploy). It must omit the field from the PUT body so the
+   * api preserves whatever is in the DB. The form only sends an
+   * explicit value when the admin TOUCHED the checkbox during edit.
+   *
+   * On Create, the form defaults to `false` (default-deny) and
+   * always sends the value.
+   */
+  scoped_policy_authorable?: boolean | null;
 }
 
 /**

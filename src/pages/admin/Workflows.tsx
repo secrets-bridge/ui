@@ -175,6 +175,15 @@ function WorkflowRow({
               system
             </StatusPill>
           )}
+          {/* R-follow-up #1 (api#118) — visibility chip for the
+              scoped policy author surface. Operators see at a glance
+              which workflows are exposed to /projects/:id/policies
+              without opening every drawer. */}
+          {w.scoped_policy_authorable && (
+            <StatusPill variant="accent" tone="outline">
+              scoped
+            </StatusPill>
+          )}
         </div>
         {w.description && (
           <div className="text-muted text-xs mt-1">{w.description}</div>
