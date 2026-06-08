@@ -755,3 +755,16 @@ export interface PermissionDescriptor {
   group: string;        // "RBAC" | "Workflows" | "Agents" | "Secrets" | "Observability" | "Integrations"
   description: string;
 }
+
+/**
+ * R-follow-up #2 (api#113) — wire shape from
+ * GET /api/v1/platform-settings[/:key]. The `value` field is `unknown`
+ * because the table is generic over a key/value JSONB schema; callers
+ * narrow per-key (e.g. `value` is `number` for `platform_reserved_priority`).
+ */
+export interface PlatformSetting {
+  key: string;
+  value: unknown;
+  updated_at: string;
+  updated_by: string | null;
+}

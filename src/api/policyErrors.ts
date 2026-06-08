@@ -37,6 +37,16 @@ const POLICY_RULE_ERROR_MESSAGES: Record<string, string> = {
   // opted into the scoped surface yet.
   workflow_not_authorable_for_scope:
     'The selected workflow is not enabled for scoped policy authoring. Pick another or ask platform to enable it.',
+  // R-follow-up #2 (api#113) — platform_settings admin endpoints. These
+  // surface in two places: the PlatformSettings admin page (direct
+  // mutation) AND the Author drawer when the live-cap read fails (the
+  // `platform_setting_unavailable` path drives the §3 correction 2
+  // FAIL-CLOSED banner).
+  unknown_platform_setting: 'Platform setting not found.',
+  invalid_platform_setting:
+    'Value is outside the allowed range. Refresh and try again.',
+  platform_setting_unavailable:
+    'Platform settings are temporarily unavailable. Try again shortly.',
 };
 
 /**
@@ -78,6 +88,9 @@ export interface PolicyRuleErrorDetail {
   reason?: string;
   cap?: number;
   envKind?: string;
+  /** R-follow-up #2 (api#113) — bounds carried on invalid_platform_setting envelopes. */
+  min?: number;
+  max?: number;
 }
 
 export function extractPolicyRuleError(err: ApiError): PolicyRuleErrorDetail {
@@ -88,11 +101,15 @@ export function extractPolicyRuleError(err: ApiError): PolicyRuleErrorDetail {
       reason?: unknown;
       cap?: unknown;
       env_kind?: unknown;
+      min?: unknown;
+      max?: unknown;
     };
     if (typeof obj.error_code === 'string') out.code = obj.error_code;
     if (typeof obj.reason === 'string') out.reason = obj.reason;
     if (typeof obj.cap === 'number') out.cap = obj.cap;
     if (typeof obj.env_kind === 'string') out.envKind = obj.env_kind;
+    if (typeof obj.min === 'number') out.min = obj.min;
+    if (typeof obj.max === 'number') out.max = obj.max;
   }
   return out;
 }
@@ -115,6 +132,13 @@ export function toPolicyRuleErrorToast(err: ApiError): string {
   }
   if (detail.code === 'policy_priority_reserved' && typeof detail.cap === 'number') {
     return `Priority must be less than ${detail.cap} (platform reserved).`;
+  }
+  if (
+    detail.code === 'invalid_platform_setting' &&
+    typeof detail.min === 'number' &&
+    typeof detail.max === 'number'
+  ) {
+    return `Value must be between ${detail.min} and ${detail.max}.`;
   }
   const generic = policyRuleErrorMessage(detail.code);
   if (generic) return generic;

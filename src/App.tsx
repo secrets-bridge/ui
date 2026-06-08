@@ -25,6 +25,7 @@ import { RevealSession } from './pages/RevealSession';
 import { Secrets } from './pages/Secrets';
 import { Assignments } from './pages/admin/Assignments';
 import { Integrations } from './pages/admin/Integrations';
+import { PlatformSettings } from './pages/admin/PlatformSettings';
 import { Policies } from './pages/admin/Policies';
 import { Projects } from './pages/admin/Projects';
 import { ProviderConnections } from './pages/admin/ProviderConnections';
@@ -72,6 +73,7 @@ export function App() {
           <Route path="/admin/assignments" element={<Assignments />} />
           <Route path="/admin/workflows" element={<Workflows />} />
           <Route path="/admin/policies" element={<Policies />} />
+          <Route path="/admin/platform-settings" element={<PlatformSettings />} />
           <Route path="/admin/provider-connections" element={<ProviderConnections />} />
           <Route path="/admin/integrations" element={<Integrations />} />
           <Route path="*" element={<Navigate to="/" replace />} />
