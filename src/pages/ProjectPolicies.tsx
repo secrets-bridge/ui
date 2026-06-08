@@ -13,8 +13,14 @@
  * The Author drawer (defined at the bottom of this file) is the §5 Q14
  * guided form: required env picker (radio: any non_prod OR specific
  * env from a dropdown filtered to non_prod), optional secret_ref_prefix,
- * workflow dropdown (defensive filter: enabled + non-system per §5
- * correction 3), priority < 9000.
+ * workflow dropdown (curated server-side per R-follow-up #1 / api#118),
+ * priority strictly below the platform-reserved band.
+ *
+ * R-follow-up #2 (api#113) — the priority cap is no longer hardcoded.
+ * The drawer reads the live cap via `usePlatformReservedPriority()`
+ * and FAILS CLOSED (form disabled + red banner) while loading or on
+ * error rather than falling back to 9000 — a stale fallback would
+ * defeat the gate that keeps scoped authors out of the platform band.
  */
 
 import { useMemo, useState } from 'react';
@@ -38,6 +44,7 @@ import type {
   MyEnvironment,
   PolicyRule,
 } from '../api/types';
+import { usePlatformReservedPriority } from '../api/platformSettings';
 import {
   useScopedAuthorableWorkflows,
   useWorkflows,
@@ -53,8 +60,6 @@ import { Card, CardBody, CardHeader } from '../ui/Card';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { Drawer } from '../ui/Drawer';
 import { PageHeader } from '../ui/PageHeader';
-
-const PLATFORM_RESERVED_PRIORITY = 9000;
 
 export function ProjectPolicies() {
   const { id: projectId } = useParams<{ id: string }>();
@@ -286,34 +291,41 @@ function EmptyState({
 /* Author drawer (guided form, §5 Q14 lock — no raw JSON)       */
 /* ----------------------------------------------------------- */
 
-const authorSchema = z
-  .object({
-    name: z
-      .string()
-      .min(1, 'name is required')
-      .max(120, 'name is too long'),
-    env_match: z.enum(['any_non_prod', 'specific']),
-    environment_id: z.string().optional(),
-    secret_ref_prefix: z.string().max(255).optional(),
-    workflow_id: z.string().uuid('pick a workflow'),
-    priority: z.coerce
-      .number()
-      .int()
-      .min(0, 'priority must be 0 or higher')
-      .max(PLATFORM_RESERVED_PRIORITY - 1, `priority must be < ${PLATFORM_RESERVED_PRIORITY}`),
-    enabled: z.boolean(),
-  })
-  .superRefine((val, ctx) => {
-    if (val.env_match === 'specific' && !val.environment_id) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['environment_id'],
-        message: 'pick a non-prod environment',
-      });
-    }
-  });
+/**
+ * R-follow-up #2 (api#113) — schema is a factory keyed on the live
+ * platform-reserved-priority cap. Built per-mount so the `< cap`
+ * validation reflects whatever admin has flipped to right now.
+ */
+function buildAuthorSchema(cap: number) {
+  return z
+    .object({
+      name: z
+        .string()
+        .min(1, 'name is required')
+        .max(120, 'name is too long'),
+      env_match: z.enum(['any_non_prod', 'specific']),
+      environment_id: z.string().optional(),
+      secret_ref_prefix: z.string().max(255).optional(),
+      workflow_id: z.string().uuid('pick a workflow'),
+      priority: z.coerce
+        .number()
+        .int()
+        .min(0, 'priority must be 0 or higher')
+        .max(cap - 1, `priority must be < ${cap}`),
+      enabled: z.boolean(),
+    })
+    .superRefine((val, ctx) => {
+      if (val.env_match === 'specific' && !val.environment_id) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['environment_id'],
+          message: 'pick a non-prod environment',
+        });
+      }
+    });
+}
 
-type AuthorFormShape = z.infer<typeof authorSchema>;
+type AuthorFormShape = z.infer<ReturnType<typeof buildAuthorSchema>>;
 
 function AuthorPolicyDrawer({
   projectId,
@@ -322,6 +334,90 @@ function AuthorPolicyDrawer({
 }: {
   projectId: string;
   nonProdEnvs: MyEnvironment[];
+  onClose: () => void;
+}) {
+  // R-follow-up #2 (api#113) — read the cap LIVE. §3 correction 2:
+  // FAIL CLOSED on isLoading/isError. The wrapper renders one of
+  // three children — loading / error / form — and only the form
+  // branch (`cap.value` is a real number) mounts useForm, so the
+  // Zod schema reflects the live cap at mount time.
+  const cap = usePlatformReservedPriority();
+
+  if (cap.isLoading) {
+    return (
+      <Drawer
+        title="Author policy rule"
+        onClose={onClose}
+        footer={
+          <div className="flex justify-end">
+            <Button variant="secondary" onClick={onClose}>
+              Close
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded border border-border bg-bg px-3 py-2 text-[12px] text-muted">
+            Loading platform settings…
+          </div>
+          <p className="text-[12px] text-muted italic">
+            The priority cap is a live platform setting — authoring
+            stays disabled until it loads.
+          </p>
+        </div>
+      </Drawer>
+    );
+  }
+
+  if (cap.isError || cap.value === undefined) {
+    return (
+      <Drawer
+        title="Author policy rule"
+        onClose={onClose}
+        footer={
+          <div className="flex justify-end">
+            <Button variant="secondary" onClick={onClose}>
+              Close
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+            Could not load platform settings.{' '}
+            {cap.error instanceof ApiError
+              ? toPolicyRuleErrorToast(cap.error)
+              : 'Try again shortly.'}
+          </div>
+          <p className="text-[12px] text-muted italic">
+            Authoring stays disabled until the cap is readable —
+            falling back to a stale value would let scoped rules into
+            the platform-reserved band.
+          </p>
+        </div>
+      </Drawer>
+    );
+  }
+
+  return (
+    <AuthorPolicyForm
+      projectId={projectId}
+      nonProdEnvs={nonProdEnvs}
+      cap={cap.value}
+      onClose={onClose}
+    />
+  );
+}
+
+function AuthorPolicyForm({
+  projectId,
+  nonProdEnvs,
+  cap,
+  onClose,
+}: {
+  projectId: string;
+  nonProdEnvs: MyEnvironment[];
+  cap: number;
   onClose: () => void;
 }) {
   const author = useAuthorPolicyRule(projectId);
@@ -334,13 +430,14 @@ function AuthorPolicyDrawer({
   const workflows = useScopedAuthorableWorkflows();
   const eligibleWorkflows = workflows.data ?? [];
 
+  const schema = useMemo(() => buildAuthorSchema(cap), [cap]);
   const {
     register,
     handleSubmit,
     watch,
     formState: { errors },
   } = useForm<AuthorFormShape>({
-    resolver: zodResolver(authorSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       name: '',
       env_match: 'any_non_prod',
@@ -503,7 +600,7 @@ function AuthorPolicyDrawer({
         </Field>
 
         <Field
-          label={`Priority (< ${PLATFORM_RESERVED_PRIORITY} — platform reserved)`}
+          label={`Priority (< ${cap} — platform reserved)`}
           error={errors.priority?.message}
         >
           <input

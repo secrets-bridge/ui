@@ -111,6 +111,7 @@ export function Shell() {
   //   Admin/Asgmts    → user_role.edit
   //   Admin/Wflows    → workflow.edit
   //   Admin/Policies  → policy.edit
+  //   Admin/PltSettn  → policy.edit (R-follow-up #2 / api#113)
   //   Admin/Intgrtns  → integration.edit
   //
   // Dashboard + /me are always visible (no gate).
@@ -185,6 +186,9 @@ export function Shell() {
                 {showAssignments && <NavItem to="/admin/assignments" label="Assignments" />}
                 {showWorkflows && <NavItem to="/admin/workflows" label="Workflows" />}
                 {showPolicies && <NavItem to="/admin/policies" label="Policies" />}
+                {showPolicies && (
+                  <NavItem to="/admin/platform-settings" label="Platform settings" />
+                )}
                 {showIntegrations && (
                   <NavItem
                     to="/admin/provider-connections"
