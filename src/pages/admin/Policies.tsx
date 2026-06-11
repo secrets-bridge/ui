@@ -12,6 +12,7 @@
  */
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { ApiError } from '../../api/client';
 import type { Policy, PolicyInput } from '../../api/types';
@@ -220,6 +221,15 @@ function PolicyRow({
       </Td>
       <Td className="text-right">
         <div className="flex items-center justify-end gap-3">
+          {/* R-follow-up #5 — History routes to the admin Detail page
+              where the audit timeline lives. Forensic post-delete
+              visibility is admin-only per §4 C4. */}
+          <Link
+            to={`/admin/policies/${p.id}`}
+            className="text-accent hover:text-accent-bright text-sm font-medium"
+          >
+            History
+          </Link>
           <button
             onClick={onEdit}
             className="text-accent hover:text-accent-bright text-sm font-medium"

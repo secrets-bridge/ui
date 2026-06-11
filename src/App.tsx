@@ -19,8 +19,10 @@ import { MyProjects } from './pages/MyProjects';
 import { ProjectEnv } from './pages/ProjectEnv';
 import { ProjectPolicies } from './pages/ProjectPolicies';
 import { ProjectPoliciesPicker } from './pages/ProjectPoliciesPicker';
+import { ProjectPolicyDetail } from './pages/ProjectPolicyDetail';
 import { TeamPolicies } from './pages/TeamPolicies';
 import { TeamPoliciesPicker } from './pages/TeamPoliciesPicker';
+import { TeamPolicyDetail } from './pages/TeamPolicyDetail';
 import { RequestDetail } from './pages/RequestDetail';
 import { Requests } from './pages/Requests';
 import { RevealSession } from './pages/RevealSession';
@@ -29,6 +31,7 @@ import { Assignments } from './pages/admin/Assignments';
 import { Integrations } from './pages/admin/Integrations';
 import { PlatformSettings } from './pages/admin/PlatformSettings';
 import { Policies } from './pages/admin/Policies';
+import { AdminPolicyDetail } from './pages/admin/PolicyDetail';
 import { Projects } from './pages/admin/Projects';
 import { ProviderConnections } from './pages/admin/ProviderConnections';
 import { Roles } from './pages/admin/Roles';
@@ -65,8 +68,12 @@ export function App() {
           <Route path="/projects/:id/env/:env_id" element={<ProjectEnv />} />
           <Route path="/projects/policies" element={<ProjectPoliciesPicker />} />
           <Route path="/projects/:id/policies" element={<ProjectPolicies />} />
+          {/* R-follow-up #5 (api#132) — per-rule Detail page; carries
+              the History tab. */}
+          <Route path="/projects/:id/policies/:ruleID" element={<ProjectPolicyDetail />} />
           <Route path="/teams/policies" element={<TeamPoliciesPicker />} />
           <Route path="/teams/:id/policies" element={<TeamPolicies />} />
+          <Route path="/teams/:id/policies/:ruleID" element={<TeamPolicyDetail />} />
           <Route
             path="/projects/:id/env/:env_id/reveal/:request_id"
             element={<RevealSession />}
@@ -77,6 +84,7 @@ export function App() {
           <Route path="/admin/assignments" element={<Assignments />} />
           <Route path="/admin/workflows" element={<Workflows />} />
           <Route path="/admin/policies" element={<Policies />} />
+          <Route path="/admin/policies/:id" element={<AdminPolicyDetail />} />
           <Route path="/admin/platform-settings" element={<PlatformSettings />} />
           <Route path="/admin/provider-connections" element={<ProviderConnections />} />
           <Route path="/admin/integrations" element={<Integrations />} />

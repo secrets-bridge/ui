@@ -25,6 +25,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
 import { policiesKey } from './policies';
+import { policyRuleHistoryKey } from './policyRuleHistory';
 import type {
   AuthorTeamPolicyRuleInput,
   TeamPolicyRuleResponse,
@@ -55,6 +56,11 @@ const invalidateAfterTeamMutation = (
   // projects without walking the team tree, so we invalidate the
   // prefix and let TanStack refetch what's currently mounted.
   qc.invalidateQueries({ queryKey: ['project-policy-rules'] });
+  // R-follow-up #5 §5 D3 — 6th key. Any mutation may add a new event
+  // to a rule whose history view isn't currently mounted; broad
+  // invalidate keeps the cache honest without enumerating mounted
+  // history queries.
+  qc.invalidateQueries({ queryKey: policyRuleHistoryKey.base });
 };
 
 export function useTeamPolicyRules(teamID: string | undefined) {

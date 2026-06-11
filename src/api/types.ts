@@ -870,3 +870,72 @@ export interface PlatformSetting {
   updated_at: string;
   updated_by: string | null;
 }
+
+/**
+ * R-follow-up #5 (api#132) — policy rule audit history types.
+ *
+ * Server-side diff computation per §3 D3 / D5: PolicyHistoryService
+ * walks the audit chain, computes the fixed-key delta between
+ * consecutive snapshots, normalizes action names (legacy →
+ * normalized), and resolves workflow names via batch lookup.
+ *
+ * §6 selector lock preserved on the wire: `selector_keys` is
+ * set-based, NEVER carries selector VALUES (the secret_ref_prefix,
+ * project_id, etc. that operators set on the rule).
+ *
+ * Action names are NORMALIZED at the service boundary — the SPA
+ * receives one stable enum (policy.create / policy.update /
+ * policy.delete) regardless of what's persisted on disk.
+ */
+
+/** One rendered audit-log entry — input to the timeline UI. */
+export interface PolicyRuleHistoryEntry {
+  event_id: string;
+  occurred_at: string;
+  actor: string;
+  actor_display: string;
+  correlation_id: string;
+  /** Normalized: 'policy.create' | 'policy.update' | 'policy.delete'. */
+  action: 'policy.create' | 'policy.update' | 'policy.delete';
+  actor_permission_used?: 'policy.author' | 'policy.edit';
+  scope?: 'platform' | 'project' | 'team';
+  changes: PolicyRuleFieldChange[];
+  snapshot_after: PolicyRuleSnapshot;
+}
+
+/** One field-level delta. */
+export interface PolicyRuleFieldChange {
+  key: 'name' | 'enabled' | 'priority' | 'workflow_id' | 'selector_keys';
+  /**
+   * `null` when the snapshot's metadata didn't carry this field
+   * (legacy events from before slice 1b). UI renders as `(unknown)`.
+   */
+  before?: unknown;
+  after?: unknown;
+  /** Populated for `workflow_id` changes only — workflow's display name. */
+  before_workflow_name?: string;
+  after_workflow_name?: string;
+}
+
+/** Post-mutation snapshot. Pointer fields ⇔ optional on the wire. */
+export interface PolicyRuleSnapshot {
+  /** Absent on legacy events (slice 1b extended emit; older rows lack this). */
+  name?: string;
+  /** Absent on legacy events. */
+  enabled?: boolean;
+  priority: number;
+  workflow_id: string;
+  /** Server-side JOIN; `null`/absent → render `(deleted)`. */
+  workflow_name?: string;
+  /** Set-based, sorted server-side. Values NEVER exposed (§6 lock). */
+  selector_keys: string[];
+}
+
+/** Response envelope for the 3 history endpoints. */
+export interface PolicyRuleHistoryResponse {
+  rule_id: string;
+  scope: 'platform' | 'project' | 'team';
+  entries: PolicyRuleHistoryEntry[];
+  has_more: boolean;
+  limit: number;
+}
