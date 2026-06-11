@@ -25,6 +25,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
 import { policiesKey } from './policies';
+import { policyRuleHistoryKey } from './policyRuleHistory';
 import type {
   AuthorPolicyRuleInput,
   PolicyRule,
@@ -48,6 +49,10 @@ const invalidateAfterPolicyMutation = (
   // Defensive: anything that resolved a workflow via the policy engine
   // should refetch in case the new rule changes the answer.
   qc.invalidateQueries({ queryKey: ['policy-engine'] });
+  // R-follow-up #5 §5 D3 — broad history-tree invalidate. Any
+  // mutation may add a new event to a rule whose history view isn't
+  // currently mounted.
+  qc.invalidateQueries({ queryKey: policyRuleHistoryKey.base });
 };
 
 /**

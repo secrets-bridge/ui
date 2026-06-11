@@ -231,3 +231,49 @@ export function canManagePlatformPolicy(
   const perms = permissions ?? [];
   return perms.includes('policy.edit');
 }
+
+/**
+ * R-follow-up #5 §5 D8 — gate the "History" tab / row action on the
+ * SAME perms as the parent list page (per OQ5-1). No premature design
+ * for a future `policy.list` permission.
+ *
+ *   - Admin context  → `policy.edit`
+ *   - Project context → `policy.author` covering the projectID
+ *   - Team context   → `policy.author` covering the teamID
+ *
+ * `coverage` is the resolved team set from
+ * `useMyPolicyAuthorTeamCoverage`; pass `undefined` for non-team
+ * contexts. `permissions` is the actor's permission list (drives the
+ * admin + project paths).
+ */
+export type PolicyHistoryViewCapability =
+  | { allowed: true }
+  | { allowed: false; reason: 'no_perm' };
+
+export function canViewPolicyRuleHistory(
+  context:
+    | { kind: 'admin' }
+    | { kind: 'project'; projectID: string }
+    | { kind: 'team'; teamID: string },
+  options: {
+    permissions: readonly string[] | undefined;
+    teamCoverage?: { global: boolean; team_ids: readonly string[] };
+  },
+): PolicyHistoryViewCapability {
+  const perms = options.permissions ?? [];
+
+  if (context.kind === 'admin') {
+    return perms.includes('policy.edit')
+      ? { allowed: true }
+      : { allowed: false, reason: 'no_perm' };
+  }
+
+  if (context.kind === 'project') {
+    const cap = canAuthorProjectPolicy(perms, { id: context.projectID });
+    return cap.allowed ? { allowed: true } : { allowed: false, reason: 'no_perm' };
+  }
+
+  // team
+  const cap = canAuthorTeamPolicy(options.teamCoverage, context.teamID);
+  return cap.allowed ? { allowed: true } : { allowed: false, reason: 'no_perm' };
+}

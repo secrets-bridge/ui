@@ -14,7 +14,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
+import { policyRuleHistoryKey } from './policyRuleHistory';
 import type { Policy, PolicyInput } from './types';
+
+/** R-follow-up #5 §5 D3 — broad history-tree invalidate on every
+ *  admin mutation. Same rationale as the scoped paths' 6-key
+ *  invariant: any mutation may add a new event to a rule whose
+ *  history view isn't currently mounted. */
+const invalidateAfterAdminPolicyMutation = (
+  qc: ReturnType<typeof useQueryClient>,
+) => {
+  qc.invalidateQueries({ queryKey: policiesKey.all });
+  qc.invalidateQueries({ queryKey: policyRuleHistoryKey.base });
+};
 
 export const policiesKey = {
   all: ['policies'] as const,
@@ -40,7 +52,7 @@ export function useCreatePolicy() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: PolicyInput) => api.post<Policy>('/api/v1/policies', body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: policiesKey.all }),
+    onSuccess: () => invalidateAfterAdminPolicyMutation(qc),
   });
 }
 
@@ -48,7 +60,7 @@ export function useUpdatePolicy(id: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: PolicyInput) => api.put<void>(`/api/v1/policies/${id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: policiesKey.all }),
+    onSuccess: () => invalidateAfterAdminPolicyMutation(qc),
   });
 }
 
@@ -56,6 +68,6 @@ export function useDeletePolicy() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.delete<void>(`/api/v1/policies/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: policiesKey.all }),
+    onSuccess: () => invalidateAfterAdminPolicyMutation(qc),
   });
 }

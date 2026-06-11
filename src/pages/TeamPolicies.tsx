@@ -193,16 +193,24 @@ export function TeamPolicies() {
                         </div>
                       )}
                     </div>
-                    {editCap.allowed && (
-                      <div className="flex items-center gap-2 pt-1">
+                    <div className="flex items-center gap-2 pt-1">
+                      {/* R-follow-up #5 — History link routes to the
+                          Detail page where the audit timeline lives. */}
+                      <Link
+                        to={`/teams/${teamID}/policies/${r.id}`}
+                        className="text-[12px] text-accent hover:underline"
+                      >
+                        History
+                      </Link>
+                      {editCap.allowed && (
                         <button
                           onClick={() => setConfirmDelete(r)}
                           className="text-[12px] text-red-300 hover:underline"
                         >
                           Delete
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </li>
                 );
               })}
