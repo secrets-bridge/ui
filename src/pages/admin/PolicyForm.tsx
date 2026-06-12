@@ -5,11 +5,15 @@
  * Selector dimensions (per BRD §17 / `policy_rules.selector`):
  *   - project_id          exact match
  *   - environment         exact match
- *   - provider_type       exact match (vault / aws-sm / gcp-sm / ...)
+ *   - provider_type       exact match — picked from the backend-owned
+ *                         enum (api#139). Blank = wildcard (field omitted).
  *   - secret_ref_prefix   prefix match (e.g. "billing/")
  *
  * Empty selector keys are omitted from the submitted body so the
- * api treats them as wildcards (per its server-side semantics).
+ * api treats them as wildcards (per its server-side semantics). The
+ * `provider_type` dropdown's blank option MUST omit the key — never
+ * submit `provider_type: ""` (the server rejects it as
+ * provider_type_invalid).
  *
  * Workflow_id is picked from a dropdown of all workflows so operators
  * never have to remember a UUID. The list comes via `useWorkflows()`
@@ -24,6 +28,7 @@ import { z } from 'zod';
 
 import type { Policy, PolicyInput } from '../../api/types';
 import { ApiError } from '../../api/client';
+import { POLICY_SELECTOR_PROVIDER_TYPES } from '../../api/policySelectorEnums';
 import { useTeams } from '../../api/teams';
 import { useWorkflows } from '../../api/workflows';
 
@@ -277,8 +282,18 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
           <input type="text" {...register('sel_environment')} className={inputCls} placeholder="prod" />
         </Field>
 
-        <Field label="provider_type (exact)">
-          <input type="text" {...register('sel_provider_type')} className={inputCls} placeholder="vault | aws-sm | gcp-sm" />
+        <Field label="provider_type (exact)" hint="blank = any provider (wildcard)">
+          {/* api#139 — backend-owned enum. Blank option omits the field
+              from the submitted selector (onValid only sets it when
+              truthy), so the server never sees provider_type="". */}
+          <select {...register('sel_provider_type')} className={inputCls}>
+            <option value="">— any —</option>
+            {POLICY_SELECTOR_PROVIDER_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
         </Field>
 
         <Field label="secret_ref_prefix (prefix)">

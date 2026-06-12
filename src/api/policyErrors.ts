@@ -74,6 +74,10 @@ const POLICY_SCOPE_TOO_BROAD_REASON_MESSAGES: Record<string, string> = {
     'Team rules cannot pin selector.environment_id — use environment_kind=non_prod instead.',
   team_selector_pins_team_id:
     'Team rules cannot pin selector.team_id in v1 — the team URL is the source of truth.',
+  // api#139 — selector enum v1 lock. Allowed values are product
+  // metadata, not sensitive data, so it's safe to list them here.
+  provider_type_invalid:
+    'Provider type must be one of: aws-sm, vault, gcp-sm, azure-kv, kubernetes.',
 };
 
 /**
