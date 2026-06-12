@@ -30,6 +30,7 @@ import { z } from 'zod';
 
 import { ApiError } from '../api/client';
 import { toPolicyRuleErrorToast } from '../api/policyErrors';
+import { POLICY_SELECTOR_PROVIDER_TYPES } from '../api/policySelectorEnums';
 import { useMyPolicyAuthorTeamCoverage } from '../api/myPolicyAuthorTeamCoverage';
 import {
   useAuthorTeamPolicyRule,
@@ -328,6 +329,9 @@ function buildTeamAuthorSchema(cap: number) {
   return z.object({
     name: z.string().min(1, 'name is required').max(120, 'name is too long'),
     secret_ref_prefix: z.string().max(255).optional(),
+    // api#139 — optional provider_type from the backend-owned enum.
+    // Empty string = wildcard (omitted from the submitted selector).
+    provider_type: z.string().optional(),
     workflow_id: z.string().uuid('pick a workflow'),
     priority: z.coerce
       .number()
@@ -413,6 +417,7 @@ function TeamPolicyAuthorForm({
     defaultValues: {
       name: '',
       secret_ref_prefix: '',
+      provider_type: '',
       workflow_id: eligibleWorkflows[0]?.id ?? '',
       priority: 100,
       enabled: true,
@@ -428,6 +433,12 @@ function TeamPolicyAuthorForm({
     };
     if (vals.secret_ref_prefix) {
       selector.secret_ref_prefix = vals.secret_ref_prefix;
+    }
+    // api#139 — only set provider_type when a real value is chosen.
+    // Blank stays a wildcard; never submit provider_type="" (the
+    // server rejects it as provider_type_invalid).
+    if (vals.provider_type) {
+      selector.provider_type = vals.provider_type;
     }
     const body: AuthorTeamPolicyRuleInput = {
       name: vals.name,
@@ -487,6 +498,26 @@ function TeamPolicyAuthorForm({
             className="w-full rounded border border-border bg-bg px-2 py-1 text-text font-mono"
             placeholder="billing/"
           />
+        </Field>
+
+        <Field
+          label="Optional provider_type"
+          error={errors.provider_type?.message}
+        >
+          {/* api#139 — backend-owned enum. Blank = wildcard; the
+              onSubmit only sets the key when a value is chosen, so the
+              server never sees provider_type="". */}
+          <select
+            {...register('provider_type')}
+            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+          >
+            <option value="">— any provider —</option>
+            {POLICY_SELECTOR_PROVIDER_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
         </Field>
 
         <Field label="Use workflow" error={errors.workflow_id?.message}>
