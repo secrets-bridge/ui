@@ -16,8 +16,10 @@
  * snapshot inlined (services.PolicyHistoryService already carries the
  * last-known snapshot for delete events per §3 D3 step 5).
  *
- * Chain head (no `changes`) → "Initial snapshot observed" UX per
- * §1 D9 + OQ2-A. Pre-cutover grandfathered rules.
+ * `reconstructed` entries (the synthesized initial snapshot for rules
+ * with zero audit events — M6/api#143) → "Initial snapshot observed" UX.
+ * Gated on the `reconstructed` flag, NOT on chain-head position, so a
+ * genuine `policy.create` event keeps its normal "created" copy (L7).
  *
  * §6 selector lock preserved — `selector_keys` rendered as set-diff
  * chips; values NEVER displayed.
@@ -66,11 +68,10 @@ export function PolicyHistoryTimeline({
   return (
     <div className="space-y-3">
       <ol className="space-y-3">
-        {entries.map((e, i) => (
+        {entries.map((e) => (
           <HistoryRow
             key={e.event_id}
             entry={e}
-            isChainHead={i === 0}
             showScopeBadge={pageScope === 'platform'}
           />
         ))}
@@ -90,11 +91,10 @@ export function PolicyHistoryTimeline({
 
 interface RowProps {
   entry: PolicyRuleHistoryEntry;
-  isChainHead: boolean;
   showScopeBadge: boolean;
 }
 
-function HistoryRow({ entry, isChainHead, showScopeBadge }: RowProps) {
+function HistoryRow({ entry, showScopeBadge }: RowProps) {
   const [snapshotOpen, setSnapshotOpen] = useState(false);
   return (
     <Card>
@@ -120,10 +120,11 @@ function HistoryRow({ entry, isChainHead, showScopeBadge }: RowProps) {
             state before deletion.
           </p>
         )}
-        {isChainHead && entry.action !== 'policy.delete' && entry.changes.length === 0 && (
+        {entry.reconstructed && (
           <p className="text-[12px] text-muted italic">
-            Initial snapshot observed. Pre-cutover events are
-            grandfathered in without a `policy.create` predecessor.
+            Initial snapshot observed. This rule has no recorded create
+            event (migration-seeded or pre-cutover); the state below is
+            reconstructed from the current rule.
           </p>
         )}
 

@@ -901,6 +901,14 @@ export interface PolicyRuleHistoryEntry {
   scope?: 'platform' | 'project' | 'team';
   changes: PolicyRuleFieldChange[];
   snapshot_after: PolicyRuleSnapshot;
+  /**
+   * True only for a synthesized "initial snapshot" entry (M6/api#143) —
+   * a rule with zero audit events (migration-seeded / pre-cutover). The
+   * timeline renders these as "initial snapshot observed"; a genuine
+   * `policy.create` event has this false/absent and keeps normal
+   * "created" copy (L7).
+   */
+  reconstructed?: boolean;
 }
 
 /** One field-level delta. */
