@@ -30,3 +30,32 @@ export const POLICY_SELECTOR_PROVIDER_TYPES = [
 
 export type PolicySelectorProviderType =
   (typeof POLICY_SELECTOR_PROVIDER_TYPES)[number];
+
+/**
+ * Backend-owned mirror of the policy selector `operation` enum.
+ *
+ * Source of truth: `internal/services/policy.go` in the api repo —
+ * the `policySelectorOperations` slice + `services.IsPolicySelectorOperation`
+ * predicate (api#141). The service-layer validator
+ * `services.ValidateOperationSelector` hard-rejects unknown values with
+ * `policy_scope_too_broad / operation_invalid`.
+ *
+ * Semantics (EPIC api#141, D1–D8):
+ *   - `read`   — value read requests (SubmitRead)
+ *   - `patch`  — value write/patch requests (Submit + cross-team provision)
+ *   - `reveal` — direct reveal + reveal-session TTL compute
+ *
+ * `cross_team` is deliberately NOT an operation value (D6) — it's a future
+ * `request_flavor` axis, not a routing overload on `operation`.
+ *
+ * Same no-GET-endpoint rationale as the provider_type mirror above:
+ * 3 stable values, rare changes, review catches drift.
+ */
+export const POLICY_SELECTOR_OPERATIONS = [
+  'read',
+  'patch',
+  'reveal',
+] as const;
+
+export type PolicySelectorOperation =
+  (typeof POLICY_SELECTOR_OPERATIONS)[number];

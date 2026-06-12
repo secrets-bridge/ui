@@ -28,7 +28,10 @@ import { z } from 'zod';
 
 import type { Policy, PolicyInput } from '../../api/types';
 import { ApiError } from '../../api/client';
-import { POLICY_SELECTOR_PROVIDER_TYPES } from '../../api/policySelectorEnums';
+import {
+  POLICY_SELECTOR_PROVIDER_TYPES,
+  POLICY_SELECTOR_OPERATIONS,
+} from '../../api/policySelectorEnums';
 import { useTeams } from '../../api/teams';
 import { useWorkflows } from '../../api/workflows';
 
@@ -46,6 +49,7 @@ const schema = z.object({
   sel_project_id: z.string().max(120).optional(),
   sel_environment: z.string().max(120).optional(),
   sel_provider_type: z.string().max(60).optional(),
+  sel_operation: z.string().max(60).optional(),
   sel_secret_ref_prefix: z.string().max(255).optional(),
 });
 
@@ -70,6 +74,7 @@ const defaults: FormShape = {
   sel_project_id: '',
   sel_environment: '',
   sel_provider_type: '',
+  sel_operation: '',
   sel_secret_ref_prefix: '',
 };
 
@@ -109,6 +114,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
         sel_project_id: initial.selector?.project_id ?? '',
         sel_environment: initial.selector?.environment ?? '',
         sel_provider_type: initial.selector?.provider_type ?? '',
+        sel_operation: initial.selector?.operation ?? '',
         sel_secret_ref_prefix: initial.selector?.secret_ref_prefix ?? '',
       });
     } else {
@@ -121,6 +127,9 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
     if (data.sel_project_id) selector.project_id = data.sel_project_id;
     if (data.sel_environment) selector.environment = data.sel_environment;
     if (data.sel_provider_type) selector.provider_type = data.sel_provider_type;
+    // api#141 — operation is optional; blank omits the key (wildcard).
+    // Never submit operation="" — the server rejects it as operation_invalid.
+    if (data.sel_operation) selector.operation = data.sel_operation;
     if (data.sel_secret_ref_prefix) selector.secret_ref_prefix = data.sel_secret_ref_prefix;
 
     // R-follow-up #3 — §5 C5 team-anchored selector safety. The
@@ -291,6 +300,20 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
             {POLICY_SELECTOR_PROVIDER_TYPES.map((t) => (
               <option key={t} value={t}>
                 {t}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="operation (exact)" hint="blank = any operation (wildcard)">
+          {/* api#141 — backend-owned enum. Blank option omits the field
+              from the submitted selector (onValid only sets it when
+              truthy), so the server never sees operation="". */}
+          <select {...register('sel_operation')} className={inputCls}>
+            <option value="">— any —</option>
+            {POLICY_SELECTOR_OPERATIONS.map((o) => (
+              <option key={o} value={o}>
+                {o}
               </option>
             ))}
           </select>

@@ -549,8 +549,8 @@ export interface UserRoleInput {
  *
  * Selector shape: keys present must match the incoming request; absent
  * keys are wildcards. The documented dimensions are `project_id`,
- * `environment`, `provider_type`, `secret_ref_prefix` (prefix-match for
- * the last, exact for the others).
+ * `environment`, `provider_type`, `operation` (api#141 — read|patch|reveal),
+ * `secret_ref_prefix` (prefix-match for the last, exact for the others).
  *
  * Higher `priority` wins on overlap. The seed `match-all` policy lives
  * at priority 0 with an empty selector + `is_system: true`; any

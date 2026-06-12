@@ -78,6 +78,10 @@ const POLICY_SCOPE_TOO_BROAD_REASON_MESSAGES: Record<string, string> = {
   // metadata, not sensitive data, so it's safe to list them here.
   provider_type_invalid:
     'Provider type must be one of: aws-sm, vault, gcp-sm, azure-kv, kubernetes.',
+  // api#141 — selector enum operation dimension. Same product-metadata
+  // posture: the allowed values are safe to surface.
+  operation_invalid:
+    'Operation must be one of: read, patch, reveal.',
 };
 
 /**
