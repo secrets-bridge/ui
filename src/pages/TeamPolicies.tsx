@@ -30,7 +30,10 @@ import { z } from 'zod';
 
 import { ApiError } from '../api/client';
 import { toPolicyRuleErrorToast } from '../api/policyErrors';
-import { POLICY_SELECTOR_PROVIDER_TYPES } from '../api/policySelectorEnums';
+import {
+  POLICY_SELECTOR_PROVIDER_TYPES,
+  POLICY_SELECTOR_OPERATIONS,
+} from '../api/policySelectorEnums';
 import { useMyPolicyAuthorTeamCoverage } from '../api/myPolicyAuthorTeamCoverage';
 import {
   useAuthorTeamPolicyRule,
@@ -332,6 +335,9 @@ function buildTeamAuthorSchema(cap: number) {
     // api#139 — optional provider_type from the backend-owned enum.
     // Empty string = wildcard (omitted from the submitted selector).
     provider_type: z.string().optional(),
+    // api#141 — optional operation from the backend-owned enum.
+    // Empty string = wildcard (omitted from the submitted selector).
+    operation: z.string().optional(),
     workflow_id: z.string().uuid('pick a workflow'),
     priority: z.coerce
       .number()
@@ -418,6 +424,7 @@ function TeamPolicyAuthorForm({
       name: '',
       secret_ref_prefix: '',
       provider_type: '',
+      operation: '',
       workflow_id: eligibleWorkflows[0]?.id ?? '',
       priority: 100,
       enabled: true,
@@ -439,6 +446,12 @@ function TeamPolicyAuthorForm({
     // server rejects it as provider_type_invalid).
     if (vals.provider_type) {
       selector.provider_type = vals.provider_type;
+    }
+    // api#141 — only set operation when a real value is chosen. Blank
+    // stays a wildcard; never submit operation="" (the server rejects
+    // it as operation_invalid).
+    if (vals.operation) {
+      selector.operation = vals.operation;
     }
     const body: AuthorTeamPolicyRuleInput = {
       name: vals.name,
@@ -515,6 +528,26 @@ function TeamPolicyAuthorForm({
             {POLICY_SELECTOR_PROVIDER_TYPES.map((t) => (
               <option key={t} value={t}>
                 {t}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field
+          label="Optional operation"
+          error={errors.operation?.message}
+        >
+          {/* api#141 — backend-owned enum. Blank = wildcard; the
+              onSubmit only sets the key when a value is chosen, so the
+              server never sees operation="". */}
+          <select
+            {...register('operation')}
+            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+          >
+            <option value="">— any operation —</option>
+            {POLICY_SELECTOR_OPERATIONS.map((o) => (
+              <option key={o} value={o}>
+                {o}
               </option>
             ))}
           </select>

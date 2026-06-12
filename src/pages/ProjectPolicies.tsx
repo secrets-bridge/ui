@@ -30,6 +30,7 @@ import { Link, useParams } from 'react-router-dom';
 import { z } from 'zod';
 
 import { ApiError } from '../api/client';
+import { POLICY_SELECTOR_OPERATIONS } from '../api/policySelectorEnums';
 import { useMe } from '../api/me';
 import {
   toPolicyRuleErrorToast,
@@ -330,6 +331,9 @@ function buildAuthorSchema(cap: number) {
       env_match: z.enum(['any_non_prod', 'specific']),
       environment_id: z.string().optional(),
       secret_ref_prefix: z.string().max(255).optional(),
+      // api#141 — optional operation from the backend-owned enum.
+      // Empty string = wildcard (omitted from the submitted selector).
+      operation: z.string().optional(),
       workflow_id: z.string().uuid('pick a workflow'),
       priority: z.coerce
         .number()
@@ -467,6 +471,7 @@ function AuthorPolicyForm({
       env_match: 'any_non_prod',
       environment_id: '',
       secret_ref_prefix: '',
+      operation: '',
       workflow_id: eligibleWorkflows[0]?.id ?? '',
       priority: 100,
       enabled: true,
@@ -487,6 +492,12 @@ function AuthorPolicyForm({
     }
     if (vals.secret_ref_prefix) {
       selector.secret_ref_prefix = vals.secret_ref_prefix;
+    }
+    // api#141 — only set operation when a real value is chosen. Blank
+    // stays a wildcard; never submit operation="" (the server rejects
+    // it as operation_invalid).
+    if (vals.operation) {
+      selector.operation = vals.operation;
     }
     const body: AuthorPolicyRuleInput = {
       name: vals.name,
@@ -598,6 +609,26 @@ function AuthorPolicyForm({
             className="w-full rounded border border-border bg-bg px-2 py-1 text-text font-mono"
             placeholder="billing/"
           />
+        </Field>
+
+        <Field
+          label="Optional operation"
+          error={errors.operation?.message}
+        >
+          {/* api#141 — backend-owned enum. Blank = wildcard; the
+              onSubmit only sets the key when a value is chosen, so the
+              server never sees operation="". */}
+          <select
+            {...register('operation')}
+            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+          >
+            <option value="">— any operation —</option>
+            {POLICY_SELECTOR_OPERATIONS.map((o) => (
+              <option key={o} value={o}>
+                {o}
+              </option>
+            ))}
+          </select>
         </Field>
 
         <Field
