@@ -115,17 +115,53 @@ export function TeamPolicies() {
   const showAdminShortcut = canManagePlatformPolicy(identity?.permissions);
   const livePriorityCap = list.data?.priority_cap;
 
+  // QA P0-2: the team list endpoint is policy.author-scoped — an actor
+  // without it gets a 403 (out_of_scope_team_policy) for the WHOLE
+  // response. Render that as a permission panel, never as "0 rules".
+  const listForbidden =
+    list.error instanceof ApiError && list.error.status === 403;
+
+  // QA P0-3: header copy is capability-aware — never promise authoring to
+  // an actor who can't author this team.
+  const headerDescription = authorCap.allowed
+    ? 'Author non-prod policy rules for this team. Rules cascade down to every descendant project.'
+    : showAdminShortcut
+      ? "You don't have scoped policy.author on this team. Platform global rules are managed at /admin/policies."
+      : 'View inherited policy rules for this team. Authoring requires policy.author scoped to this team.';
+
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
       <PageHeader
         title={`${team?.name ?? 'Team'} · Team policies`}
-        description="Author non-prod policy rules for this team. Rules cascade down to every descendant project."
+        description={headerDescription}
         actions={
           authorCap.allowed ? (
             <Button onClick={() => setAuthoring(true)}>+ Author rule</Button>
           ) : undefined
         }
       />
+
+      {listForbidden && (
+        <Card>
+          <CardBody>
+            <div className="rounded border border-yellow-400/30 bg-yellow-400/10 px-4 py-3 text-sm text-yellow-200">
+              <p className="font-medium">
+                You do not have scoped policy.author access for this team.
+              </p>
+              <p className="mt-1 text-[13px] text-yellow-200/80">
+                Team-anchored policy authoring requires the{' '}
+                <code>policy.author</code> permission scoped to this team.
+                {showAdminShortcut
+                  ? ' As a platform admin you can still manage global rules at /admin/policies.'
+                  : ' Ask a platform admin to grant it.'}
+              </p>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {!listForbidden && (
+        <>
 
       {(ancestorRules.length > 0 || platformInherited.length > 0) && (
         <Card>
@@ -222,6 +258,8 @@ export function TeamPolicies() {
           )}
         </CardBody>
       </Card>
+        </>
+      )}
 
       {authoring && (
         <TeamPolicyAuthorDrawer

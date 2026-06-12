@@ -34,6 +34,7 @@ import {
 } from '../../api/policySelectorEnums';
 import { useTeams } from '../../api/teams';
 import { useWorkflows } from '../../api/workflows';
+import { usePlatformReservedPriority } from '../../api/platformSettings';
 
 const schema = z.object({
   name: z.string().min(1, 'name is required').max(120),
@@ -81,6 +82,7 @@ const defaults: FormShape = {
 export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitError }: Props) {
   const workflows = useWorkflows();
   const teams = useTeams();
+  const reservedPriority = usePlatformReservedPriority();
 
   const {
     register,
@@ -91,9 +93,27 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
   } = useForm<FormShape>({
     resolver: zodResolver(schema),
     defaultValues: defaults,
+    // QA P0-1: surface required-field errors (notably workflow_id) as
+    // soon as a field is touched, instead of only on the first submit —
+    // so an unsatisfiable Create never looks like a silent dead button.
+    mode: 'onTouched',
   });
 
   const anchor = watch('anchor');
+  const priority = watch('priority');
+
+  // QA P0-1: with no workflow selectable, the required workflow_id can
+  // never validate and Create silently no-ops. Detect the empty/loading
+  // list so we can disable Create + explain why.
+  const noWorkflows = !workflows.isLoading && (workflows.data?.length ?? 0) === 0;
+
+  // Admin reserved-band notice (author-scoped cap design): a policy.edit
+  // admin MAY author anchored rules in the reserved band, but scoped
+  // policy.author users cannot — surface that so it's an informed choice,
+  // not a surprise. Informational only; never blocks submit.
+  const cap = reservedPriority.value;
+  const inReservedBand =
+    cap !== undefined && anchor !== 'platform' && Number(priority) >= cap;
 
   useEffect(() => {
     if (initial) {
@@ -267,6 +287,12 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
         {workflows.isError && (
           <div className="text-xs text-red-400">failed to load workflows</div>
         )}
+        {noWorkflows && !workflows.isError && (
+          <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded px-3 py-2 mt-1">
+            No workflows exist yet. A policy must map to a workflow —
+            create one on the Workflows page first, then return here.
+          </div>
+        )}
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
@@ -277,6 +303,16 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
           <Toggle label="rule is active" {...register('enabled')} />
         </Field>
       </div>
+
+      {inReservedBand && (
+        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded px-3 py-2">
+          Priority {String(priority)} is in the platform-reserved band
+          (≥ {cap}). This is allowed for <strong>policy.edit</strong>{' '}
+          admins on this admin surface, but scoped <strong>policy.author</strong>{' '}
+          users cannot create or modify {anchor}-anchored rules at this
+          priority.
+        </div>
+      )}
 
       <fieldset className="border border-border rounded p-3 space-y-3">
         <legend className="text-xs text-muted px-1">
@@ -333,8 +369,9 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
       <div className="flex gap-2 pt-2 border-t border-border">
         <button
           type="submit"
-          disabled={submitting}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50"
+          disabled={submitting || noWorkflows}
+          title={noWorkflows ? 'Create a workflow first' : undefined}
+          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? 'Saving…' : initial ? 'Save' : 'Create'}
         </button>

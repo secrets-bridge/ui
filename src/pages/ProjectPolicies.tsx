@@ -110,6 +110,16 @@ export function ProjectPolicies() {
   const authorCap = canAuthorProjectPolicy(identity?.permissions, project);
   const showAdminShortcut = canManagePlatformPolicy(identity?.permissions);
 
+  // QA P0-3: capability-aware header copy — don't promise authoring to an
+  // actor who lacks policy.author for this project. (Unlike the team page,
+  // the project list endpoint isn't policy.author-gated, so inherited
+  // rules still render read-only for everyone.)
+  const headerDescription = authorCap.allowed
+    ? 'Author non-prod policy rules for this project. Platform global rules are inherited (read-only here).'
+    : showAdminShortcut
+      ? "You don't have policy.author for this project. Platform global rules are managed at /admin/policies; inherited rules show read-only below."
+      : 'View inherited policy rules for this project (read-only). Authoring requires policy.author for this project.';
+
   const scopedRules = (list.data ?? []).filter(
     (r) => !r.is_platform_inherited && !r.is_team_inherited,
   );
@@ -121,7 +131,7 @@ export function ProjectPolicies() {
     <div className="max-w-5xl mx-auto p-6 space-y-6">
       <PageHeader
         title={`${project.name} · Project policies`}
-        description="Author non-prod policy rules for this project. Platform global rules are inherited (read-only here)."
+        description={headerDescription}
         actions={
           authorCap.allowed ? (
             <Button onClick={() => setAuthoring(true)}>+ Author rule</Button>
