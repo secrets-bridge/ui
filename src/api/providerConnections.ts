@@ -223,6 +223,10 @@ export const PROVIDER_CONNECTION_ERROR_MESSAGES: Record<string, string> = {
   connection_not_found: 'Provider connection not found.',
   connection_name_taken: 'A provider connection with this name already exists.',
   invalid_scope: 'Scope is invalid for this provider type.',
+  invalid_auth_method:
+    'Auth method is required and must be one of the values allowed for this provider type.',
+  invalid_name: 'Name must match ^[a-z0-9][a-z0-9-]{0,119}$.',
+  invalid_cluster_name: 'Cluster name is invalid.',
   credential_in_scope:
     'Scope contains a credential-shaped key. Use the agent’s workload identity instead.',
   secret_in_scope: 'Scope contains a value that looks like a secret.',
