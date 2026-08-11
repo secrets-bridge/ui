@@ -14,11 +14,16 @@
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { ApiError } from '../../api/client';
+import {
+  authMethodLabel,
+  authMethodsFor,
+  defaultAuthMethodFor,
+} from '../../api/providerAuthMethods';
 import {
   extractProviderConnectionErrorCode,
   providerConnectionErrorMessage,
@@ -36,15 +41,22 @@ const PROVIDER_TYPES = [
   { value: 'aws-sm', label: 'AWS Secrets Manager' },
   { value: 'azure-kv', label: 'Azure Key Vault' },
   { value: 'gcp-sm', label: 'GCP Secret Manager' },
-  { value: 'k8s', label: 'Kubernetes Secret' },
+  { value: 'kubernetes', label: 'Kubernetes Secret' },
 ] as const;
 
+/**
+ * Advisory scope-key hints. These MIRROR `scopeShapes` in the api's
+ * internal/services/provider_connections.go — required keys first,
+ * then optional. The backend rejects unknown keys outright, so a hint
+ * that drifts from the validator sends operators straight into a 400.
+ * Keys are case-sensitive server-side (projectID, tenantID).
+ */
 const SCOPE_HINTS: Record<string, string[]> = {
-  vault: ['address', 'kvMount', 'kvPrefix (optional)', 'namespace (optional)'],
+  vault: ['address', 'mount', 'namespace (optional)', 'kvPrefix (optional)'],
   'aws-sm': ['region', 'roleArn (optional)', 'endpoint (optional)'],
-  'azure-kv': ['vaultName', 'tenantId', 'clientId'],
-  'gcp-sm': ['projectId', 'serviceAccount (optional)'],
-  k8s: ['namespace (optional)'],
+  'azure-kv': ['vaultName', 'tenantID (optional)'],
+  'gcp-sm': ['projectID', 'endpoint (optional)'],
+  kubernetes: ['context', 'namespace (optional)'],
 };
 
 const inputSchema = z.object({
@@ -64,13 +76,24 @@ const inputSchema = z.object({
         return false;
       }
     }, 'Must be a JSON object'),
-  auth_method: z.string().max(60).optional().or(z.literal('')),
+  auth_method: z.string().min(1, 'Required'),
   discover_enabled: z.boolean(),
   discover_interval_seconds: z
     .number({ invalid_type_error: 'Must be a number' })
     .int()
     .min(60, 'Min 60 seconds')
     .max(86400, 'Max 86400 seconds'),
+}).superRefine((v, ctx) => {
+  // Mirror of the backend's validateAuthMethod. Catches the case
+  // where the type changed but a stale auth_method survived.
+  const allowed = authMethodsFor(v.type);
+  if (allowed.length > 0 && !allowed.includes(v.auth_method)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['auth_method'],
+      message: `Not valid for ${v.type}. Allowed: ${allowed.join(', ')}`,
+    });
+  }
 });
 
 type FormShape = z.infer<typeof inputSchema>;
@@ -96,6 +119,8 @@ export function ProviderConnectionForm({
     control,
     handleSubmit,
     watch,
+    setValue,
+    getValues,
     formState: { errors },
   } = useForm<FormShape>({
     resolver: zodResolver(inputSchema),
@@ -106,12 +131,22 @@ export function ProviderConnectionForm({
       description: initial?.description ?? '',
       status: initial?.status ?? 'active',
       scope_json: JSON.stringify(initial?.scope ?? {}, null, 2),
-      auth_method: initial?.auth_method ?? '',
+      auth_method: initial?.auth_method ?? defaultAuthMethodFor(initial?.type ?? 'vault'),
       discover_enabled: initial?.discover_enabled ?? false,
       discover_interval_seconds: initial?.discover_interval_seconds ?? 3600,
     },
   });
   const type = watch('type');
+
+  // Provider type drives which auth methods are legal. Preserve a
+  // still-valid selection (so editing does not silently rewrite a
+  // saved value) and repair one that the new type rejects.
+  useEffect(() => {
+    const allowed = authMethodsFor(type);
+    if (allowed.length > 0 && !allowed.includes(getValues('auth_method'))) {
+      setValue('auth_method', defaultAuthMethodFor(type));
+    }
+  }, [type, getValues, setValue]);
 
   const stableErr =
     submitError instanceof ApiError
@@ -131,7 +166,7 @@ export function ProviderConnectionForm({
       description: form.description?.trim() || undefined,
       status: form.status,
       scope,
-      auth_method: form.auth_method?.trim() || undefined,
+      auth_method: form.auth_method,
       discover_enabled: form.discover_enabled,
       discover_interval_seconds: form.discover_interval_seconds,
     };
@@ -201,12 +236,31 @@ export function ProviderConnectionForm({
             spellCheck={false}
           />
         </Field>
-        <Field label="Auth method" hint={errors.auth_method?.message ?? 'Optional provider-specific hint (e.g. kubernetes).'}>
-          <input
-            type="text"
+        {/*
+          auth_method is REQUIRED and the allowed values are fixed per
+          provider type — see `authMethodsByType` in the api. This was
+          previously a free-text box labelled "Optional"; leaving it
+          blank produced a 400 reading "auth_method is not allowed for
+          this provider type", which is doubly misleading because the
+          field is required, not disallowed.
+        */}
+        <Field
+          label="Auth method"
+          hint={
+            errors.auth_method?.message ??
+            `Required. Allowed for ${type}: ${authMethodsFor(type).join(', ') || '—'}`
+          }
+        >
+          <select
             {...register('auth_method')}
-            className={inputCls(errors.auth_method)}
-          />
+            className={selectCls(errors.auth_method)}
+          >
+            {authMethodsFor(type).map((m) => (
+              <option key={m} value={m}>
+                {authMethodLabel(m)}
+              </option>
+            ))}
+          </select>
         </Field>
       </Section>
 
