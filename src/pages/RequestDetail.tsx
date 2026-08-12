@@ -49,6 +49,7 @@ import {
   type WrapSummary,
 } from '../api/requests';
 import { useWorkflows } from '../api/workflows';
+import { useTeams } from '../api/teams';
 import type { AccessRequest } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { crossTeamErrorMessage, useVerifyCrossTeam } from '../api/crossTeam';
@@ -1090,6 +1091,8 @@ function CrossTeamVerifyCard({
 }) {
   const { hasPermission } = useAuth();
   const verify = useVerifyCrossTeam(r.id);
+  const teams = useTeams();
+  const teamName = teams.data?.find((t) => t.id === r.target_team_id)?.name;
   const [comment, setComment] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -1157,7 +1160,49 @@ function CrossTeamVerifyCard({
         <h3 className="text-text font-semibold">Verify cross-team request</h3>
       </div>
       <div className="px-5 py-4 space-y-3 text-sm">
+        {/* Full approver context so nobody approves blind (ui#87). All
+            metadata — key NAMES, refs, ids, timestamps, the frozen
+            approval requirement. Never a value, hash, or wrapped body. */}
         <div className="space-y-1 text-muted">
+          <p>
+            Requester:{' '}
+            <span className="font-mono text-text">{r.requester_id}</span>
+          </p>
+          <p>
+            Target team:{' '}
+            <span className="text-text">
+              {r.target_team_name ?? teamName ?? r.target_team_id ?? '—'}
+            </span>
+          </p>
+          <p>
+            Target project · env:{' '}
+            <span className="font-mono text-text">
+              {r.target_project_name ??
+                (r.target_project_id ? shortId(r.target_project_id) : '—')}
+              {' · '}
+              {r.target_environment_name ??
+                (r.target_environment_id ? shortId(r.target_environment_id) : '—')}
+            </span>
+          </p>
+          <p>
+            Destination:{' '}
+            <span className="font-mono text-text">
+              {r.destination_provider_label ??
+                (r.destination_provider_connection_id
+                  ? `connection ${shortId(r.destination_provider_connection_id)}`
+                  : r.target_provider_type || '—')}
+              {r.destination_secret_ref ? ` · ${r.destination_secret_ref}` : ''}
+            </span>
+          </p>
+          <p>
+            Keys:{' '}
+            <span className="font-mono text-text">
+              {(r.destination_keys ?? r.target_keys ?? []).join(', ') || '—'}
+            </span>{' '}
+            <span className="text-muted text-xs">
+              ({(r.destination_keys ?? r.target_keys ?? []).length})
+            </span>
+          </p>
           <p>
             Filled by:{' '}
             <span className="text-text">{r.filled_by_user_id ?? '—'}</span>
@@ -1166,26 +1211,32 @@ function CrossTeamVerifyCard({
             )}
           </p>
           {r.fill_comment && (
-            <p className="text-muted">
-              Comment: <span className="text-text">{r.fill_comment}</span>
+            <p>
+              Filler comment:{' '}
+              <span className="text-text">{r.fill_comment}</span>
+            </p>
+          )}
+          {r.justification && (
+            <p>
+              Justification:{' '}
+              <span className="text-text">{r.justification}</span>
             </p>
           )}
           <p>
-            Destination:{' '}
-            <span className="font-mono text-text">
-              {r.destination_provider_label ?? r.target_provider_type}
-              {r.destination_secret_ref ? ` · ${r.destination_secret_ref}` : ''}
+            Approval required:{' '}
+            <span className="text-text">
+              {r.snap_requires_security_approval
+                ? 'Source + Security'
+                : 'Source'}
             </span>
           </p>
-          <p>
-            Keys:{' '}
-            <span className="font-mono text-text">
-              {(r.destination_keys ?? r.target_keys ?? []).join(', ')}
-            </span>
+          {/* Per §5 design correction: NO content_hash, NO byte_length,
+              NO values here. The verify card shows only what an approver
+              needs to make a decision — key names, not their contents. */}
+          <p className="text-[11px] text-muted/70 pt-1">
+            Values provided: {r.filled_by_user_id ? 'yes' : 'no'} · key names
+            only — filled values are never shown.
           </p>
-          {/* Per §5 design correction: NO content_hash, NO byte_length
-              here. The verify card never shows derivable canaries of
-              the underlying value. */}
         </div>
 
         {(canSourceApprove || canSecurityApprove) && (
