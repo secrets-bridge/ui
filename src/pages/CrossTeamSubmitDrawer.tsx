@@ -31,6 +31,10 @@ import { useAuth } from '../auth/AuthContext';
 import { Button } from '../ui/Button';
 import type { MyProject } from '../api/types';
 
+/** Canonical UUID matcher — every target/destination id must be one. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface Props {
   sourceProject: MyProject;
   /**
@@ -60,10 +64,17 @@ export function CrossTeamSubmitDrawer({
   const [targetProjectID, setTargetProjectID] = useState('');
   const [targetEnvID, setTargetEnvID] = useState('');
 
+  // Filter to the chosen team's projects. The authoritative binding is
+  // the typed `team_id` FK; `owner_team_id` is the legacy free-text
+  // field and is EMPTY on projects created through the team FK, so
+  // filtering on it alone silently returns nothing (the ui#86 cascade
+  // bug). Prefer team_id, fall back to owner_team_id for legacy rows.
   const targetProjects = useMemo(
     () =>
       (projects.data ?? []).filter(
-        (p) => p.owner_team_id === targetTeamID && p.status === 'active',
+        (p) =>
+          (p.team_id ?? p.owner_team_id ?? '') === targetTeamID &&
+          p.status === 'active',
       ),
     [projects.data, targetTeamID],
   );
@@ -97,14 +108,38 @@ export function CrossTeamSubmitDrawer({
   const submit = useSubmitCrossTeam();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const valid =
-    !!targetTeamID &&
-    !!targetProjectID &&
-    !!targetEnvID &&
-    !!destProvConnID &&
-    destSecretRef.trim().length > 0 &&
-    destKeys.length > 0 &&
-    justification.trim().length >= 10;
+  // Fail-closed validation. Every required ID must be a real UUID (so a
+  // half-loaded dropdown or a label leaking through as a value can never
+  // reach the POST); destination_keys must be a non-empty list; the
+  // justification keeps its 10-char floor. `errors` is surfaced as a
+  // visible checklist so submit is never a silent no-op.
+  const errors = useMemo(() => {
+    const e: string[] = [];
+    if (!UUID_RE.test(targetTeamID)) e.push('Select a target team.');
+    if (!UUID_RE.test(targetProjectID)) e.push('Select a target project.');
+    if (!UUID_RE.test(targetEnvID)) e.push('Select a target environment.');
+    if (!UUID_RE.test(destProvConnID))
+      e.push('Select a destination provider connection.');
+    if (destSecretRef.trim().length === 0)
+      e.push('Enter the destination secret reference.');
+    if (destKeys.length === 0) e.push('Add at least one key to fill.');
+    if (justification.trim().length < 10)
+      e.push(
+        `Justification needs ${10 - justification.trim().length} more character${
+          10 - justification.trim().length === 1 ? '' : 's'
+        }.`,
+      );
+    return e;
+  }, [
+    targetTeamID,
+    targetProjectID,
+    targetEnvID,
+    destProvConnID,
+    destSecretRef,
+    destKeys,
+    justification,
+  ]);
+  const valid = errors.length === 0;
 
   const onSubmit = async () => {
     setSubmitError(null);
@@ -199,7 +234,7 @@ export function CrossTeamSubmitDrawer({
               { value: '', label: 'Select an environment…' },
               ...(targetEnvs.data ?? []).map((e) => ({
                 value: e.id,
-                label: `${e.name} (${e.type})`,
+                label: `${e.name} · ${e.kind ?? e.type}`,
               })),
             ]}
           />
@@ -222,7 +257,7 @@ export function CrossTeamSubmitDrawer({
               { value: '', label: 'Select a provider connection…' },
               ...(provConns.data ?? []).map((c) => ({
                 value: c.id,
-                label: `${c.name} (${c.type})`,
+                label: `${c.name} · ${c.type}`,
               })),
             ]}
           />
@@ -302,6 +337,19 @@ export function CrossTeamSubmitDrawer({
         {submitError && (
           <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2 text-sm text-red-200">
             {submitError}
+          </div>
+        )}
+
+        {!valid && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 space-y-1">
+            <div className="font-medium text-amber-100">
+              Complete these to submit:
+            </div>
+            <ul className="list-disc list-inside space-y-0.5">
+              {errors.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
           </div>
         )}
 
