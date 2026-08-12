@@ -29,6 +29,14 @@ export interface Agent {
 export interface Project {
   id: string;
   name: string;
+  /**
+   * Authoritative team binding (typed FK, `team_id` in the api). This
+   * is what team-scoped grants + cross-team targeting resolve against.
+   * `owner_team_id` is the legacy free-text owner identifier and is
+   * empty on projects created through the typed team FK — never filter
+   * on it alone. Nullable = unscoped to a team.
+   */
+  team_id?: string | null;
   owner_team_id?: string;
   status: 'active' | 'archived';
   created_at?: string;
@@ -291,6 +299,8 @@ export interface Environment {
   project_id: string;
   name: string;
   type: 'dev' | 'staging' | 'uat' | 'prod' | 'other';
+  /** non_prod | prod (Slice L1). Drives the prod-refusal invariant + labels. */
+  kind?: 'non_prod' | 'prod';
   created_at?: string;
   updated_at?: string;
 }
