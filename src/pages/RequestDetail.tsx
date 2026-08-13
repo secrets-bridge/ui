@@ -96,6 +96,19 @@ export function RequestDetail() {
   const workflowName =
     workflows.data?.find((w) => w.id === r.workflow_id)?.name ?? '—';
 
+  // cross_team requests carry their target in the destination_* fields;
+  // target_secret_ref / target_provider_type are empty for them, so the
+  // title + Details rail must read the destination fields instead (ui#87
+  // follow-up: no blank rows, no stray "·").
+  const isCrossTeam = r.type === 'cross_team';
+  const displayRef = isCrossTeam
+    ? r.destination_secret_ref ?? ''
+    : r.target_secret_ref;
+  const displayProvider = isCrossTeam
+    ? r.destination_provider_label ?? ''
+    : r.target_provider_type;
+  const requesterLabel = r.requester_display ?? r.requester_id;
+
   return (
     <div>
       {/* Breadcrumb + title strip */}
@@ -109,7 +122,7 @@ export function RequestDetail() {
         </div>
         <h1 className="text-text text-2xl font-bold mt-2 tracking-tight">
           <span className="text-accent-bright capitalize">{r.type}</span>{' '}
-          <span className="font-mono">{r.target_secret_ref}</span>
+          <span className="font-mono">{displayRef}</span>
         </h1>
         <div className="flex items-center gap-2 flex-wrap mt-3">
           <RequestStatusPill status={r.status} />
@@ -121,15 +134,20 @@ export function RequestDetail() {
             {r.type}
           </StatusPill>
           <span className="text-muted text-xs ml-2">requested by</span>
-          <span className="font-mono text-text text-sm">{r.requester_id}</span>
+          <span className="text-text text-sm">{requesterLabel}</span>
           <span className="text-muted text-xs">
             · {formatRelativeShort(r.created_at)}
           </span>
         </div>
         <p className="text-muted text-xs mt-3 max-w-3xl">
-          Provider:{' '}
-          <span className="text-text font-mono">{r.target_provider_type}</span>{' '}
-          · workflow:{' '}
+          {displayProvider && (
+            <>
+              Provider:{' '}
+              <span className="text-text font-mono">{displayProvider}</span>{' '}
+              ·{' '}
+            </>
+          )}
+          workflow:{' '}
           <span className="text-text font-mono">{workflowName}</span> · values
           are never shown — only metadata + single-use wraps.
         </p>
@@ -821,24 +839,33 @@ function DetailsCard({
   request: AccessRequest;
   workflowName: string;
 }) {
+  // cross_team requests keep their target in the destination_* fields;
+  // fall back to them so the rail never renders a blank TARGET/PROVIDER.
+  const isCrossTeam = r.type === 'cross_team';
+  const dRef = isCrossTeam
+    ? r.destination_secret_ref || '—'
+    : r.target_secret_ref || '—';
+  const dProvider = isCrossTeam
+    ? r.destination_provider_label || '—'
+    : r.target_provider_type || '—';
   const rows: Array<[string, React.ReactNode]> = [
     ['Type', <span key="t" className="font-mono text-text">{r.type}</span>],
     [
       'Requester',
-      <span key="r" className="font-mono text-text">
-        {r.requester_id}
+      <span key="r" className="text-text">
+        {r.requester_display ?? r.requester_id}
       </span>,
     ],
     [
       'Target',
       <span key="g" className="font-mono text-accent break-all">
-        {r.target_secret_ref}
+        {dRef}
       </span>,
     ],
     [
       'Provider',
-      <span key="p" className="font-mono text-text capitalize">
-        {r.target_provider_type}
+      <span key="p" className="font-mono text-text">
+        {dProvider}
       </span>,
     ],
     [
@@ -1166,7 +1193,9 @@ function CrossTeamVerifyCard({
         <div className="space-y-1 text-muted">
           <p>
             Requester:{' '}
-            <span className="font-mono text-text">{r.requester_id}</span>
+            <span className="text-text">
+              {r.requester_display ?? r.requester_id}
+            </span>
           </p>
           <p>
             Target team:{' '}
@@ -1195,17 +1224,16 @@ function CrossTeamVerifyCard({
             </span>
           </p>
           <p>
-            Keys:{' '}
+            Keys ({(r.destination_keys ?? r.target_keys ?? []).length}):{' '}
             <span className="font-mono text-text">
               {(r.destination_keys ?? r.target_keys ?? []).join(', ') || '—'}
-            </span>{' '}
-            <span className="text-muted text-xs">
-              ({(r.destination_keys ?? r.target_keys ?? []).length})
             </span>
           </p>
           <p>
             Filled by:{' '}
-            <span className="text-text">{r.filled_by_user_id ?? '—'}</span>
+            <span className="text-text">
+              {r.filled_by_display ?? r.filled_by_user_id ?? '—'}
+            </span>
             {r.filled_at && (
               <span className="text-muted text-xs"> · {r.filled_at}</span>
             )}

@@ -363,10 +363,14 @@ export interface AccessRequest {
   /** Fill window. */
   fill_expires_at?: string;
   filled_by_user_id?: string;
+  /** Resolved display name/email for filled_by_user_id (best-effort, api#172). */
+  filled_by_display?: string;
   filled_at?: string;
   fill_comment?: string;
   refused_by_user_id?: string;
   refused_at?: string;
+  /** Resolved display name/email for requester_id (best-effort, api#172). */
+  requester_display?: string;
 }
 
 /**
