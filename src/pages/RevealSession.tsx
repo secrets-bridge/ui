@@ -76,6 +76,13 @@ export function RevealSession() {
   const [error, setError] = useState<string | null>(null);
   const [ttlLeft, setTtlLeft] = useState<number>(0);
 
+  // ui#85: the countdown is anchored to the server's `expires_at`, not a
+  // local page-load timer. `clockOffsetRef` corrects for client/server
+  // clock skew — computed once from the response's `opened_at` (server
+  // "now" at session creation) so `remaining = expires_at - adjustedNow`
+  // reflects the authoritative TTL regardless of a wrong client clock.
+  const clockOffsetRef = useRef<number>(0);
+
   // userID is needed for the per-wrap single-shot fetch (stub auth
   // until OIDC + middleware-stashed identity land).
   const userId = me.data?.id ?? '';
@@ -133,7 +140,11 @@ export function RevealSession() {
         });
         if (cancelled) return;
         setSession(resp);
-        setTtlLeft(deriveTtlSeconds(resp.expires_at));
+        // Anchor the countdown to the server clock: offset = server
+        // opened_at − client now-at-receive. Applied to every subsequent
+        // derive so the display tracks the real remaining time.
+        clockOffsetRef.current = computeClockOffset(resp.opened_at);
+        setTtlLeft(deriveTtlSeconds(resp.expires_at, clockOffsetRef.current));
         setPhase('fetching');
       } catch (err) {
         if (cancelled) return;
@@ -213,10 +224,30 @@ export function RevealSession() {
       return;
     }
     const t = window.setTimeout(() => {
-      setTtlLeft(deriveTtlSeconds(session.expires_at));
+      setTtlLeft(deriveTtlSeconds(session.expires_at, clockOffsetRef.current));
     }, 1000);
     return () => window.clearTimeout(t);
   }, [phase, ttlLeft, session]);
+
+  // ui#85: re-sync the countdown the instant the tab regains focus or
+  // visibility. Background tabs throttle setTimeout, so without this the
+  // display would sit stale until the next (delayed) tick; recomputing
+  // from `expires_at` on return makes it jump straight to the true
+  // remaining time (and triggers the TTL=0 auto-clear if it lapsed while
+  // hidden).
+  useEffect(() => {
+    if (phase !== 'shown' || !session) return;
+    const resync = () => {
+      if (document.visibilityState === 'hidden') return;
+      setTtlLeft(deriveTtlSeconds(session.expires_at, clockOffsetRef.current));
+    };
+    window.addEventListener('focus', resync);
+    document.addEventListener('visibilitychange', resync);
+    return () => {
+      window.removeEventListener('focus', resync);
+      document.removeEventListener('visibilitychange', resync);
+    };
+  }, [phase, session]);
 
   // --- best-effort plaintext hygiene on unmount ----------------------
   //
@@ -455,10 +486,27 @@ function CountdownChip({ seconds }: { seconds: number }) {
   );
 }
 
-function deriveTtlSeconds(expiresAtISO: string): number {
+// deriveTtlSeconds returns the whole seconds remaining until the server's
+// `expires_at`, using the server-anchored clock (Date.now() + clockOffset).
+// It always recomputes from the absolute timestamp — never decrements a
+// local counter — so refresh, navigation, and tab-throttle can't drift it.
+// Clamped at 0.
+function deriveTtlSeconds(expiresAtISO: string, clockOffsetMs = 0): number {
   const t = Date.parse(expiresAtISO);
   if (Number.isNaN(t)) return 0;
-  return Math.max(0, Math.round((t - Date.now()) / 1000));
+  return Math.max(0, Math.round((t - (Date.now() + clockOffsetMs)) / 1000));
+}
+
+// computeClockOffset returns (serverNow − clientNow) in ms, derived from the
+// reveal-session response's `opened_at` (the server's timestamp at session
+// creation). Adding it to Date.now() yields a server-anchored "now", so a
+// skewed client clock doesn't distort the countdown. No Date header / API
+// change needed — the offset comes from a field already in the response.
+// Falls back to 0 (plain client clock) when opened_at is missing/unparseable.
+function computeClockOffset(openedAtISO: string): number {
+  const serverNow = Date.parse(openedAtISO);
+  if (Number.isNaN(serverNow)) return 0;
+  return serverNow - Date.now();
 }
 
 function safeAtob(b64: string): string {
