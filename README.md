@@ -11,7 +11,7 @@
 ---
 # secrets-bridge / ui
 
-Dashboard SPA — React 18 + TypeScript + Vite + Tailwind. Talks only to the Control Plane API. **No SSR.** Production bundle served by nginx; same-hostname path-based routing co-locates the UI and the api.
+Dashboard SPA: React 18 + TypeScript + Vite + Tailwind. Talks only to the Control Plane API. **No SSR.** Production bundle served by nginx; same-hostname path-based routing co-locates the UI and the api.
 
 ## Production posture
 
@@ -23,22 +23,22 @@ Ingress / ALB
   └── /api/v1/*  → api service (Go + Fiber control plane)
 ```
 
-The UI container ships only the built static bundle. Same-origin requests mean **no CORS**, **same-origin cookies for auth**, and a **single TLS cert**. Cross-origin deployment is supported via the `VITE_API_BASE_URL` build arg, but discouraged — it adds CORS pre-flight on every request and requires careful cookie attribute coordination with the api.
+The UI container ships only the built static bundle. Same-origin requests mean no CORS, same-origin cookies for auth, and a single TLS cert. Cross-origin deployment is supported via the `VITE_API_BASE_URL` build arg but discouraged: it adds CORS pre-flight on every request and requires careful cookie attribute coordination with the api.
 
 ## Auth model
 
 Slice C landed the cookie-only swap. The SPA **never holds a token**:
 
 - The api sets an HttpOnly Secure SameSite=Strict cookie on `POST /auth/login` or `GET /auth/oidc/callback`.
-- Every fetch carries the cookie automatically — `src/api/client.ts` uses `credentials: 'include'` so cross-origin dev still works.
+- Every fetch carries the cookie automatically. `src/api/client.ts` uses `credentials: 'include'` so cross-origin dev still works.
 - `AuthContext` derives identity from `/users/me` exclusively. `login(identity, token)` was replaced with `refresh()`; `logout()` is async + calls `POST /auth/logout`.
 - 401 maps to `meStatus === 'idle'` (unauthenticated) rather than `'error'`. First visit to `/login` doesn't show a retry banner.
 
-**OIDC sign-in is auto-discovered.** `useOidcAvailable()` (`src/api/oidc.ts`) probes `/auth/oidc/start` with `redirect: 'manual'`. The Login page conditionally renders "Sign in with SSO" when the api advertises OIDC.
+OIDC sign-in is auto-discovered. `useOidcAvailable()` (`src/api/oidc.ts`) probes `/auth/oidc/start` with `redirect: 'manual'`. The Login page conditionally renders "Sign in with SSO" when the api advertises OIDC.
 
-**App-MFA step-up is global** (Slices H–I + K-fix-2). Tier 2 ops (approve / reject / reveal-wrap) can return `401 + WWW-Authenticate: step-up`. `routeAuthSignals` inside `src/api/client.ts::request()` routes EVERY API call (TanStack-hooked OR direct `await api.get(...)`) through the same step-up modal singleton — `requestStepUp()` returns a promise the fetch layer awaits, and on `'verified'` the original request **auto-retries** so the caller's `await` resolves with the success value as if MFA never happened. N concurrent 401s share ONE modal via module-scoped pending-promise dedup. The 412 `mfa_enrollment_required` and 401 `factor_compromised` shapes route to `/me/mfa` and `/login` respectively.
+App-MFA step-up is global (Slices H-I + K-fix-2). Tier 2 ops (approve / reject / reveal-wrap) can return `401 + WWW-Authenticate: step-up`. `routeAuthSignals` inside `src/api/client.ts::request()` routes EVERY API call (TanStack-hooked OR direct `await api.get(...)`) through the same step-up modal singleton. `requestStepUp()` returns a promise the fetch layer awaits, and on `'verified'` the original request auto-retries so the caller's `await` resolves with the success value as if MFA never happened. N concurrent 401s share ONE modal via module-scoped pending-promise dedup. The 412 `mfa_enrollment_required` and 401 `factor_compromised` shapes route to `/me/mfa` and `/login` respectively.
 
-**My Projects sidebar (Slice L5).** The dev-facing entry point. `useMe()` returns each project's environments inline; the per-env page (`/projects/:id/env/:env_id`) shows secret key names + a Reveal CTA (non_prod) or Request CTA (any env). Routes through the L4 endpoints (`/projects/:id/environments/:env_id/{secrets,request,direct-reveal}`); a 403 from direct-reveal (PROD env / policy denied / perm missing) surfaces as an inline `ApiError.message`.
+The My Projects sidebar (Slice L5) is the dev-facing entry point. `useMe()` returns each project's environments inline; the per-env page (`/projects/:id/env/:env_id`) shows secret key names + a Reveal CTA (non_prod) or Request CTA (any env). Routes through the L4 endpoints (`/projects/:id/environments/:env_id/{secrets,request,direct-reveal}`); a 403 from direct-reveal (PROD env / policy denied / perm missing) surfaces as an inline `ApiError.message`.
 
 ## Hard rules
 
@@ -59,8 +59,8 @@ src/
   api/
     client.ts            typed fetch + HTTPS guard + ApiError (with stepUp flag)
     queryClient.ts       global TanStack QueryClient + step-up interceptor
-    me.ts                useMe — identity + permissions + teams + projects hydration
-    oidc.ts              useOidcAvailable — probe + redirectToStepUp helper
+    me.ts                useMe: identity + permissions + teams + projects hydration
+    oidc.ts              useOidcAvailable: probe + redirectToStepUp helper
     requests.ts / agents.ts / secrets.ts / audit.ts / ...   typed hooks per surface
     types.ts             CP response shapes (metadata-only; no secret values)
   auth/
@@ -70,7 +70,7 @@ src/
     Shell.tsx            sidebar + topbar + <Outlet/> + version chip + logout
   pages/
     Login.tsx            local-admin form + conditional "Sign in with SSO" button
-    Dashboard.tsx        operator landing — KPIs + recent activity
+    Dashboard.tsx        operator landing: KPIs + recent activity
     Requests.tsx + RequestDetail.tsx     submit / approve / reject / reveal flow
     Agents.tsx           live status + onboarding deploy snippets
     Secrets.tsx          catalog with label search + per-secret detail
@@ -123,11 +123,11 @@ npm run dev
 | `/login` | Local-admin form + conditional "Sign in with SSO" | public |
 | `/` | Dashboard | authenticated |
 | `/requests` | Submit + approve queue (per-role views) | `secret.request` ∨ `secret.approve` |
-| `/requests/:id` | Detail + reveal (Tier 2 — step-up gated) | depends on row ownership |
+| `/requests/:id` | Detail + reveal (Tier 2, step-up gated) | depends on row ownership |
 | `/agents` | Live agent list + onboarding snippets | `agent.list` |
 | `/secrets` | Catalog with label search | `secret.list` |
 | `/audit` | Event log (scoped to caller when not admin) | `audit.read` |
-| `/me` | Profile — identity, permissions, teams, projects | authenticated |
+| `/me` | Profile: identity, permissions, teams, projects | authenticated |
 | `/admin/projects` | Projects + per-project secret bindings | `team.edit` |
 | `/admin/teams` | N-level team tree CRUD + members | `team.edit` |
 | `/admin/roles` | Role catalog + permission picker | `role.edit` |
@@ -136,17 +136,17 @@ npm run dev
 | `/admin/policies` | Policy CRUD | `policy.edit` |
 | `/admin/integrations` | ArgoCD endpoints + app mappings (when `SB_GITOPS_ENABLED`) | `integration.edit` |
 
-Nav items hide entirely when the user lacks the gating permission — strict fail-closed.
+Nav items hide entirely when the user lacks the gating permission, a strict fail-closed default.
 
 ## Pre-v1.0 blockers
 
-- ~~**OIDC PKCE flow**~~ — **LANDED** (api#55 + ui#40). Local-admin login still available as break-glass.
-- ~~**Cookie auth + MFA step-up**~~ — **LANDED** (api#54 + api#56 + ui#40 + ui#43).
-- ~~**Group-claim → role mapping**~~ — **LANDED** (api#57). Admins still curate team-scoped grants; OIDC handles global role assignment.
-- **RBAC route gating** — admin pages currently visible to every authenticated identity at the route level (the nav already hides them via `hasPermission`); api-side enforcement lands with [`api#27`](https://github.com/secrets-bridge/api/issues/27) (P0-2).
+- ~~**OIDC PKCE flow**~~: **LANDED** (api#55 + ui#40). Local-admin login still available as break-glass.
+- ~~**Cookie auth + MFA step-up**~~: **LANDED** (api#54 + api#56 + ui#40 + ui#43).
+- ~~**Group-claim → role mapping**~~: **LANDED** (api#57). Admins still curate team-scoped grants; OIDC handles global role assignment.
+- **RBAC route gating**: admin pages currently visible to every authenticated identity at the route level (the nav already hides them via `hasPermission`); api-side enforcement lands with [`api#27`](https://github.com/secrets-bridge/api/issues/27) (P0-2).
 
 ## See also
 
-- [`secrets-bridge/skills/ui/SKILL.md`](https://github.com/secrets-bridge/skills/blob/main/ui/SKILL.md) — internal working-instructions skill for this repo (auth model, admin CRUD pattern, dispatchable patterns).
-- [`secrets-bridge/skills/PROGRESS.md`](https://github.com/secrets-bridge/skills/blob/main/PROGRESS.md) — slice-by-slice activity log; each PR has an entry with the load-bearing invariants called out.
-- [`secrets-bridge/api`](https://github.com/secrets-bridge/api) — Control Plane API + auth surface this SPA consumes.
+- [`secrets-bridge/skills/ui/SKILL.md`](https://github.com/secrets-bridge/skills/blob/main/ui/SKILL.md): internal working-instructions skill for this repo (auth model, admin CRUD pattern, dispatchable patterns).
+- [`secrets-bridge/skills/PROGRESS.md`](https://github.com/secrets-bridge/skills/blob/main/PROGRESS.md): slice-by-slice activity log; each PR has an entry with the load-bearing invariants called out.
+- [`secrets-bridge/api`](https://github.com/secrets-bridge/api): Control Plane API + auth surface this SPA consumes.
