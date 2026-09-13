@@ -82,6 +82,26 @@ export class ApiError extends Error {
 }
 
 /**
+ * Strict relative-path allowlist for any post-auth redirect target
+ * the SPA hands back to the api (`return_to` / `from`) or feeds to
+ * `navigate()` (ui#96 / UI-02, paired with the api-side fix).
+ *
+ * A protocol-relative path (`//evil.example`) or a backslash variant
+ * (`/\evil.example`) is reinterpreted as an absolute URL by browsers
+ * (and, per GHSA-2j2x-hqr9-3h42, by older react-router versions) —
+ * both are exactly what this regex rejects. Anything that isn't a
+ * same-origin path starting with a single `/` falls back to `/`.
+ */
+const SAFE_REDIRECT_PATH = /^\/(?![/\\])/;
+
+export function sanitizeRedirectTarget(path: string | null | undefined): string {
+  if (typeof path === 'string' && SAFE_REDIRECT_PATH.test(path)) {
+    return path;
+  }
+  return '/';
+}
+
+/**
  * Redirect the browser to the api's OIDC step-up flow. Used by
  * handlers that catch a step-up ApiError; the IdP re-prompts for
  * MFA and the callback stamps `last_mfa_at` on the same session
@@ -92,8 +112,9 @@ export class ApiError extends Error {
  * (api on a different host than the SPA) use the VITE_API_BASE_URL.
  */
 export function redirectToStepUp(returnTo?: string): void {
-  const target =
+  const raw =
     returnTo ?? window.location.pathname + window.location.search + window.location.hash;
+  const target = sanitizeRedirectTarget(raw);
   const params = new URLSearchParams({ step_up: 'mfa', return_to: target });
   const base = buildTimeBase ? buildTimeBase.replace(/\/$/, '') : '';
   window.location.href = `${base}/api/v1/auth/oidc/start?${params.toString()}`;

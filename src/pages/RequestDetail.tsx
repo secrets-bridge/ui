@@ -71,11 +71,7 @@ export function RequestDetail() {
   const gitops = useRequestGitOps(id);
   const isReadFlow = req.data?.type === 'read';
   const isOwner = req.data?.requester_id === identity?.id;
-  const wraps = useRequestWraps(
-    id,
-    identity?.id ?? '',
-    !!req.data && isReadFlow && isOwner,
-  );
+  const wraps = useRequestWraps(id, !!req.data && isReadFlow && isOwner);
 
   if (req.isLoading) {
     return <div className="text-muted text-sm">Loading…</div>;
@@ -158,9 +154,7 @@ export function RequestDetail() {
         <div className="space-y-6">
           <TimelineCard request={r} />
           <ApprovalsCard request={r} />
-          {r.type === 'read' && (
-            <WrapsCard request={r} query={wraps} userId={me} />
-          )}
+          {r.type === 'read' && <WrapsCard request={r} query={wraps} />}
           <GitOpsCard query={gitops} />
         </div>
         <div className="space-y-6">
@@ -375,11 +369,9 @@ function ApprovalsCard({ request: r }: { request: AccessRequest }) {
 function WrapsCard({
   request: r,
   query,
-  userId,
 }: {
   request: AccessRequest;
   query: ReturnType<typeof useRequestWraps>;
-  userId: string;
 }) {
   const [reveal, setReveal] = useState<WrapSummary | null>(null);
   const rows = query.data ?? [];
@@ -475,7 +467,6 @@ function WrapsCard({
         <RevealModal
           requestId={r.id}
           wrap={reveal}
-          userId={userId}
           onClose={() => {
             setReveal(null);
             query.refetch();
@@ -491,12 +482,10 @@ function WrapsCard({
 function RevealModal({
   requestId,
   wrap,
-  userId,
   onClose,
 }: {
   requestId: string;
   wrap: WrapSummary;
-  userId: string;
   onClose: () => void;
 }) {
   const [phase, setPhase] = useState<
@@ -550,7 +539,7 @@ function RevealModal({
   const doReveal = async () => {
     setPhase('revealing');
     try {
-      const r = await revealWrap(requestId, wrap.id, userId);
+      const r = await revealWrap(requestId, wrap.id);
       const text = atob(r.value);
       setRevealed(r);
       setDecoded(text);

@@ -270,6 +270,11 @@ function MintDrawer({ onClose }: { onClose: () => void }) {
 
   const handleClose = () => {
     setRevealed(null);
+    // Drop the mint result from TanStack Query's MutationCache too —
+    // `setRevealed(null)` only clears this component's own state; the
+    // agent_secret otherwise lingers in the cache after close (ui#96 /
+    // UI-07).
+    mint.reset();
     qc.invalidateQueries({ queryKey: agentsKey.all });
     onClose();
   };
@@ -482,7 +487,7 @@ function DeploySnippet({ snippet, hint }: { snippet: string; hint: string }) {
   const [copied, setCopied] = useState(false);
   const doCopy = async () => {
     try {
-      await navigator.clipboard.writeText(snippet);
+      await copyWithAutoClear(snippet);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -546,6 +551,33 @@ providers:
       Environment: production`;
 }
 
+// Reveal-once secrets copied from this panel land in the OS clipboard,
+// which is outside the SPA's control. Best-effort mitigation: after
+// the same on-screen TTL the reveal flows elsewhere in the app use
+// (60s — see RequestDetail.tsx's REVEAL_TTL_SECONDS / the reveal
+// session's countdown), clear the clipboard IF it still holds exactly
+// what we copied (ui#96 / UI-07). No-ops silently when clipboard-read
+// is unavailable or the permission is denied, and never clobbers
+// something the user copied afterward — this is defense in depth, not
+// a guarantee.
+const CLIPBOARD_CLEAR_MS = 60_000;
+
+async function copyWithAutoClear(value: string): Promise<void> {
+  await navigator.clipboard.writeText(value);
+  window.setTimeout(() => {
+    void (async () => {
+      try {
+        const current = await navigator.clipboard.readText();
+        if (current === value) {
+          await navigator.clipboard.writeText('');
+        }
+      } catch {
+        // best-effort only — clipboard-read may be unavailable/denied
+      }
+    })();
+  }, CLIPBOARD_CLEAR_MS);
+}
+
 function CopyField({
   label,
   value,
@@ -558,7 +590,7 @@ function CopyField({
   const [copied, setCopied] = useState(false);
   const doCopy = async () => {
     try {
-      await navigator.clipboard.writeText(value);
+      await copyWithAutoClear(value);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {

@@ -71,7 +71,14 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
-      sourcemap: true,
+      // 'hidden': still emits .map files (so an error-tracking service
+      // can ingest them for symbolication) but omits the
+      // `//# sourceMappingURL=` comment, so a browser — or anyone
+      // poking at the bundle — doesn't get pointed straight at them.
+      // nginx additionally 404s any *.map request (see nginx.conf) so
+      // the files that DO ship in the image are unreachable over HTTP
+      // (ui#96 / UI-05).
+      sourcemap: 'hidden',
       target: 'es2022',
     },
   };

@@ -14,7 +14,7 @@
  *     "payload": {
  *       "target_provider_type": "aws-sm",
  *       "target_provider_config": {"region": "eu-central-1"},
- *       "label_selector": {"EnvironmentName": "E-Government-Uat"}
+ *       "label_selector": {"Environment": "production"}
  *     }
  *   }
  *
@@ -210,7 +210,7 @@ export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
             type="text"
             {...register('label_selector')}
             className={inputCls + ' font-mono'}
-            placeholder="EnvironmentName:E-Government-Uat, Team:billing"
+            placeholder="Environment:production, Team:team-alpha"
             autoComplete="off"
             spellCheck={false}
           />

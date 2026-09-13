@@ -11,7 +11,7 @@
  * Wraps + GitOps observations live on adjacent paths and have their own
  * hook in this file:
  *
- *   GET    /api/v1/requests/:id/wraps/:wid?user_id=…   — single-shot
+ *   GET    /api/v1/requests/:id/wraps/:wid              — single-shot
  *   GET    /api/v1/requests/:id/gitops                 — observation list
  *
  * Mutation strategy: every approve / reject / cancel invalidates BOTH
@@ -130,18 +130,11 @@ export interface WrapSummary {
   expires_at: string;
 }
 
-export function useRequestWraps(
-  id: string | undefined,
-  userId: string,
-  enabled = true,
-) {
+export function useRequestWraps(id: string | undefined, enabled = true) {
   return useQuery({
     queryKey: id ? [...requestsKey.one(id), 'wraps'] : requestsKey.all,
-    queryFn: () =>
-      api.get<WrapSummary[]>(
-        `/api/v1/requests/${id}/wraps?user_id=${encodeURIComponent(userId)}`,
-      ),
-    enabled: enabled && !!id && !!userId,
+    queryFn: () => api.get<WrapSummary[]>(`/api/v1/requests/${id}/wraps`),
+    enabled: enabled && !!id,
     retry: false,
   });
 }
@@ -156,6 +149,9 @@ export function useRequestWraps(
  *
  * The response value is base64-encoded plaintext. The caller decodes,
  * displays once, and clears it from state when the modal closes.
+ *
+ * Identity is derived server-side from the session cookie — the SPA
+ * never sends a user_id on this call (ui#96 / UI-01).
  */
 export interface RevealedWrap {
   wrap_id: string;
@@ -170,10 +166,9 @@ export interface RevealedWrap {
 export async function revealWrap(
   requestId: string,
   wrapId: string,
-  userId: string,
 ): Promise<RevealedWrap> {
   return api.get<RevealedWrap>(
-    `/api/v1/requests/${requestId}/wraps/${wrapId}?user_id=${encodeURIComponent(userId)}`,
+    `/api/v1/requests/${requestId}/wraps/${wrapId}`,
   );
 }
 

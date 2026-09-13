@@ -25,7 +25,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import { ApiError } from '../api/client';
+import { ApiError, sanitizeRedirectTarget } from '../api/client';
 import { useLogin } from '../api/auth';
 import { useOidcAvailable } from '../api/oidc';
 import { useAuth } from '../auth/AuthContext';
@@ -60,8 +60,13 @@ export function Login() {
 
   // Where to send the user after sign-in. Preserved across the OIDC
   // round-trip via the `return_to` query param on /auth/oidc/start.
-  const returnTo =
-    (location.state as { from?: { pathname?: string } })?.from?.pathname || '/';
+  // Normalized to a strict same-origin relative path (ui#96 / UI-02)
+  // — `location.state` is trusted React Router state today, but the
+  // value flows into a URL query param the api stores and redirects
+  // to verbatim, so it's sanitized here as defense in depth.
+  const returnTo = sanitizeRedirectTarget(
+    (location.state as { from?: { pathname?: string } })?.from?.pathname,
+  );
 
   // Bounce away from /login as soon as identity hydrates. Covers
   // two cases:
@@ -103,6 +108,11 @@ export function Login() {
       reset({ email: '', password: '' });
 
       navigate(returnTo, { replace: true });
+
+      // Drop the mutation result (and any transitional response
+      // fields TanStack Query cached alongside it) from the
+      // MutationCache now that we're done with it (ui#96 / UI-03).
+      login.reset();
     } catch (err) {
       if (err instanceof ApiError) {
         // The api always returns generic "invalid credentials" on
