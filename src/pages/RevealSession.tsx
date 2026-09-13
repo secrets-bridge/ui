@@ -83,10 +83,6 @@ export function RevealSession() {
   // reflects the authoritative TTL regardless of a wrong client clock.
   const clockOffsetRef = useRef<number>(0);
 
-  // userID is needed for the per-wrap single-shot fetch (stub auth
-  // until OIDC + middleware-stashed identity land).
-  const userId = me.data?.id ?? '';
-
   // Resolve the env metadata for breadcrumbs from the /me payload.
   const env = useMemo(() => {
     const proj = me.data?.projects?.find((p) => p.id === projectId);
@@ -172,14 +168,14 @@ export function RevealSession() {
   // --- step 3: fetch each wrap's plaintext ---------------------------
   useEffect(() => {
     if (phase !== 'fetching') return;
-    if (!session || !userId) return;
+    if (!session) return;
     let cancelled = false;
     (async () => {
       const fetched: RevealedRow[] = [];
       const errs: string[] = [];
       for (const w of session.wraps) {
         try {
-          const r = await revealWrap(requestId, w.wrap_id, userId);
+          const r = await revealWrap(requestId, w.wrap_id);
           fetched.push({
             wrap_id: w.wrap_id,
             key_name: r.key_name ?? w.key_name ?? '(value)',
@@ -207,7 +203,7 @@ export function RevealSession() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, session, userId, requestId]);
+  }, [phase, session, requestId]);
 
   // --- countdown (drives TTL=0 auto-clear) ---------------------------
   useEffect(() => {

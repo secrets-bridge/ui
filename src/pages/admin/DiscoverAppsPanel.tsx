@@ -13,8 +13,8 @@
  *     provider_connection_id) applied to every checked app.
  *   - Submit one POST per checked app and watch a progress counter.
  *
- * Why one shared binding instead of per-row: in egov-uat shape every
- * team's apps bind to the same provider connection (per team). The
+ * Why one shared binding instead of per-row: in a typical deployment
+ * every team's apps bind to the same provider connection (per team). The
  * operator runs the panel once per binding-target. Re-running with a
  * different filter + binding is cheap.
  *
@@ -137,12 +137,12 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
       </div>
 
       <div className="grid grid-cols-1 gap-3">
-        <Field label="ArgoCD project filter (optional)" hint="e.g. egov-uat. Empty = every app the token can see.">
+        <Field label="ArgoCD project filter (optional)" hint="e.g. tenant-a-uat. Empty = every app the token can see.">
           <div className="flex gap-2">
             <input
               value={project}
               onChange={(e) => setProject(e.target.value)}
-              placeholder="egov-uat"
+              placeholder="tenant-a-uat"
               className={inputCls + ' flex-1'}
             />
             <button
