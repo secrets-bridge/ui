@@ -14,7 +14,7 @@
  *      last_discover_started_at + 2 * interval_seconds * 1000 < now
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { ApiError } from '../../api/client';
 import {
@@ -260,7 +260,23 @@ function ConnectionRow({
   );
 }
 
+// Wall-clock "now" for render-time comparisons. Reading Date.now()
+// directly in render is impure (react-hooks/purity): the result
+// depends on when React happens to re-render. This samples it once on
+// mount and refreshes it on an interval, so a long-open page still
+// notices a job crossing the stale threshold.
+const NOW_REFRESH_MS = 30_000;
+function useNow(refreshMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), refreshMs);
+    return () => window.clearInterval(t);
+  }, [refreshMs]);
+  return now;
+}
+
 function DiscoverCell({ connection: c }: { connection: ProviderConnection }) {
+  const now = useNow(NOW_REFRESH_MS);
   if (c.status === 'disabled') {
     return <span className="text-muted text-xs">Connection disabled</span>;
   }
@@ -273,7 +289,7 @@ function DiscoverCell({ connection: c }: { connection: ProviderConnection }) {
   if (status === 'running' && c.last_discover_started_at) {
     const started = Date.parse(c.last_discover_started_at);
     const limitMs = 2 * (c.discover_interval_seconds ?? 0) * 1000;
-    if (limitMs > 0 && started + limitMs < Date.now()) {
+    if (limitMs > 0 && started + limitMs < now) {
       return (
         <div className="flex flex-col">
           <StatusPill variant="warning" tone="outline">

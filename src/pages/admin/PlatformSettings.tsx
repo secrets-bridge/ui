@@ -115,10 +115,9 @@ function ReservedPriorityCard({
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  useEffect(() => {
-    if (current !== null && !editing) setDraft(String(current));
-  }, [current, editing]);
-
+  // `draft` is only read while editing, and both the Edit and Cancel
+  // buttons seed it from `current`, so it needs no effect to follow
+  // `current` while the card is read-only.
   const update = useUpdatePlatformSetting(KEY_PLATFORM_RESERVED_PRIORITY);
 
   function validate(raw: string): number | null {

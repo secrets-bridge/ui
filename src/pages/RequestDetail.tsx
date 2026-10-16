@@ -591,16 +591,25 @@ function RevealModal({
   // Countdown — runs only while the value is shown. When it hits 0
   // we clear the plaintext from state so even an open browser tab
   // stops carrying it. The user can also "Hide now" to clear early.
+  //
+  // The clear happens in the timer callback on the tick that reaches
+  // 0, rather than in a follow-up effect run, so the effect body never
+  // sets state synchronously. `ttlLeft` is always seeded to
+  // REVEAL_TTL_SECONDS before `shown`, so 0 is only reachable by a
+  // tick; timing is the same as before (cleared 60s after reveal).
   useEffect(() => {
     if (phase !== 'shown') return;
-    if (ttlLeft <= 0) {
-      setDecoded(null);
-      setRevealed(null);
-      setPhase('expired');
-      void clearCopiedSecret();
-      return;
-    }
-    const t = window.setTimeout(() => setTtlLeft((n) => n - 1), 1000);
+    const t = window.setTimeout(() => {
+      if (ttlLeft <= 1) {
+        setTtlLeft(0);
+        setDecoded(null);
+        setRevealed(null);
+        setPhase('expired');
+        void clearCopiedSecret();
+        return;
+      }
+      setTtlLeft(ttlLeft - 1);
+    }, 1000);
     return () => window.clearTimeout(t);
   }, [phase, ttlLeft]);
 

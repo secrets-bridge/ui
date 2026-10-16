@@ -102,6 +102,21 @@ export function RevealSession() {
   // reflects the authoritative TTL regardless of a wrong client clock.
   const clockOffsetRef = useRef<number>(0);
 
+  // Apply a freshly derived TTL. At 0 wipe every plaintext from state:
+  // replace values with empty strings so React still renders the rows
+  // (with masked placeholders) instead of unmounting + losing the
+  // audit trail, then flip to 'expired' and clear a copied value.
+  const applyTtl = (next: number) => {
+    if (next <= 0) {
+      setTtlLeft(0);
+      setRows((prev) => prev.map((r) => ({ ...r, value: '' })));
+      setPhase('expired');
+      void clearCopiedSecret();
+      return;
+    }
+    setTtlLeft(next);
+  };
+
   // Resolve the env metadata for breadcrumbs from the /me payload.
   const env = useMemo(() => {
     const proj = me.data?.projects?.find((p) => p.id === projectId);
@@ -117,26 +132,26 @@ export function RevealSession() {
   // server-side, but until the agent posted the wraps the bulk Open
   // returns 503 wrap_not_ready. Poll the request every 2s while
   // preparing; a 4xx on the request itself won't change by polling.
-  useEffect(() => {
-    if (phase !== 'preparing') return;
+  //
+  // The phase follows the request query's state, so it is adjusted
+  // during render (React's "adjust state when props change" pattern)
+  // instead of in an effect: same transitions, without first
+  // committing a stale 'preparing' render. Every branch leaves
+  // 'preparing', so this settles after one extra render.
+  if (phase === 'preparing') {
     const reqErr = request.error;
+    const status = request.data?.status;
     if (reqErr instanceof ApiError && reqErr.status >= 400 && reqErr.status < 500) {
       setError(formatErr(reqErr));
       setPhase('error');
-      return;
-    }
-    if (!request.data) return;
-    const s = request.data.status;
-    if (s === 'approved' || s === 'executed') {
+    } else if (status === 'approved' || status === 'executed') {
       setPhase('opening');
-      return;
-    }
-    if (s !== 'pending') {
+    } else if (status !== undefined && status !== 'pending') {
       // cancelled / rejected / failed / expired — surface and stop.
       setPhase('error');
-      setError(`Request status is ${s}; cannot reveal.`);
+      setError(`Request status is ${status}; cannot reveal.`);
     }
-  }, [phase, request.data, request.error]);
+  }
 
   // Re-poll the request every 2s while preparing — the direct-reveal
   // request transitions approved→executed only after the agent claims
@@ -229,30 +244,26 @@ export function RevealSession() {
         setError(`Partial reveal: ${errs.length} wrap(s) failed.`);
       }
       setPhase('shown');
+      // A session that lapsed while the wraps were being fetched is
+      // cleared in the same batch, so plaintext never renders.
+      applyTtl(deriveTtlSeconds(session.expires_at, clockOffsetRef.current));
     })();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, session, requestId]);
 
   // --- countdown (drives TTL=0 auto-clear) ---------------------------
+  //
+  // Every place that recomputes the remaining TTL (fetch completion,
+  // the 1s tick, the focus/visibility resync) goes through applyTtl,
+  // which performs the TTL=0 clear itself. The effects therefore only
+  // set state from timer/event callbacks, never synchronously.
   useEffect(() => {
     if (phase !== 'shown') return;
     if (!session) return;
-    if (ttlLeft <= 0) {
-      // Wipe every plaintext from state at TTL=0. Replace with empty
-      // strings so React still renders the rows (with masked
-      // placeholders) instead of unmounting + losing the audit trail.
-      setRows((prev) =>
-        prev.map((r) => ({ ...r, value: '' })),
-      );
-      setPhase('expired');
-      void clearCopiedSecret();
-      return;
-    }
     const t = window.setTimeout(() => {
-      setTtlLeft(deriveTtlSeconds(session.expires_at, clockOffsetRef.current));
+      applyTtl(deriveTtlSeconds(session.expires_at, clockOffsetRef.current));
     }, 1000);
     return () => window.clearTimeout(t);
   }, [phase, ttlLeft, session]);
@@ -267,7 +278,7 @@ export function RevealSession() {
     if (phase !== 'shown' || !session) return;
     const resync = () => {
       if (document.visibilityState === 'hidden') return;
-      setTtlLeft(deriveTtlSeconds(session.expires_at, clockOffsetRef.current));
+      applyTtl(deriveTtlSeconds(session.expires_at, clockOffsetRef.current));
     };
     window.addEventListener('focus', resync);
     document.addEventListener('visibilitychange', resync);

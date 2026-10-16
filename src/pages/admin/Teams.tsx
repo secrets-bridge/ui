@@ -21,7 +21,7 @@
  *     team_id; that's the piece that says "section head over X."
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -53,13 +53,14 @@ export function Teams() {
   const [creating, setCreating] = useState(false);
   const [createParent, setCreateParent] = useState<string | null>(null);
 
-  // Auto-select the first root team once the list loads.
-  useEffect(() => {
-    if (!selectedId && list.data && list.data.length > 0) {
-      const first = list.data.find((t) => t.parent_team_id === null) ?? list.data[0];
-      setSelectedId(first.id);
-    }
-  }, [list.data, selectedId]);
+  // Auto-select the first root team once the list loads. Adjusted
+  // during render (not in an effect) so the first paint with data
+  // already has a selection instead of committing an empty detail
+  // pane and re-rendering. The guard makes it run at most once.
+  if (!selectedId && list.data && list.data.length > 0) {
+    const first = list.data.find((t) => t.parent_team_id === null) ?? list.data[0];
+    setSelectedId(first.id);
+  }
 
   const tree = useMemo(() => buildTeamTree(list.data ?? []), [list.data]);
   const selected = list.data?.find((t) => t.id === selectedId) ?? null;
