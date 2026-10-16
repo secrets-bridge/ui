@@ -38,6 +38,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
 import { useMe } from '../api/me';
+import { describeRevealError } from '../api/revealErrors';
 import {
   expireSessionUnmount,
   useExpireRevealSession,
@@ -513,8 +514,8 @@ function safeAtob(b64: string): string {
   }
 }
 
+// Binding and session refusals (api#201) get readable copy; anything
+// else shows the api's own message with its status.
 function formatErr(err: unknown): string {
-  if (err instanceof ApiError) return `${err.status} · ${err.message}`;
-  if (err instanceof Error) return err.message;
-  return String(err);
+  return describeRevealError(err, ' · ');
 }

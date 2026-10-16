@@ -19,10 +19,14 @@
  *     when the drawer closes.
  *   - The form NEVER displays the typed value back — no preview
  *     section, no review-before-submit step.
- *   - Provider config is operator-pickable per provider type today
- *     (e.g. `kvMount: "secret"` for Vault, `region: "us-east-1"` for
- *     AWS SM). The UI just exposes a single common knob per provider
- *     to keep the form readable; advanced operators can still curl.
+ *   - No provider config on the wire. The api derives the job's
+ *     provider config from the bound catalog row and ignores a body
+ *     copy (api#201, API-S-04); a UI default like `kvMount: "secret"`
+ *     only ever overrode the agent's own mount.
+ *   - The environment is a pick from the project's environments. When
+ *     every binding for the secret is env-scoped it is required and
+ *     limited to those environments: the api refuses a blank or other
+ *     environment with 403 (api#201, API-S-03).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -37,11 +41,17 @@ import {
   useSubmitReadRequest,
 } from '../api/requests';
 import {
-  useEnvironments,
+  useEnvironmentsForProject,
   useMyProjects,
   useProjectSecrets,
 } from '../api/tenancy';
-import type { PatchRequestInput, ProjectSecretBinding, ReadRequestInput } from '../api/types';
+import { describeRevealError } from '../api/revealErrors';
+import type {
+  Environment,
+  PatchRequestInput,
+  ProjectSecretBinding,
+  ReadRequestInput,
+} from '../api/types';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
 import { StatusPill } from '../ui/StatusPill';
@@ -55,17 +65,9 @@ const PROVIDER_TYPES = [
   { value: 'azure-kv', label: 'Azure Key Vault' },
 ] as const;
 
-const PROVIDER_CONFIG_HINT: Record<string, string> = {
-  vault: 'kvMount — leave blank for the KV v2 default `secret`',
-  'aws-sm': 'region (e.g. `us-east-1`) — required',
-  'gcp-sm': 'project (e.g. `my-gcp-project`) — required',
-  'azure-kv': 'vault_name (the Azure Key Vault name) — required',
-};
-
 const schema = z.object({
   type: z.enum(['read', 'patch']),
   target_provider_type: z.string().min(1, 'provider required'),
-  provider_config_value: z.string().max(255).optional(),
   target_secret_ref: z
     .string()
     .min(1, 'secret reference required')
@@ -102,7 +104,6 @@ export function SubmitRequestDrawer({
   onCreated,
 }: Props) {
   const projects = useMyProjects();
-  const envs = useEnvironments();
   const submitRead = useSubmitReadRequest();
   const submitPatch = useSubmitPatchRequest();
   const { hasPermission } = useAuth();
@@ -124,13 +125,14 @@ export function SubmitRequestDrawer({
     watch,
     reset,
     setValue,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<FormShape>({
     resolver: zodResolver(schema),
     defaultValues: {
       type: 'read',
       target_provider_type: 'vault',
-      provider_config_value: '',
       target_secret_ref: '',
       project_id: '',
       environment: '',
@@ -143,22 +145,56 @@ export function SubmitRequestDrawer({
   const providerType = watch('target_provider_type');
   const projectId = watch('project_id');
   const targetRef = watch('target_secret_ref');
+  const environment = watch('environment') ?? '';
 
   // When a project is picked, fetch its bindings so we can show
   // which keys are allowed on the target secret_ref. Submit-time gate
   // (api#43 Slice C) is the source of truth — this is just a hint so
   // the user doesn't get a surprise 403.
   const bindings = useProjectSecrets(projectId || undefined);
-  const matchedBinding = bindings.data?.find(
-    (b) =>
-      b.secret?.secret_ref === targetRef.trim() &&
-      b.secret?.provider_type === providerType,
+  const projectEnvs = useEnvironmentsForProject(projectId || undefined);
+
+  // Every binding of this project on (provider type, ref). The same ref
+  // can be bound once per cluster, each row scoped to its own
+  // environment; the api considers all of them.
+  const refBindings = useMemo(
+    () =>
+      (bindings.data ?? []).filter(
+        (b) =>
+          b.secret?.secret_ref === targetRef.trim() &&
+          b.secret?.provider_type === providerType,
+      ),
+    [bindings.data, targetRef, providerType],
   );
+  const envRule = useMemo(
+    () => environmentRule(refBindings, projectEnvs.data ?? []),
+    [refBindings, projectEnvs.data],
+  );
+  const selectedEnvId = projectEnvs.data?.find((e) => e.name === environment)?.id;
+  const matchedBinding = governingBinding(refBindings, selectedEnvId);
+
+  // Keep the environment inside what the binding allows: drop a pick
+  // that's no longer an option (project or secret changed), and pick
+  // the only allowed one when there is exactly one.
+  useEffect(() => {
+    if (!projectEnvs.data) return;
+    if (environment && !envRule.options.some((e) => e.name === environment)) {
+      setValue('environment', '');
+      return;
+    }
+    if (!environment && envRule.required && envRule.options.length === 1) {
+      setValue('environment', envRule.options[0].name);
+    }
+  }, [environment, envRule, projectEnvs.data, setValue]);
+
+  useEffect(() => {
+    if (environment) clearErrors('environment');
+  }, [environment, clearErrors]);
 
   // Bound-mode state: which binding the user picked from the dropdown.
   // Identified by secret_id within the project. When the user picks
   // one, we setValue() into the existing form fields so the rest of
-  // the form (provider config + keys + submit body) keeps working
+  // the form (environment + keys + submit body) keeps working
   // unchanged — bound mode is a UX overlay, not a parallel form path.
   const [boundSecretId, setBoundSecretId] = useState<string>('');
   const boundBinding: ProjectSecretBinding | undefined = useMemo(
@@ -166,12 +202,9 @@ export function SubmitRequestDrawer({
     [bindings.data, boundSecretId],
   );
 
-  // Apply the bound selection to the form fields. provider config is
-  // tricky because the api stores it on the secret row (cluster_name,
-  // labels) but not as a renderable config string; we don't try to
-  // reconstruct it here. The agent's resolver chain picks up the right
-  // config from chart values, so leaving provider_config_value empty is
-  // safe — the bound flow doesn't need it on the wire.
+  // Apply the bound selection to the form fields. No provider config
+  // is sent in either mode: the api derives it from the bound catalog
+  // row.
   useEffect(() => {
     if (mode !== 'bound' || !boundBinding?.secret) return;
     setValue('target_provider_type', boundBinding.secret.provider_type);
@@ -215,24 +248,17 @@ export function SubmitRequestDrawer({
     return () => reset();
   }, [reset]);
 
-  const envNames = (() => {
-    const set = new Set<string>();
-    envs.data?.forEach((e) => set.add(e.name));
-    return Array.from(set).sort();
-  })();
-
   const onValid: SubmitHandler<FormShape> = async (data) => {
-    // When the operator leaves the config blank, fall back to a
-    // per-provider sensible default (matches the placeholder text).
-    // Vault: `kvMount=secret` — KV v2 default. Other providers stay
-    // unset so the agent fails loud rather than guessing a wrong
-    // region / project.
-    const rawConfig =
-      data.provider_config_value?.trim() ||
-      defaultProviderConfigValue(data.target_provider_type);
-    const providerConfig: Record<string, string> | undefined = rawConfig
-      ? buildProviderConfig(data.target_provider_type, rawConfig)
-      : undefined;
+    // An env-scoped binding only governs a request made in its own
+    // environment; without one the api answers 403. Catch it here.
+    if (envRule.required && !data.environment) {
+      setError('environment', {
+        type: 'manual',
+        message:
+          'Pick an environment. This secret is bound per environment, so a request without one is refused.',
+      });
+      return;
+    }
 
     try {
       if (data.type === 'read') {
@@ -242,7 +268,6 @@ export function SubmitRequestDrawer({
           project_id: data.project_id || undefined,
           environment: data.environment || undefined,
           target_provider_type: data.target_provider_type,
-          target_provider_config: providerConfig,
           target_secret_ref: data.target_secret_ref.trim(),
           target_keys: keys.length > 0 ? keys : undefined,
           justification: data.justification.trim(),
@@ -265,7 +290,6 @@ export function SubmitRequestDrawer({
           project_id: data.project_id || undefined,
           environment: data.environment || undefined,
           target_provider_type: data.target_provider_type,
-          target_provider_config: providerConfig,
           target_secret_ref: data.target_secret_ref.trim(),
           key_values,
           justification: data.justification.trim(),
@@ -371,14 +395,25 @@ export function SubmitRequestDrawer({
           }
         >
           {mode === 'bound' ? (
-            <BoundTargetFields
-              projects={projects.data ?? []}
-              bindings={bindings.data ?? []}
-              projectId={projectId ?? ''}
-              registerProject={register('project_id')}
-              boundSecretId={boundSecretId}
-              onBoundSecretIdChange={setBoundSecretId}
-            />
+            <>
+              <BoundTargetFields
+                projects={projects.data ?? []}
+                bindings={bindings.data ?? []}
+                projectId={projectId ?? ''}
+                registerProject={register('project_id')}
+                boundSecretId={boundSecretId}
+                onBoundSecretIdChange={setBoundSecretId}
+              />
+              {projectId && (
+                <EnvironmentField
+                  rule={envRule}
+                  hasProject={!!projectId}
+                  loadFailed={projectEnvs.isError}
+                  register={register('environment')}
+                  error={errors.environment?.message}
+                />
+              )}
+            </>
           ) : (
             <>
               <Field label="Provider type" error={errors.target_provider_type?.message}>
@@ -389,21 +424,6 @@ export function SubmitRequestDrawer({
                     </option>
                   ))}
                 </select>
-              </Field>
-
-              <Field
-                label="Provider config"
-                hint={PROVIDER_CONFIG_HINT[providerType] ?? 'optional knob'}
-                error={errors.provider_config_value?.message}
-              >
-                <input
-                  type="text"
-                  {...register('provider_config_value')}
-                  className={inputCls + ' font-mono'}
-                  placeholder={providerType === 'vault' ? 'secret' : ''}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
               </Field>
 
               <Field
@@ -434,20 +454,13 @@ export function SubmitRequestDrawer({
                       ))}
                   </select>
                 </Field>
-                <Field label="Environment (optional)">
-                  <input
-                    list="submit-env-options"
-                    {...register('environment')}
-                    className={inputCls}
-                    placeholder="uat"
-                    autoComplete="off"
-                  />
-                  <datalist id="submit-env-options">
-                    {envNames.map((n) => (
-                      <option key={n} value={n} />
-                    ))}
-                  </datalist>
-                </Field>
+                <EnvironmentField
+                  rule={envRule}
+                  hasProject={!!projectId}
+                  loadFailed={projectEnvs.isError}
+                  register={register('environment')}
+                  error={errors.environment?.message}
+                />
               </div>
             </>
           )}
@@ -548,7 +561,8 @@ export function SubmitRequestDrawer({
           {flowType === 'read' && (
             <p className="text-[11px] text-muted/80 mt-2">
               Leave the list with one empty key to request the full bundle
-              instead of specific keys.
+              instead of specific keys. That only works when the binding
+              allows every key; with an allowlist, name the keys.
             </p>
           )}
 
@@ -576,7 +590,7 @@ export function SubmitRequestDrawer({
               The binding for this project allows every key the secret carries.
             </p>
           )}
-          {projectId && targetRef.trim() && !matchedBinding && !bindings.isLoading && (
+          {projectId && targetRef.trim() && refBindings.length === 0 && !bindings.isLoading && (
             <div className="mt-3 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5 text-yellow-200 text-[11px]">
               No binding for this secret in the selected project. Submit will
               return <span className="font-mono">out_of_scope_project</span>;
@@ -602,7 +616,7 @@ export function SubmitRequestDrawer({
 
         {apiError instanceof ApiError && (
           <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
-            {apiError.status}: {apiError.message}
+            {describeRevealError(apiError)}
           </div>
         )}
       </form>
@@ -768,32 +782,93 @@ function BoundTargetFields({
   );
 }
 
+// Environment pick for a request. Options are the project's
+// environments, narrowed to the binding's when the secret is only bound
+// per environment (then the pick is required).
+function EnvironmentField({
+  rule,
+  hasProject,
+  loadFailed,
+  register,
+  error,
+}: {
+  rule: EnvironmentRule;
+  hasProject: boolean;
+  loadFailed: boolean;
+  register: ReturnType<ReturnType<typeof useForm<FormShape>>['register']>;
+  error?: string;
+}) {
+  const hint = !hasProject
+    ? 'Pick a project first.'
+    : loadFailed
+      ? "Couldn't load this project's environments."
+      : rule.required
+        ? 'This secret is bound per environment. Pick the environment the binding allows.'
+        : undefined;
+  return (
+    <Field
+      label={rule.required ? 'Environment' : 'Environment (optional)'}
+      hint={hint}
+      error={error}
+    >
+      <select
+        {...register}
+        className={inputCls}
+        disabled={!hasProject}
+        aria-required={rule.required}
+      >
+        <option value="">
+          {rule.required ? '— pick an environment —' : '(none)'}
+        </option>
+        {rule.options.map((e) => (
+          <option key={e.id} value={e.name}>
+            {e.name}
+            {e.kind === 'prod' ? ' (prod)' : ''}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+interface EnvironmentRule {
+  /** Every binding for the ref is env-scoped: a request needs one of them. */
+  required: boolean;
+  /** Environments a request for the ref may name. */
+  options: Environment[];
+}
+
+// Mirrors the api (services.GoverningBinding, api#201): an env-scoped
+// binding only governs in its own environment, a binding without an
+// environment governs anywhere (and with no environment given). With no
+// binding known the api decides; nothing is narrowed here.
+function environmentRule(
+  refBindings: ProjectSecretBinding[],
+  projectEnvs: Environment[],
+): EnvironmentRule {
+  if (refBindings.length === 0 || refBindings.some((b) => !b.environment_id)) {
+    return { required: false, options: projectEnvs };
+  }
+  const allowed = new Set(refBindings.map((b) => b.environment_id));
+  return {
+    required: true,
+    options: projectEnvs.filter((e) => allowed.has(e.id)),
+  };
+}
+
+// The binding the api applies for a request in envId (undefined = no
+// environment): the one scoped to envId, else a binding without an
+// environment. Drives the allowed-keys hint.
+function governingBinding(
+  refBindings: ProjectSecretBinding[],
+  envId: string | undefined,
+): ProjectSecretBinding | undefined {
+  if (envId) {
+    const scoped = refBindings.find((b) => b.environment_id === envId);
+    if (scoped) return scoped;
+  }
+  return refBindings.find((b) => !b.environment_id);
+}
+
 const inputCls =
   'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
-
-function defaultProviderConfigValue(providerType: string): string {
-  // Vault's KV v2 default mount is `secret` — empty form input means
-  // "use the default" rather than "send no config".
-  if (providerType === 'vault') return 'secret';
-  return '';
-}
-
-function buildProviderConfig(
-  providerType: string,
-  value: string,
-): Record<string, string> {
-  switch (providerType) {
-    case 'vault':
-      return { kvMount: value };
-    case 'aws-sm':
-      return { region: value };
-    case 'gcp-sm':
-      return { project: value };
-    case 'azure-kv':
-      return { vault_name: value };
-    default:
-      // Unknown provider — round-trip as a generic "config" entry so
-      // it's at least visible to operators who curl.
-      return { config: value };
-  }
-}

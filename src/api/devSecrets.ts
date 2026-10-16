@@ -30,7 +30,7 @@ export interface EnvSecretKey {
 
 export interface DevRequestBody {
   target_provider_type: string;
-  target_provider_config?: Record<string, unknown>;
+  // No target_provider_config: the api ignores it (api#201, API-S-04).
   target_secret_ref: string;
   target_keys?: string[];
   justification: string;
@@ -81,6 +81,7 @@ export function useSubmitEnvRequest(projectId: string, envId: string) {
  *
  * PROD env → 403 with `direct reveal is not permitted on prod`.
  * Policy denied → 403 with `matched policy does not permit direct reveal`.
+ * No read binding for this env → 403 (api#201); see `revealErrors.ts`.
  */
 export function useDirectReveal(projectId: string, envId: string) {
   return useMutation({

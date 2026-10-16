@@ -15,6 +15,35 @@
 import { useMutation } from '@tanstack/react-query';
 
 import { api } from './client';
+import type { AccessRequest } from './types';
+
+/**
+ * True when the request's wraps belong to the reveal-session flow, so the
+ * UI must open a reveal session instead of fetching a single wrap.
+ *
+ * Mirrors the api check (api#201, API-S-20, RetrieveWrapForUser): a read
+ * request that is approved or executed with ZERO approve votes is a
+ * direct reveal. Approve always appends the vote before it flips the
+ * status, so an approver-approved read always has at least one; the
+ * GET /requests/:id response carries no explicit direct-reveal field.
+ * Once #201 is live the api refuses a single-wrap fetch of such a wrap
+ * with 403 unless the caller has an open session that bundles it. On
+ * api main the session flow works the same, so this is safe either way.
+ */
+export function isRevealSessionFlow(r: AccessRequest): boolean {
+  if (r.type !== 'read') return false;
+  if (r.status !== 'approved' && r.status !== 'executed') return false;
+  return !(r.approvals ?? []).some((a) => a.decision === 'approve');
+}
+
+/** Route of the reveal-session page (`RevealSession.tsx`). */
+export function revealSessionPath(
+  projectId: string,
+  envId: string,
+  requestId: string,
+): string {
+  return `/projects/${projectId}/env/${envId}/reveal/${requestId}`;
+}
 
 /** Per-wrap handle returned by Open. NEVER carries plaintext. */
 export interface RevealSessionWrapHandle {

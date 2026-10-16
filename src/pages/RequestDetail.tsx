@@ -49,6 +49,9 @@ import {
   type WrapSummary,
 } from '../api/requests';
 import { useWorkflows } from '../api/workflows';
+import { describeRevealError } from '../api/revealErrors';
+import { isRevealSessionFlow, revealSessionPath } from '../api/revealSessions';
+import { useEnvironmentsForProject } from '../api/tenancy';
 import { useTeams } from '../api/teams';
 import type { AccessRequest } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -373,10 +376,21 @@ function WrapsCard({
   request: AccessRequest;
   query: ReturnType<typeof useRequestWraps>;
 }) {
+  const { identity } = useAuth();
   const [reveal, setReveal] = useState<WrapSummary | null>(null);
   const rows = query.data ?? [];
   const ready = rows.filter((w) => !w.consumed);
   const consumed = rows.filter((w) => w.consumed);
+  // Direct-reveal wraps are only handed out inside an open reveal
+  // session (api#201, API-S-20), so those requests go to the reveal
+  // session page. The per-wrap modal stays for approver-approved reads.
+  const sessionFlow = isRevealSessionFlow(r);
+  const isOwner = !!identity && identity.id === r.requester_id;
+  const showSessionLink =
+    sessionFlow &&
+    isOwner &&
+    (ready.length > 0 ||
+      (r.status === 'approved' && !query.isLoading && rows.length === 0));
 
   return (
     <Card className="overflow-hidden">
@@ -423,17 +437,25 @@ function WrapsCard({
                     expires {formatRelativeFuture(w.expires_at)}
                   </div>
                 </div>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setReveal(w)}
-                >
-                  Reveal (one-time)
-                </Button>
+                {sessionFlow ? (
+                  <StatusPill variant="pending" tone="outline">
+                    ready
+                  </StatusPill>
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setReveal(w)}
+                  >
+                    Reveal (one-time)
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
         )}
+
+        {showSessionLink && <RevealSessionLink request={r} />}
 
         {consumed.length > 0 && (
           <ul className="space-y-2 pt-2 border-t border-border/40">
@@ -456,9 +478,9 @@ function WrapsCard({
         <div className="bg-yellow-400/10 border border-yellow-400/40 border-l-4 border-l-yellow-400 rounded-lg px-3 py-2 text-xs">
           <div className="text-yellow-300 font-semibold">Reveal-once.</div>
           <div className="text-muted mt-0.5">
-            Clicking Reveal calls the CP's single-shot endpoint. The value
-            is shown in a modal, copy-then-clear. A second call returns 410
-            and the wrap is gone forever.
+            {sessionFlow
+              ? 'This is a direct reveal: its values open together in a timed reveal session and clear when the session ends. Each wrap is single-use.'
+              : "Clicking Reveal calls the CP's single-shot endpoint. The value is shown in a modal, copy-then-clear. A second call returns 410 and the wrap is gone forever."}
           </div>
         </div>
       </div>
@@ -474,6 +496,49 @@ function WrapsCard({
         />
       )}
     </Card>
+  );
+}
+
+// Opens the reveal-session page for a direct-reveal request. The page
+// route needs the environment id; the request carries the project id and
+// environment name in target_scope, so resolve the id from the project's
+// environments.
+function RevealSessionLink({ request: r }: { request: AccessRequest }) {
+  const navigate = useNavigate();
+  const projectId = r.target_scope?.project_id;
+  const envName = r.target_scope?.environment;
+  const envs = useEnvironmentsForProject(projectId);
+  const envId = envs.data?.find((e) => e.name === envName)?.id;
+  const path =
+    projectId && envId ? revealSessionPath(projectId, envId, r.id) : null;
+
+  return (
+    <div className="bg-bg/40 border border-border/60 rounded-lg px-3 py-2 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted text-xs">
+          Direct reveal values are shown in a reveal session.
+        </span>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={!path}
+          onClick={() => {
+            if (path) navigate(path);
+          }}
+        >
+          Open reveal session
+        </Button>
+      </div>
+      {!path && !envs.isLoading && (
+        <p className="text-xs text-red-300">
+          Couldn't find this request's environment. Open it from{' '}
+          <Link to="/projects" className="text-accent underline">
+            My Projects
+          </Link>{' '}
+          instead.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -1085,7 +1150,7 @@ function InlineApiError({ err }: { err: unknown }) {
   if (!(err instanceof ApiError)) return null;
   return (
     <div className="mt-3 text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
-      {err.status}: {err.message}
+      {describeRevealError(err)}
     </div>
   );
 }

@@ -141,6 +141,13 @@ export interface ProjectSecretBinding {
   secret_id: string;
   allowed_keys: string[] | null;
   allowed_ops: string[];
+  /**
+   * Environment this binding is scoped to, or null for a project-wide
+   * binding. An env-scoped binding only governs a request made in that
+   * environment; a request with a blank or other environment is refused
+   * with 403 `out_of_scope_project` (api#201, API-S-03).
+   */
+  environment_id?: string | null;
   created_at?: string;
   updated_at?: string;
   created_by?: string;
@@ -393,7 +400,8 @@ export interface ReadRequestInput {
   project_id?: string;
   environment?: string;
   target_provider_type: string;
-  target_provider_config?: Record<string, unknown>;
+  // No target_provider_config: the api derives the job's provider config
+  // from the bound catalog row and ignores a body copy (api#201, API-S-04).
   target_secret_ref: string;
   target_keys?: string[];
   justification: string;
@@ -414,7 +422,7 @@ export interface PatchRequestInput {
   project_id?: string;
   environment?: string;
   target_provider_type: string;
-  target_provider_config?: Record<string, unknown>;
+  // No target_provider_config, same as ReadRequestInput.
   target_secret_ref: string;
   key_values: Record<string, string>;
   justification: string;
