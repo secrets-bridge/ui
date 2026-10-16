@@ -11,7 +11,7 @@
  * the default.
  */
 
-import { useEffect } from 'react';
+import { forwardRef, useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -105,9 +105,14 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
         ?.split(',')
         .map((s) => s.trim())
         .filter(Boolean) ?? [];
+    // Every field this form shows is sent, a cleared description as "".
+    // PUT /workflows/:id keeps the stored value for an absent key, so
+    // leaving it out would not clear it. approver_role_id,
+    // fill_ttl_seconds and requires_security_approval are not on this
+    // form and stay out of the body so the api keeps them.
     const body: WorkflowInput = {
       name: data.name,
-      description: data.description || undefined,
+      description: data.description ?? '',
       min_approvers: data.min_approvers,
       wrap_ttl_created_seconds: data.wrap_ttl_created_seconds,
       wrap_ttl_approved_seconds: data.wrap_ttl_approved_seconds,
@@ -257,20 +262,22 @@ function Field({
   );
 }
 
-// react-hook-form register() returns `name` on the props; the input has to
-// forward it. For a checkbox we just delegate to a regular input.
+// react-hook-form register() returns `name`, the handlers and a `ref`; the
+// checkbox needs all of them. React 18 drops `ref` on a plain function
+// component, so without forwardRef the box opened unticked whatever the
+// stored value and a click set the value to undefined, which failed the
+// zod boolean and blocked the save: an admin could never switch these off.
 type ToggleProps = {
   label: string;
   name: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onBlur: (e: React.FocusEvent<HTMLInputElement>) => void;
-  ref?: React.Ref<HTMLInputElement>;
 };
-function Toggle({ label, ...rest }: ToggleProps) {
+const Toggle = forwardRef<HTMLInputElement, ToggleProps>(function Toggle({ label, ...rest }, ref) {
   return (
     <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
-      <input type="checkbox" {...rest} className="h-4 w-4 accent-accent" />
+      <input type="checkbox" ref={ref} {...rest} className="h-4 w-4 accent-accent" />
       {label}
     </label>
   );
-}
+});

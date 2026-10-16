@@ -21,7 +21,7 @@
  * them doesn't refetch.
  */
 
-import { useEffect } from 'react';
+import { forwardRef, useEffect } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -411,18 +411,20 @@ function Field({
   );
 }
 
+// forwardRef so register()'s ref reaches the checkbox. Without it React 18
+// drops the ref: the box opened unticked for an enabled rule and a click
+// set `enabled` to undefined, which failed validation and blocked the save.
 type ToggleProps = {
   label: string;
   name: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onBlur: (e: React.FocusEvent<HTMLInputElement>) => void;
-  ref?: React.Ref<HTMLInputElement>;
 };
-function Toggle({ label, ...rest }: ToggleProps) {
+const Toggle = forwardRef<HTMLInputElement, ToggleProps>(function Toggle({ label, ...rest }, ref) {
   return (
     <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
-      <input type="checkbox" {...rest} className="h-4 w-4 accent-accent" />
+      <input type="checkbox" ref={ref} {...rest} className="h-4 w-4 accent-accent" />
       {label}
     </label>
   );
-}
+});

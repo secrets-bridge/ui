@@ -43,10 +43,14 @@ export interface CreateTeamInput {
   description?: string;
 }
 
+/**
+ * PUT /teams/:id keeps the stored value for an absent key, so both are
+ * always sent: "" clears the description, null moves the team to the root.
+ */
 export interface UpdateTeamInput {
   name: string;
-  description?: string;
-  parent_team_id?: string | null;
+  description: string;
+  parent_team_id: string | null;
 }
 
 export const teamsKey = {

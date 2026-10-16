@@ -159,11 +159,14 @@ export function ProviderConnectionForm({
 
   const submit = handleSubmit(async (form) => {
     const scope = JSON.parse(form.scope_json) as Record<string, unknown>;
+    // Send every field the form manages. A cleared cluster name or
+    // description goes as "": PUT /provider-connections/:id keeps the
+    // stored value for an absent key, so omitting it would not clear it.
     const body: ProviderConnectionInput = {
       name: form.name.trim(),
       type: form.type,
-      cluster_name: form.cluster_name?.trim() || undefined,
-      description: form.description?.trim() || undefined,
+      cluster_name: form.cluster_name?.trim() ?? '',
+      description: form.description?.trim() ?? '',
       status: form.status,
       scope,
       auth_method: form.auth_method,
