@@ -244,7 +244,7 @@ function BindingRow({
 
 const bindSchema = z
   .object({
-    secret_id: z.string().uuid('pick a secret from the list'),
+    secret_id: z.guid('pick a secret from the list'),
     allow_all_keys: z.boolean(),
     allowed_keys_csv: z.string(),
     allowed_ops: z.array(z.enum(['read', 'patch', 'discover'])).min(1, 'at least one op'),
@@ -322,7 +322,7 @@ function BindForm({
       <Field label="Secret" error={errors.secret_id?.message}>
         <select
           {...register('secret_id')}
-          className="w-full bg-bg/40 border border-border/60 rounded px-3 py-2 text-sm font-mono"
+          className="w-full bg-bg/40 border border-border/60 rounded-sm px-3 py-2 text-sm font-mono"
         >
           <option value="">— choose a discovered secret —</option>
           {candidates.map((s) => (
@@ -351,7 +351,7 @@ function BindForm({
       />
 
       {errors.root?.message && (
-        <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2">
+        <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-sm px-3 py-2">
           {errors.root.message}
         </div>
       )}
@@ -441,7 +441,7 @@ function EditForm({
       />
 
       {errors.root?.message && (
-        <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2">
+        <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-sm px-3 py-2">
           {errors.root.message}
         </div>
       )}
@@ -479,7 +479,7 @@ function KeyPolicyFields({
       hint="Tick to allow every key the secret exposes. Otherwise list the allowed keys, comma-separated."
     >
       <label className="flex items-center gap-2 text-sm text-text mb-2">
-        <input type="checkbox" {...registerAllowAll} className="rounded" />
+        <input type="checkbox" {...registerAllowAll} className="rounded-sm" />
         Allow all keys
       </label>
       {!allowAll && (
@@ -487,7 +487,7 @@ function KeyPolicyFields({
           type="text"
           {...registerKeysCsv}
           placeholder="DB_HOST, DB_PORT, REDIS_PASSWORD"
-          className="w-full bg-bg/40 border border-border/60 rounded px-3 py-2 text-sm font-mono"
+          className="w-full bg-bg/40 border border-border/60 rounded-sm px-3 py-2 text-sm font-mono"
           autoComplete="off"
           spellCheck={false}
         />
@@ -515,7 +515,7 @@ function OpsField({
       <div className="flex flex-wrap gap-3">
         {OP_OPTIONS.map((op) => (
           <label key={op} className="flex items-center gap-2 text-sm">
-            <input type="checkbox" value={op} {...register} className="rounded" />
+            <input type="checkbox" value={op} {...register} className="rounded-sm" />
             <span className="text-text font-mono">{op}</span>
           </label>
         ))}

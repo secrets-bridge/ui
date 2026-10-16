@@ -24,15 +24,13 @@ import { ApiError } from '../../api/client';
 const schema = z.object({
   name: z.string().min(1, 'name is required').max(120),
   base_url: z
-    .string()
     .url('base_url must be a full URL (https://argocd.example.com)')
     .max(500),
   token: z.string().min(1, 'token is required'),
   tls_ca_pem: z.string().optional(),
   tls_server_name: z.string().max(255).optional(),
   environment_id: z
-    .string()
-    .uuid('environment_id must be a UUID if set')
+    .guid('environment_id must be a UUID if set')
     .optional()
     .or(z.literal('')),
 });
@@ -92,7 +90,7 @@ export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError
 
   return (
     <form onSubmit={handleSubmit(onValid)} className="space-y-4">
-      <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded px-3 py-2">
+      <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
         The ArgoCD token is set <strong>once</strong>. After create, only the <code>enabled</code> flag is mutable. To rotate the token or change connection settings, delete and recreate.
       </div>
 
@@ -152,7 +150,7 @@ export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError
       </Field>
 
       {submitError instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
           {submitError.status}: {submitError.message}
         </div>
       )}
@@ -161,14 +159,14 @@ export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError
         <button
           type="submit"
           disabled={submitting}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50"
+          className="bg-accent text-bg font-medium px-4 py-2 rounded-sm hover:opacity-90 disabled:opacity-50"
         >
           {submitting ? 'Saving…' : 'Create endpoint'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded border border-border"
+          className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border"
         >
           Cancel
         </button>
@@ -178,7 +176,7 @@ export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm focus:outline-none focus:border-accent';
+  'w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent';
 
 function Field({
   label,

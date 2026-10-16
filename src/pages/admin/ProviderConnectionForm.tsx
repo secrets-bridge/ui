@@ -79,7 +79,7 @@ const inputSchema = z.object({
   auth_method: z.string().min(1, 'Required'),
   discover_enabled: z.boolean(),
   discover_interval_seconds: z
-    .number({ invalid_type_error: 'Must be a number' })
+    .number({ error: 'Must be a number' })
     .int()
     .min(60, 'Min 60 seconds')
     .max(86400, 'Max 86400 seconds'),
@@ -89,7 +89,7 @@ const inputSchema = z.object({
   const allowed = authMethodsFor(v.type);
   if (allowed.length > 0 && !allowed.includes(v.auth_method)) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       path: ['auth_method'],
       message: `Not valid for ${v.type}. Allowed: ${allowed.join(', ')}`,
     });
@@ -422,7 +422,7 @@ function Field({
 
 function inputCls(err: unknown): string {
   const base =
-    'w-full bg-bg border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-1';
+    'w-full bg-bg border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:ring-1';
   return err
     ? `${base} border-red-500/50 focus:border-red-400 focus:ring-red-400/40`
     : `${base} border-border focus:border-accent focus:ring-accent/40`;

@@ -115,10 +115,9 @@ function ReservedPriorityCard({
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  useEffect(() => {
-    if (current !== null && !editing) setDraft(String(current));
-  }, [current, editing]);
-
+  // `draft` is only read while editing, and both the Edit and Cancel
+  // buttons seed it from `current`, so it needs no effect to follow
+  // `current` while the card is read-only.
   const update = useUpdatePlatformSetting(KEY_PLATFORM_RESERVED_PRIORITY);
 
   function validate(raw: string): number | null {
@@ -208,7 +207,7 @@ function ReservedPriorityCard({
               type="text"
               inputMode="numeric"
               autoFocus
-              className="w-48 bg-bg border border-border rounded-md px-3 py-2 text-text font-mono text-sm focus:outline-none focus:border-accent"
+              className="w-48 bg-bg border border-border rounded-md px-3 py-2 text-text font-mono text-sm focus:outline-hidden focus:border-accent"
               value={draft}
               onChange={(e) => {
                 setDraft(e.target.value);
@@ -311,7 +310,7 @@ function ChangeReservedPriorityModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-sm"
+        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
         onClick={() => !isPending && onCancel()}
         aria-label="Close"
       />
@@ -340,7 +339,7 @@ function ChangeReservedPriorityModal({
               <summary className="cursor-pointer select-none">
                 Triage SQL — list scoped rules in the grandfathered band
               </summary>
-              <pre className="mt-2 bg-black/30 rounded p-2 overflow-x-auto text-[11px] leading-snug">
+              <pre className="mt-2 bg-black/30 rounded-sm p-2 overflow-x-auto text-[11px] leading-snug">
 {`SELECT id, name, priority, project_id
   FROM policy_rules
  WHERE is_platform_inherited = false

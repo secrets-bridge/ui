@@ -23,7 +23,7 @@
  * environment dropdown + the Assignments form's scope picker.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -58,12 +58,12 @@ export function Projects() {
   const [creating, setCreating] = useState(false);
 
   // Auto-select the first active project once the list loads.
-  useEffect(() => {
-    if (!selectedId && list.data && list.data.length > 0) {
-      const firstActive = list.data.find((p) => p.status === 'active');
-      setSelectedId((firstActive ?? list.data[0]).id);
-    }
-  }, [list.data, selectedId]);
+  // Adjusted during render (not in an effect) so the first paint with
+  // data already has a selection; the guard makes it run at most once.
+  if (!selectedId && list.data && list.data.length > 0) {
+    const firstActive = list.data.find((p) => p.status === 'active');
+    setSelectedId((firstActive ?? list.data[0]).id);
+  }
 
   const selected = list.data?.find((p) => p.id === selectedId) ?? null;
 
@@ -600,7 +600,7 @@ function EnvironmentForm({
 // --- shared bits ----------------------------------------------------
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40';
 
 function Field({
   label,

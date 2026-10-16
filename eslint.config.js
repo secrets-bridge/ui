@@ -1,4 +1,4 @@
-// ESLint 9 flat config (UI-N-07). Before this file existed `npm run
+// ESLint flat config (UI-N-07). Before this file existed `npm run
 // lint` exited 2 ("couldn't find an eslint.config"), so none of the
 // rules below, including the react-hooks ones behind the existing
 // `eslint-disable` comments, were ever enforced. CI now runs lint.

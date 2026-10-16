@@ -14,7 +14,7 @@
  *      last_discover_started_at + 2 * interval_seconds * 1000 < now
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { ApiError } from '../../api/client';
 import {
@@ -96,7 +96,7 @@ export function ProviderConnections() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name…"
-          className="bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 w-56"
+          className="bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 w-56"
         />
         <select
           value={typeFilter}
@@ -260,7 +260,23 @@ function ConnectionRow({
   );
 }
 
+// Wall-clock "now" for render-time comparisons. Reading Date.now()
+// directly in render is impure (react-hooks/purity): the result
+// depends on when React happens to re-render. This samples it once on
+// mount and refreshes it on an interval, so a long-open page still
+// notices a job crossing the stale threshold.
+const NOW_REFRESH_MS = 30_000;
+function useNow(refreshMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), refreshMs);
+    return () => window.clearInterval(t);
+  }, [refreshMs]);
+  return now;
+}
+
 function DiscoverCell({ connection: c }: { connection: ProviderConnection }) {
+  const now = useNow(NOW_REFRESH_MS);
   if (c.status === 'disabled') {
     return <span className="text-muted text-xs">Connection disabled</span>;
   }
@@ -273,7 +289,7 @@ function DiscoverCell({ connection: c }: { connection: ProviderConnection }) {
   if (status === 'running' && c.last_discover_started_at) {
     const started = Date.parse(c.last_discover_started_at);
     const limitMs = 2 * (c.discover_interval_seconds ?? 0) * 1000;
-    if (limitMs > 0 && started + limitMs < Date.now()) {
+    if (limitMs > 0 && started + limitMs < now) {
       return (
         <div className="flex flex-col">
           <StatusPill variant="warning" tone="outline">
@@ -549,7 +565,7 @@ function DeleteConfirmModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-xs">
       <div className="bg-surface border border-border rounded-xl p-6 max-w-md w-full space-y-4">
         <h3 className="text-text text-lg font-bold">
           Delete provider connection &ldquo;{connection.name}&rdquo;?

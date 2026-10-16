@@ -89,7 +89,7 @@ function InboxRow({ req }: { req: AccessRequest }) {
             {(req.destination_keys ?? req.target_keys ?? []).map((k) => (
               <span
                 key={k}
-                className="bg-accent/10 text-accent text-[10px] rounded px-1.5 py-0.5 font-mono"
+                className="bg-accent/10 text-accent text-[10px] rounded-sm px-1.5 py-0.5 font-mono"
               >
                 {k}
               </span>

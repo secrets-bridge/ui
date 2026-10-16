@@ -290,7 +290,10 @@ function AuditRow({
         </span>
       </Td>
       <Td>
-        <div className="space-y-1">
+        {/* v3 space-y semantics (margin-top on later siblings): v4's
+            space-y puts margin-bottom on the inline <span>, where it
+            has no effect. */}
+        <div className="[&>*+*]:mt-1">
           <span className="font-mono text-text text-xs break-all">
             {e.resource}
           </span>
@@ -430,7 +433,7 @@ function FilterField({
         disabled={disabled}
         title={disabled ? disabledHint : undefined}
         className={
-          'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 ' +
+          'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 ' +
           (mono ? 'font-mono ' : '') +
           (disabled ? 'opacity-60 cursor-not-allowed' : '')
         }

@@ -44,7 +44,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(
         className={[
           'inline-flex items-center justify-center transition-colors',
           'disabled:opacity-50 disabled:cursor-not-allowed',
-          'focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-2 focus:ring-offset-bg',
+          'focus:outline-hidden focus:ring-2 focus:ring-accent/40 focus:ring-offset-2 focus:ring-offset-bg',
           SIZES[size],
           variant === 'ghost' ? '' : SIZES[size],
           VARIANTS[variant],

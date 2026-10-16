@@ -144,7 +144,7 @@ export function TeamPolicies() {
       {listForbidden && (
         <Card>
           <CardBody>
-            <div className="rounded border border-yellow-400/30 bg-yellow-400/10 px-4 py-3 text-sm text-yellow-200">
+            <div className="rounded-sm border border-yellow-400/30 bg-yellow-400/10 px-4 py-3 text-sm text-yellow-200">
               <p className="font-medium">
                 You do not have scoped policy.author access for this team.
               </p>
@@ -303,7 +303,7 @@ function InheritedRow({
       <div>
         <div className="flex items-center gap-2">
           <span
-            className="rounded bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted"
+            className="rounded-sm bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted"
             title={badgeTooltip}
           >
             {badgeLabel}
@@ -376,7 +376,7 @@ function buildTeamAuthorSchema(cap: number) {
     // api#141 — optional operation from the backend-owned enum.
     // Empty string = wildcard (omitted from the submitted selector).
     operation: z.string().optional(),
-    workflow_id: z.string().uuid('pick a workflow'),
+    workflow_id: z.guid('pick a workflow'),
     priority: z.coerce
       .number()
       .int()
@@ -386,7 +386,11 @@ function buildTeamAuthorSchema(cap: number) {
   });
 }
 
-type TeamAuthorFormShape = z.infer<ReturnType<typeof buildTeamAuthorSchema>>;
+// z.coerce.number() fields make the schema's input type differ from
+// its output (zod 4 types coerce input as unknown), so the form holds
+// the input shape and onValid receives the parsed output.
+type TeamAuthorFormInput = z.input<ReturnType<typeof buildTeamAuthorSchema>>;
+type TeamAuthorFormShape = z.output<ReturnType<typeof buildTeamAuthorSchema>>;
 
 function TeamPolicyAuthorDrawer({
   teamID,
@@ -417,7 +421,7 @@ function TeamPolicyAuthorDrawer({
         }
       >
         <div className="space-y-3">
-          <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
             Could not load the platform-reserved priority cap.{' '}
             {listError instanceof ApiError
               ? toPolicyRuleErrorToast(listError)
@@ -456,7 +460,7 @@ function TeamPolicyAuthorForm({
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<TeamAuthorFormShape>({
+  } = useForm<TeamAuthorFormInput, unknown, TeamAuthorFormShape>({
     resolver: zodResolver(schema),
     defaultValues: {
       name: '',
@@ -534,7 +538,7 @@ function TeamPolicyAuthorForm({
           <input
             type="text"
             {...register('name')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
             placeholder="non-prod-team-default"
           />
         </Field>
@@ -546,7 +550,7 @@ function TeamPolicyAuthorForm({
           <input
             type="text"
             {...register('secret_ref_prefix')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text font-mono"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text font-mono"
             placeholder="billing/"
           />
         </Field>
@@ -560,7 +564,7 @@ function TeamPolicyAuthorForm({
               server never sees provider_type="". */}
           <select
             {...register('provider_type')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
           >
             <option value="">— any provider —</option>
             {POLICY_SELECTOR_PROVIDER_TYPES.map((t) => (
@@ -580,7 +584,7 @@ function TeamPolicyAuthorForm({
               server never sees operation="". */}
           <select
             {...register('operation')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
           >
             <option value="">— any operation —</option>
             {POLICY_SELECTOR_OPERATIONS.map((o) => (
@@ -594,7 +598,7 @@ function TeamPolicyAuthorForm({
         <Field label="Use workflow" error={errors.workflow_id?.message}>
           <select
             {...register('workflow_id')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
           >
             <option value="">— pick a workflow —</option>
             {eligibleWorkflows.map((w) => (
@@ -618,7 +622,7 @@ function TeamPolicyAuthorForm({
           <input
             type="number"
             {...register('priority')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
           />
         </Field>
 
@@ -634,7 +638,7 @@ function TeamPolicyAuthorForm({
         </p>
 
         {errorToast && (
-          <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
             {errorToast}
           </div>
         )}
@@ -652,8 +656,11 @@ function Field({
   error?: string;
   children: React.ReactNode;
 }) {
+  // `[&>*+*]:mt-1` is Tailwind 3's space-y-1 (margin-top on later
+  // siblings). v4's space-y puts margin-bottom on the inline label
+  // <span>, where it has no effect.
   return (
-    <label className="block space-y-1">
+    <label className="block [&>*+*]:mt-1">
       <span className="text-text font-medium">{label}</span>
       {children}
       {error && (

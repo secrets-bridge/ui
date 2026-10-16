@@ -143,7 +143,7 @@ function StepUpModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-sm"
+        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
         onClick={onCancel}
         aria-label="Close"
       />
@@ -303,7 +303,7 @@ function TOTPVerify({
           <select
             value={factorId}
             onChange={(e) => setFactorId(e.target.value)}
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
           >
             {factors.map((f) => (
               <option key={f.id} value={f.id}>
@@ -326,7 +326,7 @@ function TOTPVerify({
           autoComplete="one-time-code"
           maxLength={6}
           autoFocus
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-base font-mono tracking-widest text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-base font-mono tracking-widest text-center focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
         />
       </div>
       {(challenge.isError || verify.isError) && (
@@ -356,11 +356,16 @@ function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
   const verify = useMFAVerify();
   const navigate = useNavigate();
   const [browserError, setBrowserError] = useState<string | null>(null);
-  const [inFlight, setInFlight] = useState(false);
+  // Starts true: the ceremony auto-starts on mount (effect below), so
+  // the first render already shows the waiting state.
+  const [inFlight, setInFlight] = useState(true);
 
-  const run = async () => {
-    setBrowserError(null);
-    setInFlight(true);
+  // The ceremony resolves to the error text to show (null on success)
+  // and never sets state itself; `finish` applies the outcome from the
+  // promise callback. That keeps the mount effect free of synchronous
+  // setState (react-hooks/set-state-in-effect) without changing the
+  // flow: auto-start on mount, "Try again" restarts it.
+  const ceremony = async (): Promise<string | null> => {
     try {
       const out = await challenge.mutateAsync({ kind: 'webauthn' });
       if (!out.options) {
@@ -379,28 +384,37 @@ function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
         response,
       });
       onSuccess();
+      return null;
     } catch (err) {
       if (err instanceof DOMException) {
-        setBrowserError(`${err.name}: ${err.message || 'no further detail from the browser'}`);
+        return `${err.name}: ${err.message || 'no further detail from the browser'}`;
       } else if (err instanceof ApiError) {
         handleMFAEdgeCase(err, navigate);
-        setBrowserError(`${err.status} · ${err.message}`);
+        return `${err.status} · ${err.message}`;
       } else if (err instanceof Error) {
-        setBrowserError(err.message);
-      } else {
-        setBrowserError(String(err));
+        return err.message;
       }
-    } finally {
-      // The error shows from `browserError`, so the mutation can go
-      // either way (UI-N-02).
-      verify.reset();
-      setInFlight(false);
+      return String(err);
     }
+  };
+
+  const finish = (error: string | null) => {
+    // The error shows from `browserError`, so the mutation can go
+    // either way (UI-N-02).
+    verify.reset();
+    setBrowserError(error);
+    setInFlight(false);
+  };
+
+  const retry = () => {
+    setBrowserError(null);
+    setInFlight(true);
+    void ceremony().then(finish);
   };
 
   // Auto-start the ceremony so the user just taps their key.
   useEffect(() => {
-    void run();
+    void ceremony().then(finish);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -423,7 +437,7 @@ function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
         <Button variant="secondary" size="sm" onClick={onBack} disabled={inFlight}>
           Back
         </Button>
-        <Button variant="primary" size="md" onClick={run} disabled={inFlight}>
+        <Button variant="primary" size="md" onClick={retry} disabled={inFlight}>
           {inFlight ? 'Waiting…' : 'Try again'}
         </Button>
       </div>

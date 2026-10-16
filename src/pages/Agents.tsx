@@ -595,7 +595,7 @@ function CopyField({
           value={value}
           onFocus={(e) => e.currentTarget.select()}
           className={
-            'flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 ' +
+            'flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 ' +
             (mono ? 'font-mono break-all' : '')
           }
         />
@@ -655,7 +655,7 @@ function Td({
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40';
 
 function formatRelativePast(iso: string): string {
   const t = Date.parse(iso);

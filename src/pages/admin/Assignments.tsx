@@ -92,7 +92,7 @@ export function Assignments() {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter by user_id…"
-          className="flex-1 bg-bg border border-border rounded-lg px-3.5 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+          className="flex-1 bg-bg border border-border rounded-lg px-3.5 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
         />
         {filter && (
           <Button variant="secondary" size="sm" onClick={() => setFilter('')}>
@@ -273,15 +273,15 @@ function Td({
 
 const schema = z.object({
   user_id: z.string().min(1, 'user_id is required').max(255),
-  role_id: z.string().uuid('pick a role'),
+  role_id: z.guid('pick a role'),
   // Scope inputs (all optional; empty stripped on submit)
-  sc_project_id: z.string().uuid().optional().or(z.literal('')),
+  sc_project_id: z.guid().optional().or(z.literal('')),
   // team_id: when set, the api expands the grant to the team's
   // descendant subtree via auth.EffectiveProjectAccess (api#50). This
   // is the "section head over X" pattern — Alice grants Bob
   // `secret.approve` scoped to team "Section", and Bob covers every
   // team / project under Section automatically.
-  sc_team_id: z.string().uuid().optional().or(z.literal('')),
+  sc_team_id: z.guid().optional().or(z.literal('')),
   sc_environment: z.string().max(120).optional(),
   sc_secret_ref_prefix: z.string().max(255).optional(),
   sc_provider_type: z.string().max(60).optional(),
@@ -494,7 +494,7 @@ function AssignmentForm({
             value={globalConfirmTyped}
             onChange={(e) => setGlobalConfirmTyped(e.target.value)}
             placeholder="type `global` to confirm"
-            className="w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
           />
         </div>
       )}
@@ -533,7 +533,7 @@ function AssignmentForm({
 // --- shared bits ----------------------------------------------------
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40';
 
 function Field({
   label,

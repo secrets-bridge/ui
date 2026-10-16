@@ -18,6 +18,13 @@ on `main`.
   `VITE_API_BASE_URL` is deliberately NOT baked in — same-origin
   ingress routing chooses the host at runtime.
 
+### Changed
+- Major dependency upgrades: vite 8 with @vitejs/plugin-react 6,
+  react-router-dom 7, tailwindcss 4 (CSS-first config in
+  `src/index.css`, `tailwind.config.js` removed, PostCSS via
+  `@tailwindcss/postcss`), zod 4, @hookform/resolvers 5, eslint 10
+  and eslint-plugin-react-hooks 7. The rendered UI is unchanged.
+
 ---
 
 ## How to cut a release (post-v0.1.0)

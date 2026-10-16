@@ -591,16 +591,25 @@ function RevealModal({
   // Countdown — runs only while the value is shown. When it hits 0
   // we clear the plaintext from state so even an open browser tab
   // stops carrying it. The user can also "Hide now" to clear early.
+  //
+  // The clear happens in the timer callback on the tick that reaches
+  // 0, rather than in a follow-up effect run, so the effect body never
+  // sets state synchronously. `ttlLeft` is always seeded to
+  // REVEAL_TTL_SECONDS before `shown`, so 0 is only reachable by a
+  // tick; timing is the same as before (cleared 60s after reveal).
   useEffect(() => {
     if (phase !== 'shown') return;
-    if (ttlLeft <= 0) {
-      setDecoded(null);
-      setRevealed(null);
-      setPhase('expired');
-      void clearCopiedSecret();
-      return;
-    }
-    const t = window.setTimeout(() => setTtlLeft((n) => n - 1), 1000);
+    const t = window.setTimeout(() => {
+      if (ttlLeft <= 1) {
+        setTtlLeft(0);
+        setDecoded(null);
+        setRevealed(null);
+        setPhase('expired');
+        void clearCopiedSecret();
+        return;
+      }
+      setTtlLeft(ttlLeft - 1);
+    }, 1000);
     return () => window.clearTimeout(t);
   }, [phase, ttlLeft]);
 
@@ -640,7 +649,7 @@ function RevealModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-sm"
+        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
         onClick={onClose}
         aria-label="Close"
       />
@@ -710,7 +719,7 @@ function RevealModal({
                 value={decoded}
                 rows={3}
                 onFocus={(e) => e.currentTarget.select()}
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono break-all focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono break-all focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
               />
               <div className="text-muted text-[11px] font-mono">
                 {revealed.byte_length} bytes · sha256{' '}
@@ -1046,7 +1055,7 @@ function ApproverActionsCard({ request: r }: { request: AccessRequest }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. wrong target / use the read flow instead"
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
           />
           <div className="flex items-center justify-between pt-1">
             <Button
@@ -1325,7 +1334,7 @@ function CrossTeamVerifyCard({
               onChange={(e) => setComment(e.target.value)}
               placeholder="Optional comment (visible in audit + to requester)"
               rows={2}
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
             {showSourceLane && (
               <div className="flex items-center justify-end gap-2">

@@ -280,7 +280,7 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
               onChange={(e) => setLabel(e.target.value)}
               placeholder="iPhone backup, Bitwarden, 1Password…"
               autoFocus
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
             <div className="text-[11px] text-muted/80 mt-1">
               How this factor will show up in your list. Must be unique
@@ -332,7 +332,7 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
               autoComplete="one-time-code"
               maxLength={6}
               autoFocus
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-base font-mono tracking-widest text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-base font-mono tracking-widest text-center focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
             <div className="text-[11px] text-muted/80 mt-1">
               If the code is wrong, the challenge resets — close this
@@ -430,7 +430,7 @@ function WebAuthnEnrollDrawer({ onClose }: { onClose: () => void }) {
             placeholder="Yubikey 5C, iPhone Touch ID, Windows Hello…"
             autoFocus
             disabled={inFlight}
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-50"
+            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-50"
           />
           <div className="text-[11px] text-muted/80 mt-1">
             How this factor will show up in your list. Must be unique
