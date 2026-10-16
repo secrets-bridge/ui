@@ -13,6 +13,11 @@
  *      request has zero wraps).
  *   2. Open the bulk reveal session: POST /reveal-sessions returns the
  *      session_id + TTL + the wrap_id + key_name handles (NO values).
+ *      Only 503 `wrap_not_ready` (wraps not produced yet, api#160) is
+ *      retried, every 2s. Every other refusal is terminal and stops all
+ *      polling: 410 (every wrap already consumed or expired), 403
+ *      (binding / ownership), 409, a 4xx on the request itself, or a
+ *      request status other than pending / approved / executed.
  *   3. Fetch each plaintext via the existing single-shot user retrieval
  *      endpoint (one shot per wrap; rate-limited 20/60s per user).
  *   4. Render countdown over `expires_at - now`; per-row Copy CTAs;
@@ -40,6 +45,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
 import { useMe } from '../api/me';
+import { describeRevealError } from '../api/revealErrors';
 import {
   expireSessionUnmount,
   useExpireRevealSession,
@@ -53,7 +59,17 @@ import { Button } from '../ui/Button';
 import { Card, CardBody, CardHeader } from '../ui/Card';
 import { PageHeader } from '../ui/PageHeader';
 
-type Phase = 'preparing' | 'opening' | 'fetching' | 'shown' | 'expired' | 'error';
+// `waiting` = Open answered 503 wrap_not_ready; retry after OPEN_RETRY_MS.
+type Phase =
+  | 'preparing'
+  | 'opening'
+  | 'waiting'
+  | 'fetching'
+  | 'shown'
+  | 'expired'
+  | 'error';
+
+const OPEN_RETRY_MS = 2000;
 
 interface RevealedRow {
   wrap_id: string;
@@ -99,9 +115,16 @@ export function RevealSession() {
   // Direct-reveal requests land as `approved` and become `executed`
   // once the agent's ReadExecutor finishes. Either is retrievable
   // server-side, but until the agent posted the wraps the bulk Open
-  // returns 410. Poll the request every 2s while preparing.
+  // returns 503 wrap_not_ready. Poll the request every 2s while
+  // preparing; a 4xx on the request itself won't change by polling.
   useEffect(() => {
     if (phase !== 'preparing') return;
+    const reqErr = request.error;
+    if (reqErr instanceof ApiError && reqErr.status >= 400 && reqErr.status < 500) {
+      setError(formatErr(reqErr));
+      setPhase('error');
+      return;
+    }
     if (!request.data) return;
     const s = request.data.status;
     if (s === 'approved' || s === 'executed') {
@@ -113,7 +136,7 @@ export function RevealSession() {
       setPhase('error');
       setError(`Request status is ${s}; cannot reveal.`);
     }
-  }, [phase, request.data]);
+  }, [phase, request.data, request.error]);
 
   // Re-poll the request every 2s while preparing — the direct-reveal
   // request transitions approved→executed only after the agent claims
@@ -147,14 +170,12 @@ export function RevealSession() {
         setPhase('fetching');
       } catch (err) {
         if (cancelled) return;
-        // 410 → wraps may not have landed yet; back off a tick and
-        // let the request poller re-arm.
-        if (err instanceof ApiError && err.status === 410) {
-          setPhase('preparing');
-          window.setTimeout(() => {
-            // Force a refetch of the request which retriggers step 1.
-            void request.refetch();
-          }, 2000);
+        // Wraps genuinely pending (agent still working): retry Open
+        // after a delay. Anything else is terminal, including 410: the
+        // wraps existed and are all consumed or expired, and polling
+        // would only hammer Open forever.
+        if (isWrapNotReady(err)) {
+          setPhase('waiting');
           return;
         }
         setError(formatErr(err));
@@ -167,6 +188,13 @@ export function RevealSession() {
     // openSession is stable from useMutation; intentional dep set
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, requestId]);
+
+  // 503 wrap_not_ready: one Open retry per OPEN_RETRY_MS, no faster.
+  useEffect(() => {
+    if (phase !== 'waiting') return;
+    const t = window.setTimeout(() => setPhase('opening'), OPEN_RETRY_MS);
+    return () => window.clearTimeout(t);
+  }, [phase]);
 
   // --- step 3: fetch each wrap's plaintext ---------------------------
   useEffect(() => {
@@ -345,13 +373,16 @@ export function RevealSession() {
         </div>
       </div>
 
-      {(phase === 'preparing' || phase === 'opening' || phase === 'fetching') && (
+      {(phase === 'preparing' ||
+        phase === 'opening' ||
+        phase === 'waiting' ||
+        phase === 'fetching') && (
         <Card>
           <CardBody>
             <div className="flex items-center gap-3 py-2">
               <span className="w-2.5 h-2.5 rounded-full bg-accent animate-pulse" />
               <span className="text-text text-sm">
-                {phase === 'preparing'
+                {phase === 'preparing' || phase === 'waiting'
                   ? 'Waiting for the agent to fetch the wraps…'
                   : phase === 'opening'
                   ? 'Opening reveal session…'
@@ -513,6 +544,15 @@ function computeClockOffset(openedAtISO: string): number {
   return serverNow - Date.now();
 }
 
+// api#160: Open answers 503 {"error":"wrap_not_ready", "message": ...}
+// while the agent hasn't produced the wraps. ApiError.message carries the
+// `message` field, so match on the body's `error` code.
+function isWrapNotReady(err: unknown): boolean {
+  if (!(err instanceof ApiError) || err.status !== 503) return false;
+  const body = err.body as { error?: unknown } | undefined;
+  return body?.error === 'wrap_not_ready';
+}
+
 function safeAtob(b64: string): string {
   try {
     return atob(b64);
@@ -521,8 +561,8 @@ function safeAtob(b64: string): string {
   }
 }
 
+// Binding and session refusals (api#201) get readable copy; anything
+// else shows the api's own message with its status.
 function formatErr(err: unknown): string {
-  if (err instanceof ApiError) return `${err.status} · ${err.message}`;
-  if (err instanceof Error) return err.message;
-  return String(err);
+  return describeRevealError(err, ' · ');
 }

@@ -20,7 +20,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { ApiError } from '../api/client';
 import {
   useDirectReveal,
   useEnvSecrets,
@@ -28,6 +27,7 @@ import {
   type EnvSecretKey,
 } from '../api/devSecrets';
 import { useMe } from '../api/me';
+import { describeRevealError } from '../api/revealErrors';
 import { useAuth } from '../auth/AuthContext';
 import type { MyEnvironment, MyProject } from '../api/types';
 import { Button } from '../ui/Button';
@@ -211,13 +211,9 @@ function SecretRow({
         navigate(`/requests/${resp.request_id}`);
       }
     } catch (err) {
-      if (err instanceof ApiError) {
-        setSubmitError(`${err.status} · ${err.message}`);
-      } else if (err instanceof Error) {
-        setSubmitError(err.message);
-      } else {
-        setSubmitError(String(err));
-      }
+      // Binding refusals (api#201: not bound in this env, key outside
+      // the allowlist) get readable copy; others show the api message.
+      setSubmitError(describeRevealError(err, ' · '));
     }
   };
 
