@@ -25,10 +25,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import { ApiError, sanitizeRedirectTarget } from '../api/client';
+import { ApiError } from '../api/client';
 import { useLogin } from '../api/auth';
 import { useOidcAvailable } from '../api/oidc';
 import { useAuth } from '../auth/AuthContext';
+import { loginReturnTarget } from '../auth/sessionExpiry';
 import { Button } from '../ui/Button';
 import { LogoMark } from '../ui/LogoMark';
 
@@ -60,12 +61,14 @@ export function Login() {
 
   // Where to send the user after sign-in. Preserved across the OIDC
   // round-trip via the `return_to` query param on /auth/oidc/start.
-  // Normalized to a strict same-origin relative path (ui#96 / UI-02)
-  // — `location.state` is trusted React Router state today, but the
-  // value flows into a URL query param the api stores and redirects
-  // to verbatim, so it's sanitized here as defense in depth.
-  const returnTo = sanitizeRedirectTarget(
+  // Comes from RequireAuth's router state, or from `?return_to=` when
+  // an expired session hard-navigated here (UI-N-05). Either way it's
+  // normalized to a strict same-origin relative path (ui#96 / UI-02),
+  // since it flows into a URL query param the api stores and redirects
+  // to verbatim.
+  const returnTo = loginReturnTarget(
     (location.state as { from?: { pathname?: string } })?.from?.pathname,
+    location.search,
   );
 
   // Bounce away from /login as soon as identity hydrates. Covers
@@ -108,11 +111,6 @@ export function Login() {
       reset({ email: '', password: '' });
 
       navigate(returnTo, { replace: true });
-
-      // Drop the mutation result (and any transitional response
-      // fields TanStack Query cached alongside it) from the
-      // MutationCache now that we're done with it (ui#96 / UI-03).
-      login.reset();
     } catch (err) {
       if (err instanceof ApiError) {
         // The api always returns generic "invalid credentials" on
@@ -126,6 +124,11 @@ export function Login() {
         setServerError(err instanceof Error ? err.message : String(err));
       }
       reset({ ...{ email: '' }, password: '' }, { keepValues: true });
+    } finally {
+      // Drop the mutation (its variables hold the password) from the
+      // MutationCache on success AND failure (ui#96 / UI-03, UI-N-02).
+      // The error banner reads `serverError`, not the mutation.
+      login.reset();
     }
   };
 

@@ -272,6 +272,11 @@ export function SubmitRequestDrawer({
         };
         try {
           const created = await submitPatch.mutateAsync(body);
+          // Drop the mutation (its variables carried the values) from
+          // the MutationCache before moving on (UI-N-02). On failure the
+          // inline error reads `submitPatch.error`, so it stays until
+          // the drawer unmounts, with key_values blanked below.
+          submitPatch.reset();
           onCreated(created.id);
         } finally {
           // Drop the plaintext from local refs ASAP. The body object

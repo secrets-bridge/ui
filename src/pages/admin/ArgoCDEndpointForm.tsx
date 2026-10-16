@@ -75,12 +75,19 @@ export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError
       tls_server_name: data.tls_server_name || undefined,
       environment_id: data.environment_id || undefined,
     };
-    await onSubmit(body);
-    // Best-effort plaintext hygiene: clear the form (including the
-    // token field) after the submit promise settles. Memory still has
-    // ephemeral copies until GC, but the form-state shape no longer
-    // holds it.
-    reset(defaults);
+    try {
+      await onSubmit(body);
+      // Best-effort plaintext hygiene: clear the form (including the
+      // token field) after a successful submit. Memory still has
+      // ephemeral copies until GC, but the form-state shape no longer
+      // holds it. On failure the typed token stays so the user can
+      // retry.
+      reset(defaults);
+    } finally {
+      // `body` is the object the mutation held as its variables; blank
+      // the encoded token in place either way (UI-N-02).
+      body.token_b64 = '';
+    }
   };
 
   return (

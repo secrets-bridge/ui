@@ -29,8 +29,10 @@
  *   - Re-fetching after expiry is impossible — the wraps are single-shot
  *     server-side AND the M3 sweeper advances their expires_at when the
  *     session row flips expired. Any attempt returns 410.
- *   - Copy button uses navigator.clipboard.writeText only; we don't
- *     stash the value anywhere else.
+ *   - Copy goes through `copySecret` (UI-N-03): the clipboard is
+ *     cleared on Hide now, at TTL=0, on unmount and 60s after the copy,
+ *     but only while it still holds the copied value. We don't stash
+ *     the value anywhere else.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -46,6 +48,7 @@ import {
 } from '../api/revealSessions';
 import { revealWrap } from '../api/requests';
 import { useRequest } from '../api/requests';
+import { clearCopiedSecret, copySecret } from '../lib/secretClipboard';
 import { Button } from '../ui/Button';
 import { Card, CardBody, CardHeader } from '../ui/Card';
 import { PageHeader } from '../ui/PageHeader';
@@ -217,6 +220,7 @@ export function RevealSession() {
         prev.map((r) => ({ ...r, value: '' })),
       );
       setPhase('expired');
+      void clearCopiedSecret();
       return;
     }
     const t = window.setTimeout(() => {
@@ -261,6 +265,7 @@ export function RevealSession() {
       if (sid) {
         expireSessionUnmount(sid);
       }
+      void clearCopiedSecret();
       // Drop refs so the GC isn't blocked on this component's closure.
       setRows([]);
       setSession(null);
@@ -279,6 +284,7 @@ export function RevealSession() {
     }
     setRows((prev) => prev.map((r) => ({ ...r, value: '' })));
     setPhase('expired');
+    void clearCopiedSecret();
   };
 
   if (!projectId || !envId || !requestId) {
@@ -333,7 +339,9 @@ export function RevealSession() {
           Do not screenshot, paste into chat, or forward outside the trusted
           systems they were issued for. The values auto-clear from this tab
           when the countdown hits 0, and the underlying wraps are invalidated
-          server-side at the same moment.
+          server-side at the same moment. A copied value is cleared from your
+          clipboard after 60 seconds, on Hide now, at 0 or when you leave this
+          page.
         </div>
       </div>
 
@@ -422,7 +430,7 @@ function SecretRow({
   const onCopy = async () => {
     if (expired) return;
     try {
-      await navigator.clipboard.writeText(row.value);
+      await copySecret(row.value);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     } catch {

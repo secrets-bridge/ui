@@ -29,7 +29,9 @@
  *     a user_id field. The session cookie is the only auth surface.
  *   - Plaintext TOTP secret is shown ONCE during enrollment + zeroed
  *     from React state as soon as the user navigates away from the
- *     ceremony. After confirm the secret never re-appears.
+ *     ceremony. After confirm the secret never re-appears. The enroll
+ *     and confirm mutations are reset once they resolve so the seed
+ *     and the code don't sit in TanStack's MutationCache (UI-N-02).
  *   - WebAuthn requires a secure context (HTTPS or localhost). On
  *     plain HTTP non-localhost, the browser blocks
  *     `navigator.credentials.create()` and we surface a clear error.
@@ -215,6 +217,9 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
     setChallenge(null);
     setCode('');
     const out = await enroll.mutateAsync({ label: labelTrim });
+    // The drawer renders from `challenge`; drop the cache's copy of the
+    // seed now (UI-N-02).
+    enroll.reset();
     setChallenge(out);
   };
 
@@ -224,6 +229,8 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
       challenge_id: challenge.challenge_id,
       code: codeTrim,
     });
+    confirm.reset();
+    setChallenge(null);
     onClose();
   };
 

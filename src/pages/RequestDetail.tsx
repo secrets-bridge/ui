@@ -53,6 +53,7 @@ import { useTeams } from '../api/teams';
 import type { AccessRequest } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { crossTeamErrorMessage, useVerifyCrossTeam } from '../api/crossTeam';
+import { clearCopiedSecret, copySecret } from '../lib/secretClipboard';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { StatusPill } from '../ui/StatusPill';
@@ -161,12 +162,11 @@ export function RequestDetail() {
           <DetailsCard request={r} workflowName={workflowName} />
           {r.status === 'pending' && <TimeToDecideCard request={r} />}
           {r.status === 'pending' && !isMine && (
-            <ApproverActionsCard request={r} actorId={me} />
+            <ApproverActionsCard request={r} />
           )}
           {r.status === 'pending' && isMine && (
             <CancelOwnCard
               request={r}
-              actorId={me}
               onCancelled={() => navigate('/requests')}
             />
           )}
@@ -181,7 +181,6 @@ export function RequestDetail() {
             isMine && (
               <CancelOwnCard
                 request={r}
-                actorId={me}
                 onCancelled={() => navigate('/requests')}
               />
             )}
@@ -513,11 +512,13 @@ function RevealModal({
 
   // Best-effort plaintext hygiene: drop refs on unmount. The browser
   // GCs the backing string on its own schedule, but we don't keep it
-  // pinned in state.
+  // pinned in state. Closing the modal also clears a copied value from
+  // the clipboard if it's still there (UI-N-03).
   useEffect(() => {
     return () => {
       setDecoded(null);
       setRevealed(null);
+      void clearCopiedSecret();
     };
   }, []);
 
@@ -530,6 +531,7 @@ function RevealModal({
       setDecoded(null);
       setRevealed(null);
       setPhase('expired');
+      void clearCopiedSecret();
       return;
     }
     const t = window.setTimeout(() => setTtlLeft((n) => n - 1), 1000);
@@ -555,12 +557,13 @@ function RevealModal({
     setDecoded(null);
     setRevealed(null);
     setPhase('expired');
+    void clearCopiedSecret();
   };
 
   const doCopy = async () => {
     if (!decoded) return;
     try {
-      await navigator.clipboard.writeText(decoded);
+      await copySecret(decoded);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -663,6 +666,7 @@ function RevealModal({
             </div>
             <p className="text-muted text-[11px] text-center -mt-1">
               Auto-clears from the SPA in {ttlLeft}s · the wrap is already consumed server-side.
+              A copied value is cleared from your clipboard when this closes, so paste it first.
             </p>
           </>
         )}
@@ -932,13 +936,7 @@ function TimeToDecideCard({ request: _r }: { request: AccessRequest }) {
 
 // --- Approver actions ----------------------------------------------
 
-function ApproverActionsCard({
-  request: r,
-  actorId,
-}: {
-  request: AccessRequest;
-  actorId: string;
-}) {
+function ApproverActionsCard({ request: r }: { request: AccessRequest }) {
   const approve = useApproveRequest(r.id);
   const reject = useRejectRequest(r.id);
   const [showReason, setShowReason] = useState(false);
@@ -958,7 +956,7 @@ function ApproverActionsCard({
           variant="primary"
           size="md"
           disabled={approve.isPending}
-          onClick={() => approve.mutate({ approver_id: actorId })}
+          onClick={() => approve.mutate({})}
         >
           {approve.isPending ? 'Working…' : 'Approve'}
         </Button>
@@ -1000,7 +998,7 @@ function ApproverActionsCard({
               size="sm"
               disabled={!reason.trim() || reject.isPending}
               onClick={() =>
-                reject.mutate({ approver_id: actorId, reason: reason.trim() })
+                reject.mutate({ reason: reason.trim() })
               }
             >
               {reject.isPending ? 'Working…' : 'Confirm reject'}
@@ -1023,11 +1021,9 @@ function ApproverActionsCard({
 
 function CancelOwnCard({
   request: r,
-  actorId,
   onCancelled,
 }: {
   request: AccessRequest;
-  actorId: string;
   onCancelled: () => void;
 }) {
   const cancel = useCancelRequest(r.id);
@@ -1064,7 +1060,7 @@ function CancelOwnCard({
               size="sm"
               disabled={cancel.isPending}
               onClick={() => {
-                cancel.mutate(actorId, {
+                cancel.mutate(undefined, {
                   onSuccess: onCancelled,
                 });
               }}

@@ -79,7 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // the cookie is present and the query lands `ready` quickly.
   const meQuery = useMe();
 
-  const identity: Identity | null = meQuery.data
+  // A refetch that 401s keeps the previous `data` around (TanStack
+  // holds the last success on error). That data belongs to a session
+  // that no longer exists, so it must not produce an identity, or
+  // RequireAuth keeps the shell up on a dead cookie (UI-N-05).
+  const sessionGone =
+    meQuery.isError && meQuery.error instanceof ApiError && meQuery.error.status === 401;
+
+  const identity: Identity | null = meQuery.data && !sessionGone
     ? {
         id: meQuery.data.id,
         email: meQuery.data.email,
@@ -137,13 +144,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthState>(
     () => ({
       identity,
-      me: meQuery.data ?? null,
+      me: sessionGone ? null : (meQuery.data ?? null),
       meStatus,
       hasPermission,
       refresh,
       logout,
     }),
-    [identity, meQuery.data, meStatus, hasPermission, refresh, logout],
+    [identity, meQuery.data, sessionGone, meStatus, hasPermission, refresh, logout],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
