@@ -52,7 +52,11 @@ const schema = z.object({
   permissions: z.array(z.string()).default([]),
 });
 
-type FormShape = z.infer<typeof schema>;
+// `permissions` has a `.default([])`, so the schema's input (what the
+// form holds) and output (what onValid receives) differ; resolvers v5
+// types both sides of useForm separately.
+type FormInput = z.input<typeof schema>;
+type FormShape = z.output<typeof schema>;
 
 interface Props {
   initial?: Role;
@@ -89,7 +93,7 @@ export function RoleForm({
     watch,
     setValue,
     formState: { errors },
-  } = useForm<FormShape>({
+  } = useForm<FormInput, unknown, FormShape>({
     resolver: zodResolver(schema),
     defaultValues: defaults,
   });
