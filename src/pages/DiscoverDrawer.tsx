@@ -7,16 +7,23 @@
  * catalog. After ~5s the secrets query auto-invalidates so the user
  * sees the refreshed totals.
  *
- * Form shape mirrors the curl recipe we currently document:
+ * The payload carries only what the agent accepts from a job:
  *
  *   {
  *     "job_type": "discover",
  *     "payload": {
- *       "target_provider_type": "aws-sm",
- *       "target_provider_config": {"region": "eu-central-1"},
+ *       "target_provider_type": "vault",
+ *       "target_provider_config": {"kvMount": "kv"},
  *       "label_selector": {"Environment": "production"}
  *     }
  *   }
+ *
+ * The agent takes its provider address, region and credentials from its
+ * own env (SB_VAULT_ADDR, SB_AWS_REGION, ...), and the api strips any
+ * other provider config at claim, so the drawer doesn't ask for them.
+ * A Vault kvMount has to equal the agent's SB_VAULT_KV_MOUNT (default
+ * "kv") or the agent refuses the job, so it defaults to blank, which
+ * means the agent's own mount.
  *
  * Label selector entries are entered as `key:value`, comma-separated,
  * matching the /secrets filter strip's existing chip convention.
@@ -44,8 +51,6 @@ const PROVIDER_TYPES = [
 
 const schema = z.object({
   target_provider_type: z.string().min(1, 'pick a provider'),
-  region: z.string().optional(),
-  vault_address: z.string().optional(),
   vault_kv_mount: z.string().optional(),
   label_selector: z.string().optional(),
 });
@@ -66,9 +71,7 @@ export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
     resolver: zodResolver(schema),
     defaultValues: {
       target_provider_type: 'aws-sm',
-      region: 'eu-central-1',
-      vault_address: '',
-      vault_kv_mount: 'secret',
+      vault_kv_mount: '',
       label_selector: '',
     },
   });
@@ -77,11 +80,8 @@ export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
 
   const onSubmit = async (v: Values) => {
     const config: Record<string, unknown> = {};
-    if (v.region) config.region = v.region.trim();
-    if (providerType === 'vault') {
-      if (v.vault_address) config.address = v.vault_address.trim();
-      if (v.vault_kv_mount) config.kvMount = v.vault_kv_mount.trim();
-    }
+    const kvMount = (v.vault_kv_mount ?? '').trim();
+    if (providerType === 'vault' && kvMount) config.kvMount = kvMount;
 
     let label_selector: Record<string, string> | undefined;
     const csv = (v.label_selector ?? '').trim();
@@ -140,7 +140,7 @@ export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
         <p className="text-xs text-muted">
           Enqueues a <span className="font-mono">discover</span> job. The
           first agent online that recognises the provider type picks it
-          up.
+          up and uses its own provider address, region and credentials.
         </p>
 
         <Field label="Provider type" error={errors.target_provider_type?.message}>
@@ -156,50 +156,20 @@ export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
           </select>
         </Field>
 
-        {(providerType === 'aws-sm' || providerType === 'gcp-sm') && (
+        {providerType === 'vault' && (
           <Field
-            label="Region"
-            hint={
-              providerType === 'aws-sm'
-                ? 'e.g. eu-central-1, us-east-1.'
-                : 'e.g. global, europe-west1.'
-            }
+            label="KV v2 mount"
+            hint="Leave blank to use the agent's own mount. If set, it has to match the agent's SB_VAULT_KV_MOUNT (default kv) or the agent refuses the job."
           >
             <input
               type="text"
-              {...register('region')}
+              {...register('vault_kv_mount')}
               className={inputCls + ' font-mono'}
+              placeholder="agent's mount"
               autoComplete="off"
               spellCheck={false}
             />
           </Field>
-        )}
-
-        {providerType === 'vault' && (
-          <>
-            <Field
-              label="Vault address"
-              hint="The agent's cluster-internal address, not the public ingress. Leave blank to use the agent's SB_VAULT_ADDR env."
-            >
-              <input
-                type="text"
-                {...register('vault_address')}
-                className={inputCls + ' font-mono'}
-                placeholder="http://vault.vault.svc:8200"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </Field>
-            <Field label="KV v2 mount" hint='Typically "secret".'>
-              <input
-                type="text"
-                {...register('vault_kv_mount')}
-                className={inputCls + ' font-mono'}
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </Field>
-          </>
         )}
 
         <Field
