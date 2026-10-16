@@ -163,7 +163,7 @@ function BindingRow({
     }
   };
 
-  let unbindLabel = 'Unbind';
+  const unbindLabel = 'Unbind';
   let unbindTitle: string | undefined;
   let unbindDisabled = busy;
   if (!unbindCap.allowed) {

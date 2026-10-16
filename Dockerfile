@@ -1,16 +1,21 @@
 # syntax=docker/dockerfile:1.7
 #
 # Two stages:
-#   1) build  — node 20 alpine, npm ci, vite build
-#   2) serve  — nginx 1.27 alpine, runs as the unprivileged `nginx`
-#               user (uid 101), reads from /usr/share/nginx/html.
+#   1) build  — node 24 (LTS) alpine, npm ci, vite build
+#   2) serve  — nginx 1.30 (stable) alpine, runs as the unprivileged
+#               `nginx` user (uid 101), reads from /usr/share/nginx/html.
+#
+# Both base images are pinned by digest so a rebuild can't silently
+# pick up a different image under the same tag. Dependabot
+# (.github/dependabot.yml) proposes digest bumps; take them, the
+# alpine layer is where most image CVEs get fixed.
 #
 # The production posture is path-based routing at the ingress / ALB
 # level: `/` → this nginx container, `/api/v1/*` → the api service.
 # This container only ships the SPA bundle + health probe.
 
 # ─────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS build
+FROM node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS build
 WORKDIR /app
 
 # Cache the install layer when only source changes.
@@ -42,7 +47,7 @@ ENV SB_BUILD_GIT_SHA=$SB_BUILD_GIT_SHA
 RUN npm run build
 
 # ─────────────────────────────────────────────────────────────────
-FROM nginx:1.27-alpine AS serve
+FROM nginx:1.30-alpine@sha256:970364228b1e4f932abc22d321932816782cca8a20b85a77552a7cfe9acfb3b5 AS serve
 
 # Replace the default config with our SPA-aware one (history-mode
 # fallback + cache strategy + security headers). See nginx/nginx.conf.
