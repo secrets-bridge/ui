@@ -236,9 +236,21 @@ function routeNonStepUpSignals(err: ApiError): void {
     requestEnrollment();
     return;
   }
-  if (err.status === 401 && message.includes('factor_compromised')) {
+  if (err.status === 401 && isFactorCompromised(message)) {
     requestCompromisedFlow();
   }
+}
+
+/**
+ * The api sends the clone-detection trip as `401 {"error":"factor
+ * compromised"}` (handlers/mfa_verify.go via cmd/api/errors.go). There
+ * is no error code field, so match that exact message. The underscore
+ * form this used to look for is still accepted in case the api moves to
+ * it.
+ */
+function isFactorCompromised(lowercasedMessage: string): boolean {
+  const normalized = lowercasedMessage.trim().replace(/_/g, ' ');
+  return normalized === 'factor compromised';
 }
 
 export const api = {
