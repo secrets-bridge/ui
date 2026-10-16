@@ -29,6 +29,13 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+# One publish per ref at a time, in push order. Without this, two merges
+# a few seconds apart race and whichever run finishes last owns :dev and
+# :main, which can be the older commit.
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: build + push
