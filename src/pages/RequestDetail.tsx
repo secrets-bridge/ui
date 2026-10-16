@@ -52,6 +52,7 @@ import { useWorkflows } from '../api/workflows';
 import { useTeams } from '../api/teams';
 import type { AccessRequest } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import { crossTeamVerifyCapability } from '../auth/capabilities';
 import { crossTeamErrorMessage, useVerifyCrossTeam } from '../api/crossTeam';
 import { clearCopiedSecret, copySecret } from '../lib/secretClipboard';
 import { Button } from '../ui/Button';
@@ -1101,7 +1102,7 @@ function CrossTeamVerifyCard({
   request: AccessRequest;
   actorId: string;
 }) {
-  const { hasPermission } = useAuth();
+  const { identity } = useAuth();
   const verify = useVerifyCrossTeam(r.id);
   const teams = useTeams();
   const teamName = teams.data?.find((t) => t.id === r.target_team_id)?.name;
@@ -1109,24 +1110,24 @@ function CrossTeamVerifyCard({
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  const isRequester = actorId === r.requester_id;
-  const isFiller = !!r.filled_by_user_id && actorId === r.filled_by_user_id;
-  // SoD: requester / filler can never be a source approver. Security
-  // approver is also blocked from being the source approver on the
-  // same request (api enforces; UI shows the hidden-button rationale).
-  const canSourceApprove =
-    hasPermission('secret.approve') && !isRequester && !isFiller;
-  const canSecurityApprove =
-    !!r.snap_requires_security_approval &&
-    hasPermission('secret.security.approve') &&
-    !isRequester &&
-    !isFiller;
-
-  const sodReason = (() => {
-    if (isRequester) return 'You are the requester.';
-    if (isFiller) return 'You provided the values for this request.';
-    return null;
-  })();
+  // Lane order + separation of duties (API-N-01). Cosmetic: the api
+  // checks the lane permission against the request's source project.
+  const {
+    sourceVoted,
+    showSourceLane,
+    canSourceApprove,
+    showSecurityLane,
+    canSecurityApprove,
+    sodReason: sod,
+  } = crossTeamVerifyCapability(r, actorId, identity?.permissions);
+  const sodReason =
+    sod === 'requester'
+      ? 'You are the requester.'
+      : sod === 'filler'
+        ? 'You provided the values for this request.'
+        : sod === 'already_voted'
+          ? 'You already voted on this request; a different approver casts the next vote.'
+          : null;
 
   const run = async (
     decision: 'approve' | 'reject',
@@ -1156,7 +1157,7 @@ function CrossTeamVerifyCard({
       if (err instanceof ApiError) {
         const code = extractErrorCodeFromApiErr(err);
         setError(
-          crossTeamErrorMessage(code) ?? `${err.status} · ${err.message}`,
+          `${err.status} · ${crossTeamErrorMessage(code) ?? err.message}`,
         );
       } else if (err instanceof Error) {
         setError(err.message);
@@ -1252,7 +1253,7 @@ function CrossTeamVerifyCard({
           </p>
         </div>
 
-        {(canSourceApprove || canSecurityApprove) && (
+        {(showSourceLane || showSecurityLane) && (
           <div className="space-y-2 pt-2 border-t border-border/60">
             <textarea
               value={comment}
@@ -1261,8 +1262,13 @@ function CrossTeamVerifyCard({
               rows={2}
               className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
-            {canSourceApprove && (
+            {showSourceLane && (
               <div className="flex items-center justify-end gap-2">
+                {sourceVoted && (
+                  <span className="text-muted text-xs mr-auto">
+                    Source vote recorded.
+                  </span>
+                )}
                 <Button
                   variant="danger"
                   size="sm"
@@ -1271,18 +1277,25 @@ function CrossTeamVerifyCard({
                 >
                   Reject (source)
                 </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={verify.isPending}
-                  onClick={() => void run('approve', 'source')}
-                >
-                  Approve (source)
-                </Button>
+                {canSourceApprove && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    disabled={verify.isPending}
+                    onClick={() => void run('approve', 'source')}
+                  >
+                    Approve (source)
+                  </Button>
+                )}
               </div>
             )}
-            {canSecurityApprove && (
+            {showSecurityLane && (
               <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/40">
+                {!sourceVoted && (
+                  <span className="text-muted text-xs mr-auto">
+                    Security approval opens after the source vote.
+                  </span>
+                )}
                 <Button
                   variant="danger"
                   size="sm"
@@ -1294,7 +1307,12 @@ function CrossTeamVerifyCard({
                 <Button
                   variant="primary"
                   size="sm"
-                  disabled={verify.isPending}
+                  disabled={verify.isPending || !canSecurityApprove}
+                  title={
+                    canSecurityApprove
+                      ? undefined
+                      : 'Waiting for the source vote'
+                  }
                   onClick={() => void run('approve', 'security')}
                 >
                   Approve (security)
@@ -1304,7 +1322,7 @@ function CrossTeamVerifyCard({
           </div>
         )}
 
-        {!canSourceApprove && !canSecurityApprove && sodReason && (
+        {!showSourceLane && !showSecurityLane && sodReason && (
           <div className="bg-bg/40 border border-border/60 rounded-lg px-3 py-2 text-muted text-xs">
             You cannot approve this request: {sodReason}
           </div>
@@ -1370,10 +1388,14 @@ function ChainRow({ label, done }: { label: string; done: boolean }) {
   );
 }
 
+// Same reading as extractCrossTeamErrorCode in api/crossTeam.ts: the
+// api renders cross-team errors as `{"error": "<code>"}`.
 function extractErrorCodeFromApiErr(err: ApiError): string | undefined {
   if (err.body && typeof err.body === 'object') {
-    const obj = err.body as { code?: unknown };
+    const obj = err.body as { code?: unknown; error_code?: unknown; error?: unknown };
     if (typeof obj.code === 'string') return obj.code;
+    if (typeof obj.error_code === 'string') return obj.error_code;
+    if (typeof obj.error === 'string') return obj.error;
   }
   return undefined;
 }

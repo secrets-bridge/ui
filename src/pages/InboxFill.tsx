@@ -128,7 +128,7 @@ function InboxFillView() {
     } catch (err) {
       if (err instanceof ApiError) {
         const code = extractErrorCode(err);
-        setError(crossTeamErrorMessage(code) ?? `${err.status} · ${err.message}`);
+        setError(`${err.status} · ${crossTeamErrorMessage(code) ?? err.message}`);
       } else if (err instanceof Error) {
         setError(err.message);
       } else {
@@ -158,7 +158,7 @@ function InboxFillView() {
     } catch (err) {
       if (err instanceof ApiError) {
         const code = extractErrorCode(err);
-        setError(crossTeamErrorMessage(code) ?? `${err.status} · ${err.message}`);
+        setError(`${err.status} · ${crossTeamErrorMessage(code) ?? err.message}`);
       } else if (err instanceof Error) {
         setError(err.message);
       } else {

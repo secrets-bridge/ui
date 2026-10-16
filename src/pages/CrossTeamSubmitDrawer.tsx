@@ -11,8 +11,12 @@
  *
  * Hard rules:
  *   - NO secret values in the body (key NAMES only).
- *   - Stable 403 codes routed through `crossTeamErrorMessage` to
- *     friendly toasts; falls through to api's own message otherwise.
+ *   - The body carries the SOURCE project id and environment name
+ *     (`project_id`, `environment`); the api checks the destination is
+ *     bound there (API-N-03). Without a source project, submit is
+ *     blocked instead of sending a request the api refuses.
+ *   - Stable error codes routed through `crossTeamErrorMessage` to
+ *     friendly inline text; falls through to api's own message otherwise.
  */
 
 import { useMemo, useState } from 'react';
@@ -20,10 +24,11 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
 import {
+  buildCrossTeamSubmitBody,
   crossTeamErrorMessage,
+  extractCrossTeamErrorCode,
   useProviderConnections,
   useSubmitCrossTeam,
-  type SubmitCrossTeamInput,
 } from '../api/crossTeam';
 import { useEnvironmentsForProject, useProjects } from '../api/tenancy';
 import { useTeams } from '../api/teams';
@@ -31,12 +36,13 @@ import { useAuth } from '../auth/AuthContext';
 import { Button } from '../ui/Button';
 import type { MyProject } from '../api/types';
 
-/** Canonical UUID matcher — every target/destination id must be one. */
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 interface Props {
-  sourceProject: MyProject;
+  /**
+   * Source project: the requester's project, whose provider connection
+   * receives the values. Required by the api; when it's absent the
+   * drawer blocks submit with an inline message.
+   */
+  sourceProject?: MyProject | null;
   /**
    * Source environment id. Threaded through to the provider-connections
    * dropdown so the api returns env-specific + project-wide bindings
@@ -82,13 +88,20 @@ export function CrossTeamSubmitDrawer({
     targetProjectID || undefined,
   );
 
+  // The api resolves the source environment by NAME inside the source
+  // project, so look the name up from the id the page passed in.
+  const sourceEnvironmentName = sourceEnvironmentID
+    ? sourceProject?.environments?.find((e) => e.id === sourceEnvironmentID)
+        ?.name
+    : undefined;
+
   // Destination picker — provider connections come from the SOURCE
   // project + env (cross-team values land in source's workload, not the
   // target team's). EPIC P returns a sanitized {id, name, type}
   // projection scoped to (project, env); empty list triggers the §5
   // empty-state CTA below, branched by integration.edit permission.
   const provConns = useProviderConnections(
-    sourceProject.id,
+    sourceProject?.id,
     sourceEnvironmentID,
   );
   const [destProvConnID, setDestProvConnID] = useState('');
@@ -108,59 +121,51 @@ export function CrossTeamSubmitDrawer({
   const submit = useSubmitCrossTeam();
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Fail-closed validation. Every required ID must be a real UUID (so a
-  // half-loaded dropdown or a label leaking through as a value can never
-  // reach the POST); destination_keys must be a non-empty list; the
+  // Fail-closed validation lives in buildCrossTeamSubmitBody: every id
+  // must be a real UUID, the source project must be present, and the
   // justification keeps its 10-char floor. `errors` is surfaced as a
   // visible checklist so submit is never a silent no-op.
-  const errors = useMemo(() => {
-    const e: string[] = [];
-    if (!UUID_RE.test(targetTeamID)) e.push('Select a target team.');
-    if (!UUID_RE.test(targetProjectID)) e.push('Select a target project.');
-    if (!UUID_RE.test(targetEnvID)) e.push('Select a target environment.');
-    if (!UUID_RE.test(destProvConnID))
-      e.push('Select a destination provider connection.');
-    if (destSecretRef.trim().length === 0)
-      e.push('Enter the destination secret reference.');
-    if (destKeys.length === 0) e.push('Add at least one key to fill.');
-    if (justification.trim().length < 10)
-      e.push(
-        `Justification needs ${10 - justification.trim().length} more character${
-          10 - justification.trim().length === 1 ? '' : 's'
-        }.`,
-      );
-    return e;
-  }, [
-    targetTeamID,
-    targetProjectID,
-    targetEnvID,
-    destProvConnID,
-    destSecretRef,
-    destKeys,
-    justification,
-  ]);
-  const valid = errors.length === 0;
+  const build = useMemo(
+    () =>
+      buildCrossTeamSubmitBody({
+        sourceProjectID: sourceProject?.id,
+        sourceEnvironmentID,
+        sourceEnvironmentName,
+        targetTeamID,
+        targetProjectID,
+        targetEnvironmentID: targetEnvID,
+        destinationProviderConnectionID: destProvConnID,
+        destinationSecretRef: destSecretRef,
+        destinationKeys: destKeys,
+        justification,
+      }),
+    [
+      sourceProject?.id,
+      sourceEnvironmentID,
+      sourceEnvironmentName,
+      targetTeamID,
+      targetProjectID,
+      targetEnvID,
+      destProvConnID,
+      destSecretRef,
+      destKeys,
+      justification,
+    ],
+  );
+  const valid = build.ok;
+  const errors = build.ok ? [] : build.errors;
 
   const onSubmit = async () => {
     setSubmitError(null);
-    if (!valid) return;
-    const body: SubmitCrossTeamInput = {
-      target_team_id: targetTeamID,
-      target_project_id: targetProjectID,
-      target_environment_id: targetEnvID,
-      destination_provider_connection_id: destProvConnID,
-      destination_secret_ref: destSecretRef.trim(),
-      destination_keys: destKeys,
-      justification: justification.trim(),
-    };
+    if (!build.ok) return;
     try {
-      const resp = await submit.mutateAsync(body);
+      const resp = await submit.mutateAsync(build.body);
       navigate(`/requests/${resp.id}`);
     } catch (err) {
       if (err instanceof ApiError) {
         const code = extractErrorCode(err);
         setSubmitError(
-          crossTeamErrorMessage(code) ?? `${err.status} · ${err.message}`,
+          `${err.status} · ${crossTeamErrorMessage(code) ?? err.message}`,
         );
       } else if (err instanceof Error) {
         setSubmitError(err.message);
@@ -189,7 +194,15 @@ export function CrossTeamSubmitDrawer({
             the values land in your provider.
           </p>
           <p className="text-muted text-xs mt-2">
-            Source project: <span className="text-text">{sourceProject.name}</span>
+            Source:{' '}
+            {sourceProject ? (
+              <span className="text-text">
+                {sourceProject.name}
+                {sourceEnvironmentName ? ` · ${sourceEnvironmentName}` : ''}
+              </span>
+            ) : (
+              <span className="text-amber-200">no project selected</span>
+            )}
           </p>
         </div>
 
@@ -430,14 +443,11 @@ function Field({
 }
 
 /**
- * Pulls a stable error code from an ApiError's body when the api
- * returned `{"code": "<slug>", "error": "..."}`. Used by the cross-team
- * 403 routing per §6 design.
+ * Pulls a stable error code from an ApiError's body. The api renders
+ * cross-team errors as `{"error": "<code>"}`; reading only `code` (the
+ * old shape) meant no friendly message ever matched. Shared with
+ * InboxFill.
  */
 export function extractErrorCode(err: ApiError): string | undefined {
-  if (err.body && typeof err.body === 'object') {
-    const obj = err.body as { code?: unknown };
-    if (typeof obj.code === 'string') return obj.code;
-  }
-  return undefined;
+  return extractCrossTeamErrorCode(err.body);
 }
