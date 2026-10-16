@@ -26,10 +26,16 @@ export const REVEAL_ERROR_MESSAGES: Record<string, string> = {
   // session) without an open, unexpired session of the caller.
   'this wrap can only be revealed inside an open reveal session':
     'This value can only be revealed inside an open reveal session. Open the reveal session for this request and reveal it there; if the session already ended, submit a new request.',
+  'wrap already consumed':
+    'This value was already revealed. Submit a new request to view it again.',
+  'wrap expired':
+    'This value expired before it was revealed (the reveal session or the wrap TTL ended). Submit a new request to view it again.',
   'this wrap is not permitted by the binding for its environment':
     "This key is not allowed by the secret's binding for this request's environment, so it can't be revealed. Ask a project admin to check the binding.",
 
   // POST /reveal-sessions
+  'all wraps already consumed':
+    'The values in this request have already been revealed or have expired. Submit a new request to view them again.',
   "the request's secret is not bound to its environment":
     "This secret is no longer bound to the request's environment, so the reveal session can't open. Ask a project admin to bind it to that environment.",
   'a wrap in this request is not permitted by the binding allowlist':
