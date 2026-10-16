@@ -80,6 +80,13 @@ export default defineConfig(({ mode }) => {
       // (ui#96 / UI-05).
       sourcemap: 'hidden',
       target: 'es2022',
+      // Never inline font files as data: URIs. Vite inlines any asset
+      // under 4 KB by default, which catches a few small @fontsource
+      // subsets; the CSP is `font-src 'self'` (no data:), so an inlined
+      // face would be blocked. Emitting them as /assets/ files keeps
+      // every font same-origin (UI-N-06). Other assets keep the default.
+      assetsInlineLimit: (filePath: string) =>
+        /\.(woff2?|ttf|otf|eot)$/i.test(filePath) ? false : undefined,
     },
   };
 });
