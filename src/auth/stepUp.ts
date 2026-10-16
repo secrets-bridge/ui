@@ -120,3 +120,23 @@ export function requestCompromisedFlow(): void {
     compromisedHandler();
   }
 }
+
+/**
+ * Session expired or revoked (UI-N-05). `client.ts` calls this on a
+ * 401 that is neither a step-up challenge nor a login attempt. The
+ * handler (`handleSessionExpired`, wired in `queryClient.ts`) decides
+ * whether the tab actually had a session to lose. Kept here, import
+ * free like the others, so `client.ts` doesn't import the query client.
+ */
+type SessionExpiredHandler = () => void;
+let sessionExpiredHandler: SessionExpiredHandler | null = null;
+
+export function setSessionExpiredHandler(fn: SessionExpiredHandler | null): void {
+  sessionExpiredHandler = fn;
+}
+
+export function notifySessionExpired(): void {
+  if (sessionExpiredHandler) {
+    sessionExpiredHandler();
+  }
+}

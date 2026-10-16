@@ -34,6 +34,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
 import { meKey } from './me';
+import { useSensitiveMutation } from './sensitiveMutation';
 
 // --- shared shapes --------------------------------------------------
 
@@ -113,7 +114,8 @@ export interface TOTPEnrollResponse {
  * the SPA-side ceremony from scratch each time.
  */
 export function useEnrollTOTP() {
-  return useMutation({
+  // The response carries the TOTP seed: sensitive (UI-N-02).
+  return useSensitiveMutation({
     mutationFn: (input: { label: string }) =>
       api.post<TOTPEnrollResponse>('/api/v1/users/me/mfa/totp/enroll', input),
   });
@@ -127,7 +129,8 @@ export function useEnrollTOTP() {
  */
 export function useConfirmTOTP() {
   const qc = useQueryClient();
-  return useMutation({
+  // The variables carry the TOTP code: sensitive (UI-N-02).
+  return useSensitiveMutation({
     mutationFn: (input: { challenge_id: string; code: string }) =>
       api.post<MFAFactor>('/api/v1/users/me/mfa/totp/confirm', input),
     onSuccess: () => {
@@ -267,7 +270,8 @@ export interface MFAVerifyRequest {
 
 export function useMFAVerify() {
   const qc = useQueryClient();
-  return useMutation({
+  // The variables carry the TOTP code: sensitive (UI-N-02).
+  return useSensitiveMutation({
     mutationFn: (input: MFAVerifyRequest) =>
       api.post<void>('/api/v1/auth/mfa/verify', input),
     onSuccess: () => {

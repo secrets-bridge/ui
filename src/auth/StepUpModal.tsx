@@ -284,6 +284,9 @@ function TOTPVerify({
         factor_id: factorId,
         code: codeTrim,
       });
+      // Drop the code from the MutationCache (UI-N-02). On failure the
+      // banner reads `verify.error`, so the unmount reset covers that.
+      verify.reset();
       onSuccess();
     } catch (err) {
       handleMFAEdgeCase(err, navigate);
@@ -388,6 +391,9 @@ function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
         setBrowserError(String(err));
       }
     } finally {
+      // The error shows from `browserError`, so the mutation can go
+      // either way (UI-N-02).
+      verify.reset();
       setInFlight(false);
     }
   };

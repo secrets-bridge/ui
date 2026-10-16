@@ -16,7 +16,12 @@
  * Hard rules:
  *   - The agent_secret is NEVER persisted to localStorage,
  *     sessionStorage, or any cross-tab channel — it lives in this
- *     component's state and is dropped on unmount/close.
+ *     component's state and is dropped on unmount/close. The mint
+ *     mutation is reset as soon as it resolves so TanStack's
+ *     MutationCache doesn't hold a second copy (UI-N-02).
+ *   - Copies go through `copySecret`, which clears the clipboard on a
+ *     timer and when the drawer closes, if it still holds the value
+ *     (UI-N-03).
  *   - The Mint form is replaced (not extended) by the reveal panel
  *     so an operator can't accidentally re-submit after seeing the
  *     secret.
@@ -41,6 +46,7 @@ import {
   useRevokeAgent,
 } from '../api/agents';
 import type { Agent } from '../api/types';
+import { copySecret, useClearCopiedSecretOnUnmount } from '../lib/secretClipboard';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -265,6 +271,9 @@ function MintDrawer({ onClose }: { onClose: () => void }) {
       scope: Object.keys(scope).length > 0 ? scope : undefined,
     };
     const r = await mint.mutateAsync(body);
+    // The panel renders from `revealed`; drop the cache's copy of the
+    // response (it carries agent_secret) right away (UI-N-02).
+    mint.reset();
     setRevealed(r);
   };
 
@@ -273,7 +282,7 @@ function MintDrawer({ onClose }: { onClose: () => void }) {
     // Drop the mint result from TanStack Query's MutationCache too —
     // `setRevealed(null)` only clears this component's own state; the
     // agent_secret otherwise lingers in the cache after close (ui#96 /
-    // UI-07).
+    // UI-07). Already reset after mint; this covers any later path.
     mint.reset();
     qc.invalidateQueries({ queryKey: agentsKey.all });
     onClose();
@@ -285,6 +294,10 @@ function MintDrawer({ onClose }: { onClose: () => void }) {
     return () => setRevealed(null);
   }, []);
 
+  // Closing the drawer also clears a copied secret from the clipboard
+  // if it's still there (UI-N-03).
+  useClearCopiedSecretOnUnmount();
+
   if (revealed) {
     return (
       <Drawer
@@ -294,7 +307,8 @@ function MintDrawer({ onClose }: { onClose: () => void }) {
         footer={
           <>
             <span className="text-muted text-[11px] flex-1">
-              Closing drops the secret from the SPA forever.
+              Closing drops the secret from the SPA forever and clears it
+              from your clipboard. Paste it first.
             </span>
             <Button variant="primary" size="md" onClick={handleClose}>
               I've copied it
@@ -487,7 +501,7 @@ function DeploySnippet({ snippet, hint }: { snippet: string; hint: string }) {
   const [copied, setCopied] = useState(false);
   const doCopy = async () => {
     try {
-      await copyWithAutoClear(snippet);
+      await copySecret(snippet);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -551,33 +565,6 @@ providers:
       Environment: production`;
 }
 
-// Reveal-once secrets copied from this panel land in the OS clipboard,
-// which is outside the SPA's control. Best-effort mitigation: after
-// the same on-screen TTL the reveal flows elsewhere in the app use
-// (60s — see RequestDetail.tsx's REVEAL_TTL_SECONDS / the reveal
-// session's countdown), clear the clipboard IF it still holds exactly
-// what we copied (ui#96 / UI-07). No-ops silently when clipboard-read
-// is unavailable or the permission is denied, and never clobbers
-// something the user copied afterward — this is defense in depth, not
-// a guarantee.
-const CLIPBOARD_CLEAR_MS = 60_000;
-
-async function copyWithAutoClear(value: string): Promise<void> {
-  await navigator.clipboard.writeText(value);
-  window.setTimeout(() => {
-    void (async () => {
-      try {
-        const current = await navigator.clipboard.readText();
-        if (current === value) {
-          await navigator.clipboard.writeText('');
-        }
-      } catch {
-        // best-effort only — clipboard-read may be unavailable/denied
-      }
-    })();
-  }, CLIPBOARD_CLEAR_MS);
-}
-
 function CopyField({
   label,
   value,
@@ -590,7 +577,7 @@ function CopyField({
   const [copied, setCopied] = useState(false);
   const doCopy = async () => {
     try {
-      await copyWithAutoClear(value);
+      await copySecret(value);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {

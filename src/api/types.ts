@@ -389,6 +389,8 @@ export interface Approval {
 
 /** Body shape for POST /requests/read. Values never leave the user. */
 export interface ReadRequestInput {
+  // TODO(UI-N-01): drop once api PR fix/security-approval-gates merges;
+  // until then the api still reads requester_id from this body.
   requester_id: string;
   project_id?: string;
   environment?: string;
@@ -410,6 +412,7 @@ export interface ReadRequestInput {
  * immediately after the submit promise settles.
  */
 export interface PatchRequestInput {
+  // TODO(UI-N-01): drop with ReadRequestInput.requester_id.
   requester_id: string;
   project_id?: string;
   environment?: string;

@@ -8,7 +8,8 @@
  *   - Refuse opens an inline confirm with reason ≥ 10 chars
  *   - Submit base64-encodes per key, calls useFillCrossTeam, wipes
  *     state on success AND on unmount (defense in depth — values must
- *     NOT survive navigation)
+ *     NOT survive navigation), and resets the mutation once it settles
+ *     so TanStack's MutationCache doesn't keep a copy (UI-N-02)
  *   - NO localStorage / sessionStorage / IndexedDB writes (never)
  *   - NO service-worker cache (this is just a normal fetch)
  */
@@ -132,6 +133,15 @@ function InboxFillView() {
         setError(err.message);
       } else {
         setError(String(err));
+      }
+    } finally {
+      // The mutation's variables ARE the encoded values. Drop them from
+      // the MutationCache whatever the outcome (UI-N-02); the error
+      // banner reads local state, not `fill.error`. `encoded` is the
+      // same object the cache held, so blank it in place too.
+      fill.reset();
+      for (const k of Object.keys(encoded)) {
+        encoded[k] = '';
       }
     }
   };

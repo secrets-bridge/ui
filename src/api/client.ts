@@ -29,6 +29,7 @@
  */
 
 import {
+  notifySessionExpired,
   requestCompromisedFlow,
   requestEnrollment,
   requestStepUp,
@@ -120,6 +121,8 @@ export function redirectToStepUp(returnTo?: string): void {
   window.location.href = `${base}/api/v1/auth/oidc/start?${params.toString()}`;
 }
 
+const LOGIN_PATH = '/api/v1/auth/login';
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
@@ -197,6 +200,16 @@ async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0):
     // /me/mfa; compromised to /login). Fire-and-forget routing,
     // then throw so the caller still sees the error.
     routeNonStepUpSignals(apiErr);
+
+    // UI-N-05: any other 401 means the session cookie is gone (expired,
+    // revoked, signed out elsewhere). Report it so the tab signs out
+    // instead of rendering cached identity. The login endpoint's own
+    // 401 is a wrong password, not an expiry. Lives at the fetch layer
+    // for the same reason as the MFA routing: direct helpers like
+    // `revealWrap` bypass TanStack's onError hooks.
+    if (resp.status === 401 && !apiErr.stepUp && path !== LOGIN_PATH) {
+      notifySessionExpired();
+    }
     throw apiErr;
   }
   return parsed as T;
@@ -223,9 +236,21 @@ function routeNonStepUpSignals(err: ApiError): void {
     requestEnrollment();
     return;
   }
-  if (err.status === 401 && message.includes('factor_compromised')) {
+  if (err.status === 401 && isFactorCompromised(message)) {
     requestCompromisedFlow();
   }
+}
+
+/**
+ * The api sends the clone-detection trip as `401 {"error":"factor
+ * compromised"}` (handlers/mfa_verify.go via cmd/api/errors.go). There
+ * is no error code field, so match that exact message. The underscore
+ * form this used to look for is still accepted in case the api moves to
+ * it.
+ */
+function isFactorCompromised(lowercasedMessage: string): boolean {
+  const normalized = lowercasedMessage.trim().replace(/_/g, ' ');
+  return normalized === 'factor compromised';
 }
 
 export const api = {

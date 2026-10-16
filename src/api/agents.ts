@@ -19,6 +19,7 @@ import {
 } from '@tanstack/react-query';
 
 import { api } from './client';
+import { useSensitiveMutation } from './sensitiveMutation';
 import type { Agent } from './types';
 
 export const agentsKey = {
@@ -59,7 +60,8 @@ export function useMintAgent() {
   // Don't invalidate on mint — let the caller decide WHEN to refetch
   // (after the operator copies the secret). The Agents page calls
   // invalidate() in its drawer's close handler.
-  return useMutation({
+  // The response carries agent_secret: sensitive (UI-N-02).
+  return useSensitiveMutation({
     mutationFn: (body: MintAgentInput) =>
       api.post<MintAgentResponse>('/api/v1/agents', body),
   });

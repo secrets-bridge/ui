@@ -20,6 +20,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
+import { useSensitiveMutation } from './sensitiveMutation';
 import type { AccessRequest } from './types';
 
 export const inboxKey = {
@@ -64,7 +65,8 @@ export interface FillCrossTeamInput {
 
 export function useFillCrossTeam(id: string) {
   const qc = useQueryClient();
-  return useMutation({
+  // key_values are the values themselves: sensitive (UI-N-02).
+  return useSensitiveMutation({
     mutationFn: (body: FillCrossTeamInput) =>
       api.post<void>(`/api/v1/requests/${id}/fill`, body),
     onSuccess: () => {

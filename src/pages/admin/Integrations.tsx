@@ -84,6 +84,15 @@ function EndpointsSection() {
   const [confirmDelete, setConfirmDelete] = useState<ArgoCDEndpoint | null>(null);
   const [discovering, setDiscovering] = useState<ArgoCDEndpoint | null>(null);
 
+  // `create` outlives the drawer (this section stays mounted), and its
+  // variables carry token_b64. Reset it whenever the drawer closes,
+  // success or not, so the token doesn't sit in the MutationCache while
+  // the page stays open (UI-N-02). Also clears a stale error on reopen.
+  const closeCreate = () => {
+    create.reset();
+    setCreating(false);
+  };
+
   return (
     <section>
       <SectionHeader
@@ -135,13 +144,13 @@ function EndpointsSection() {
       )}
 
       {creating && (
-        <Drawer title="New ArgoCD endpoint" onClose={() => setCreating(false)}>
+        <Drawer title="New ArgoCD endpoint" onClose={closeCreate}>
           <ArgoCDEndpointForm
             onSubmit={async (body: ArgoCDEndpointInput) => {
               await create.mutateAsync(body);
-              setCreating(false);
+              closeCreate();
             }}
-            onCancel={() => setCreating(false)}
+            onCancel={closeCreate}
             submitting={create.isPending}
             submitError={create.error}
           />

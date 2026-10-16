@@ -234,8 +234,6 @@ function RequestRow({ row: r }: { row: AccessRequest }) {
 // --- approver queue card --------------------------------------------
 
 function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
-  const { identity } = useAuth();
-  const me = identity?.id ?? '';
   const approve = useApproveRequest(r.id);
   const reject = useRejectRequest(r.id);
   const [showReason, setShowReason] = useState(false);
@@ -287,7 +285,7 @@ function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
               variant="primary"
               size="md"
               disabled={approve.isPending}
-              onClick={() => approve.mutate({ approver_id: me })}
+              onClick={() => approve.mutate({})}
             >
               {approve.isPending ? 'Working…' : 'Approve'}
             </Button>
@@ -331,7 +329,7 @@ function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
               size="sm"
               disabled={!reason.trim() || reject.isPending}
               onClick={() =>
-                reject.mutate({ approver_id: me, reason: reason.trim() })
+                reject.mutate({ reason: reason.trim() })
               }
             >
               {reject.isPending ? 'Working…' : 'Confirm reject'}

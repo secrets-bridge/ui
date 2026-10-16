@@ -28,6 +28,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
+import { useSensitiveMutation } from './sensitiveMutation';
 import type {
   AccessRequest,
   PatchRequestInput,
@@ -67,12 +68,12 @@ export function useRequest(id: string | undefined) {
 }
 
 /**
- * Decision bodies carry `approver_id` / `actor_id` explicitly until the
- * auth middleware swap lands. The UI sources the identifier from
- * AuthContext at the call site so the hooks stay stateless.
+ * Decision bodies carry only the decision text. The api takes the
+ * acting approver / canceller from the session (API-01, api#168) and
+ * no longer parses an id from the body, so the UI doesn't send one
+ * (UI-N-01).
  */
 export interface ApproveBody {
-  approver_id: string;
   comment?: string;
 }
 
@@ -89,7 +90,6 @@ export function useApproveRequest(id: string) {
 }
 
 export interface RejectBody {
-  approver_id: string;
   reason: string;
 }
 
@@ -108,8 +108,7 @@ export function useRejectRequest(id: string) {
 export function useCancelRequest(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (actorID: string) =>
-      api.post<void>(`/api/v1/requests/${id}/cancel`, { actor_id: actorID }),
+    mutationFn: () => api.post<void>(`/api/v1/requests/${id}/cancel`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: requestsKey.one(id) });
       qc.invalidateQueries({ queryKey: requestsKey.all });
@@ -185,10 +184,11 @@ export function useSubmitReadRequest() {
  * Submit a patch request. The caller is responsible for clearing
  * `key_values` from local state immediately after the promise settles
  * — every plaintext string survives in JS heap until GC otherwise.
+ * The variables carry the new values: sensitive (UI-N-02).
  */
 export function useSubmitPatchRequest() {
   const qc = useQueryClient();
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: (body: PatchRequestInput) =>
       api.post<AccessRequest>('/api/v1/requests', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: requestsKey.all }),

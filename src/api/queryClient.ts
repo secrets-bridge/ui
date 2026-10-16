@@ -1,5 +1,8 @@
 import { QueryClient } from '@tanstack/react-query';
 
+import { setSessionExpiredHandler } from '../auth/stepUp';
+import { handleSessionExpired } from '../auth/sessionExpiry';
+
 /**
  * Global QueryClient instance.
  *
@@ -9,6 +12,18 @@ import { QueryClient } from '@tanstack/react-query';
  *   error than spin forever
  * - never cache mutation responses; every mutation invalidates the
  *   relevant list query explicitly
+ * - mutations `gcTime: 0` (UI-N-02): a finished mutation keeps its
+ *   variables and response in the MutationCache until gcTime after its
+ *   last observer goes (5 minutes by default), and some of them carry
+ *   passwords, values or tokens. With 0 it's dropped on the next tick
+ *   after `reset()` or unmount. Nothing in the SPA reads mutation state
+ *   after unmount (no useMutationState / useIsMutating). Hooks that
+ *   carry secrets also go through `useSensitiveMutation`, which pins
+ *   this per mutation and resets on unmount.
+ *
+ * Session expiry (UI-N-05): `client.ts` reports a 401 that isn't a
+ * step-up challenge or a login attempt, and `handleSessionExpired`
+ * signs the tab out. Wired here because it needs this instance.
  *
  * MFA-shaped error routing (401 step_up_required, 412
  * mfa_enrollment_required, 401 factor_compromised) used to live here
@@ -33,6 +48,9 @@ export const queryClient = new QueryClient({
     },
     mutations: {
       retry: 0,
+      gcTime: 0,
     },
   },
 });
+
+setSessionExpiredHandler(() => handleSessionExpired(queryClient));

@@ -18,6 +18,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
+import { useSensitiveMutation } from './sensitiveMutation';
 import type {
   ArgoCDEndpoint,
   ArgoCDEndpointInput,
@@ -43,7 +44,8 @@ export function useArgoCDEndpoints() {
 
 export function useCreateArgoCDEndpoint() {
   const qc = useQueryClient();
-  return useMutation({
+  // The variables carry token_b64: sensitive (UI-N-02).
+  return useSensitiveMutation({
     mutationFn: (body: ArgoCDEndpointInput) =>
       api.post<ArgoCDEndpoint>('/api/v1/argocd-endpoints', body),
     onSuccess: () => qc.invalidateQueries({ queryKey: argocdEndpointsKey.all }),

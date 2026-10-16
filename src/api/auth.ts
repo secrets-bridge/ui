@@ -8,13 +8,13 @@
  * keeps mutation results (including this one) around in its
  * MutationCache after the call resolves, so that field is stripped
  * here before it ever lands in `useLogin()`'s cached result (ui#96 /
- * UI-03). Callers additionally call `reset()` on the mutation once
- * they're done with it — see `Login.tsx`.
+ * UI-03). The variables carry the password, so this is a sensitive
+ * mutation (gcTime 0, reset on unmount, UI-N-02) and `Login.tsx` calls
+ * `reset()` as soon as the submit settles.
  */
 
-import { useMutation } from '@tanstack/react-query';
-
 import { api } from './client';
+import { useSensitiveMutation } from './sensitiveMutation';
 
 export interface LoginInput {
   email: string;
@@ -38,7 +38,7 @@ export interface LoginResponse {
 type RawLoginResponse = LoginResponse & { token?: string };
 
 export function useLogin() {
-  return useMutation({
+  return useSensitiveMutation({
     mutationFn: async (body: LoginInput): Promise<LoginResponse> => {
       const raw = await api.post<RawLoginResponse>('/api/v1/auth/login', body);
       const { expires_at, user } = raw;
