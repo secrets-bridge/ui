@@ -30,6 +30,20 @@ export const inboxKey = {
 
 /** Body for POST /requests/cross-team. NO values; key NAMES only. */
 export interface SubmitCrossTeamInput {
+  /**
+   * SOURCE project id (the requester's project, whose provider
+   * connection receives the values). The api requires it: it checks the
+   * destination is bound to this project and scopes the source approver
+   * to it (API-N-03).
+   */
+  project_id: string;
+  /**
+   * SOURCE environment NAME (not its id). The api resolves it inside
+   * `project_id` so an environment-specific destination binding counts.
+   * Omitted when the drawer has no environment context; then only
+   * project-wide bindings apply, same as the destination dropdown.
+   */
+  environment?: string;
   target_team_id: string;
   target_project_id: string;
   target_environment_id: string;
@@ -120,7 +134,10 @@ export function useVerifyCrossTeam(id: string) {
   return useMutation({
     mutationFn: (body: VerifyCrossTeamInput) =>
       api.post<VerifyResponse>(`/api/v1/requests/${id}/verify`, body),
-    onSuccess: () => {
+    // Settled, not just success: a refused vote (out of turn, or another
+    // approver got there first) means the card's approvals are stale, so
+    // re-read them to show the lane that's actually open now.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['requests'] });
       qc.invalidateQueries({ queryKey: inboxKey.all });
     },
@@ -198,9 +215,21 @@ export const CROSS_TEAM_ERROR_MESSAGES: Record<string, string> = {
     'You cannot act on this request because of a separation-of-duties rule.',
   cross_team_invalid_target:
     'Selected target team / project / environment chain is invalid.',
+  cross_team_invalid_input:
+    'The request is missing a required field (source project, target, destination or justification). Reopen this form from your project environment page and try again.',
   cross_team_destination_unbound:
-    'Destination provider connection is not bound to your project.',
+    'That provider connection is not bound to your source project and environment. Pick one bound to this project, or ask an admin to bind it.',
   cross_team_keys_empty: 'Add at least one key to fill.',
+  cross_team_key_not_allowed:
+    "One or more keys are outside the destination secret's allowed keys for this project.",
+  cross_team_key_not_declared:
+    'Only the keys this request asked for can be filled. Remove any extra keys and try again.',
+  cross_team_verify_forbidden:
+    "You don't hold the permission for this approval lane on the source project. The source vote needs secret.approve and the security vote needs secret.security.approve.",
+  cross_team_vote_out_of_turn:
+    'This vote is out of order. The source vote comes first, then the security vote when the workflow requires one. Refresh to see the current state.',
+  cross_team_prior_vote_invalid:
+    'An earlier vote on this request was cast by someone who no longer holds that permission, so it cannot complete. Reject it, or ask the requester to cancel and resubmit.',
   cross_team_already_filled: 'This request has already been filled.',
   fill_window_expired: 'The fill window has expired.',
   cross_team_min_approvers_unsupported:
@@ -217,5 +246,103 @@ export const CROSS_TEAM_ERROR_MESSAGES: Record<string, string> = {
  */
 export function crossTeamErrorMessage(code: string | undefined): string | undefined {
   if (!code) return undefined;
+  // Own keys only, so an api message like "constructor" never resolves
+  // to an Object.prototype member.
+  if (!Object.prototype.hasOwnProperty.call(CROSS_TEAM_ERROR_MESSAGES, code)) {
+    return undefined;
+  }
   return CROSS_TEAM_ERROR_MESSAGES[code];
+}
+
+/**
+ * Pulls the stable code out of a cross-team error body. The api's JSON
+ * error handler renders these as `{"error": "<code>"}`; `code` and
+ * `error_code` are read first for envelopes that carry a separate field.
+ * Anything that isn't a known code falls through to the api's message at
+ * the call site via `crossTeamErrorMessage` returning undefined.
+ */
+export function extractCrossTeamErrorCode(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const obj = body as { code?: unknown; error_code?: unknown; error?: unknown };
+  if (typeof obj.code === 'string') return obj.code;
+  if (typeof obj.error_code === 'string') return obj.error_code;
+  if (typeof obj.error === 'string') return obj.error;
+  return undefined;
+}
+
+/** Form state the submit drawer turns into a request body. */
+export interface CrossTeamSubmitForm {
+  /** Source project id, from the page that opened the drawer. */
+  sourceProjectID: string | undefined;
+  /** Source environment id, when the drawer has an environment context. */
+  sourceEnvironmentID: string | undefined;
+  /** Name of `sourceEnvironmentID` inside the source project. */
+  sourceEnvironmentName: string | undefined;
+  targetTeamID: string;
+  targetProjectID: string;
+  targetEnvironmentID: string;
+  destinationProviderConnectionID: string;
+  destinationSecretRef: string;
+  destinationKeys: string[];
+  justification: string;
+}
+
+export type CrossTeamSubmitBuild =
+  | { ok: true; body: SubmitCrossTeamInput }
+  | { ok: false; errors: string[] };
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Validates the drawer's form and builds the POST body. Fail closed:
+ * every id must be a real UUID (a half-loaded dropdown or a label can't
+ * reach the POST), and no body is built without the source project the
+ * api requires. When the drawer has an environment id it must resolve to
+ * a name, otherwise the api would only honour project-wide bindings and
+ * refuse a connection the dropdown offered.
+ */
+export function buildCrossTeamSubmitBody(f: CrossTeamSubmitForm): CrossTeamSubmitBuild {
+  const errors: string[] = [];
+  const sourceProjectID = f.sourceProjectID ?? '';
+  if (!UUID_RE.test(sourceProjectID)) {
+    errors.push(
+      'Source project is missing. Open this form from one of your project environment pages.',
+    );
+  }
+  const sourceEnvName = f.sourceEnvironmentName?.trim() ?? '';
+  if (f.sourceEnvironmentID && sourceEnvName === '') {
+    errors.push(
+      "Source environment couldn't be resolved for this project. Reload the page and try again.",
+    );
+  }
+  if (!UUID_RE.test(f.targetTeamID)) errors.push('Select a target team.');
+  if (!UUID_RE.test(f.targetProjectID)) errors.push('Select a target project.');
+  if (!UUID_RE.test(f.targetEnvironmentID)) errors.push('Select a target environment.');
+  if (!UUID_RE.test(f.destinationProviderConnectionID))
+    errors.push('Select a destination provider connection.');
+  const secretRef = f.destinationSecretRef.trim();
+  if (secretRef.length === 0) errors.push('Enter the destination secret reference.');
+  if (f.destinationKeys.length === 0) errors.push('Add at least one key to fill.');
+  const justification = f.justification.trim();
+  if (justification.length < 10) {
+    const missing = 10 - justification.length;
+    errors.push(
+      `Justification needs ${missing} more character${missing === 1 ? '' : 's'}.`,
+    );
+  }
+  if (errors.length > 0) return { ok: false, errors };
+
+  const body: SubmitCrossTeamInput = {
+    project_id: sourceProjectID,
+    target_team_id: f.targetTeamID,
+    target_project_id: f.targetProjectID,
+    target_environment_id: f.targetEnvironmentID,
+    destination_provider_connection_id: f.destinationProviderConnectionID,
+    destination_secret_ref: secretRef,
+    destination_keys: f.destinationKeys,
+    justification,
+  };
+  if (f.sourceEnvironmentID) body.environment = sourceEnvName;
+  return { ok: true, body };
 }

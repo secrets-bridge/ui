@@ -12,7 +12,7 @@
  * into generic auth state.
  */
 
-import type { MyEnvironment } from '../api/types';
+import type { AccessRequest, MyEnvironment } from '../api/types';
 
 /**
  * Capability output the card / drawer act on. `via` answers "which
@@ -276,4 +276,74 @@ export function canViewPolicyRuleHistory(
   // team
   const cap = canAuthorTeamPolicy(options.teamCoverage, context.teamID);
   return cap.allowed ? { allowed: true } : { allowed: false, reason: 'no_perm' };
+}
+
+/**
+ * What the cross-team verify card offers the actor (API-N-01 paired
+ * with api fix/security-approval-gates).
+ *
+ * The api takes votes in lane order: the first approve is the source
+ * vote, the second (only when the frozen workflow requires security) is
+ * the security vote. A reject from either lane is a terminal veto it
+ * accepts at any point. Neither the requester nor the filler votes, and
+ * one person never casts two votes on the same request.
+ *
+ * Cosmetic only: `permissions` is the actor's any-scope set, while the
+ * api checks the lane permission against the request's source project.
+ * Reads only fields GET /requests/:id already returns (`approvals` comes
+ * back oldest first).
+ */
+export interface CrossTeamVerifyCapability {
+  requiresSecurity: boolean;
+  sourceVoted: boolean;
+  /** Lane whose approve the api takes next; null once every lane has one. */
+  nextLane: 'source' | 'security' | null;
+  /** Source row (reject, plus approve while it's the source lane's turn). */
+  showSourceLane: boolean;
+  canSourceApprove: boolean;
+  /** Security row, only when the workflow requires security approval. */
+  showSecurityLane: boolean;
+  /** False until the source vote exists. */
+  canSecurityApprove: boolean;
+  /** Why the actor gets no buttons at all, when separation of duties is the cause. */
+  sodReason: 'requester' | 'filler' | 'already_voted' | null;
+}
+
+export function crossTeamVerifyCapability(
+  request: Pick<
+    AccessRequest,
+    'requester_id' | 'filled_by_user_id' | 'snap_requires_security_approval' | 'approvals'
+  >,
+  actorId: string,
+  permissions: readonly string[] | undefined,
+): CrossTeamVerifyCapability {
+  const perms = permissions ?? [];
+  const approves = (request.approvals ?? []).filter((a) => a.decision === 'approve');
+  const requiresSecurity = !!request.snap_requires_security_approval;
+  const lanes: Array<'source' | 'security'> = requiresSecurity
+    ? ['source', 'security']
+    : ['source'];
+  const nextLane = approves.length < lanes.length ? lanes[approves.length] : null;
+
+  let sodReason: CrossTeamVerifyCapability['sodReason'] = null;
+  if (actorId && actorId === request.requester_id) sodReason = 'requester';
+  else if (actorId && actorId === request.filled_by_user_id) sodReason = 'filler';
+  else if (actorId && approves.some((a) => a.approver_id === actorId)) {
+    sodReason = 'already_voted';
+  }
+  const eligible = !!actorId && sodReason === null;
+
+  const showSourceLane = eligible && perms.includes('secret.approve');
+  const showSecurityLane =
+    eligible && requiresSecurity && perms.includes('secret.security.approve');
+  return {
+    requiresSecurity,
+    sourceVoted: approves.length > 0,
+    nextLane,
+    showSourceLane,
+    canSourceApprove: showSourceLane && nextLane === 'source',
+    showSecurityLane,
+    canSecurityApprove: showSecurityLane && nextLane === 'security',
+    sodReason,
+  };
 }
