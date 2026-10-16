@@ -187,7 +187,7 @@ export function Login() {
               autoComplete="email"
               spellCheck={false}
               autoCapitalize="off"
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
               placeholder="admin@example.com"
               disabled={login.isPending}
             />
@@ -205,7 +205,7 @@ export function Login() {
               {...register('password')}
               autoComplete="current-password"
               spellCheck={false}
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
               disabled={login.isPending}
             />
             {errors.password && (

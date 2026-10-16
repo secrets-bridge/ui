@@ -217,7 +217,7 @@ export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
         </Field>
 
         {errors.root?.message && (
-          <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded px-3 py-2">
+          <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-sm px-3 py-2">
             {errors.root.message}
           </div>
         )}
@@ -239,7 +239,7 @@ export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
 // only used here.
 
 const inputCls =
-  'w-full bg-bg/40 border border-border/60 rounded px-3 py-2 text-sm';
+  'w-full bg-bg/40 border border-border/60 rounded-sm px-3 py-2 text-sm';
 
 function Field({
   label,

@@ -505,7 +505,7 @@ function SecretRow({
         value={expired || !row.value ? '••••••••' : row.value}
         rows={2}
         onFocus={(e) => e.currentTarget.select()}
-        className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono break-all focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-60"
+        className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono break-all focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-60"
         disabled={expired || !row.value}
       />
     </div>

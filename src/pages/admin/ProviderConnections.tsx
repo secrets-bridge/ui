@@ -96,7 +96,7 @@ export function ProviderConnections() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name…"
-          className="bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 w-56"
+          className="bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 w-56"
         />
         <select
           value={typeFilter}
@@ -565,7 +565,7 @@ function DeleteConfirmModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-xs">
       <div className="bg-surface border border-border rounded-xl p-6 max-w-md w-full space-y-4">
         <h3 className="text-text text-lg font-bold">
           Delete provider connection &ldquo;{connection.name}&rdquo;?

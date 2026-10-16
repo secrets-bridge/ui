@@ -178,7 +178,7 @@ export function CrossTeamSubmitDrawer({
   return (
     <div className="fixed inset-0 z-40 flex">
       <button
-        className="flex-1 bg-bg/80 backdrop-blur-sm"
+        className="flex-1 bg-bg/80 backdrop-blur-xs"
         onClick={onClose}
         aria-label="Close"
       />
@@ -303,7 +303,7 @@ export function CrossTeamSubmitDrawer({
               value={destSecretRef}
               onChange={(e) => setDestSecretRef(e.target.value)}
               placeholder="e.g. billing/prod/db"
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
           </Field>
           <Field
@@ -315,7 +315,7 @@ export function CrossTeamSubmitDrawer({
               value={destKeysInput}
               onChange={(e) => setDestKeysInput(e.target.value)}
               placeholder="DB_PASSWORD, DB_USER"
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
             {destKeys.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1.5">
@@ -342,7 +342,7 @@ export function CrossTeamSubmitDrawer({
               onChange={(e) => setJustification(e.target.value)}
               placeholder="Why does your workload need these values? (visible to approvers + value provider)"
               rows={3}
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
           </Field>
         </section>
@@ -408,7 +408,7 @@ function Select({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-50"
+        className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-50"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>

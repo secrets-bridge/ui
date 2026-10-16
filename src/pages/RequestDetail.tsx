@@ -649,7 +649,7 @@ function RevealModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-sm"
+        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
         onClick={onClose}
         aria-label="Close"
       />
@@ -719,7 +719,7 @@ function RevealModal({
                 value={decoded}
                 rows={3}
                 onFocus={(e) => e.currentTarget.select()}
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono break-all focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono break-all focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
               />
               <div className="text-muted text-[11px] font-mono">
                 {revealed.byte_length} bytes · sha256{' '}
@@ -1055,7 +1055,7 @@ function ApproverActionsCard({ request: r }: { request: AccessRequest }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. wrong target / use the read flow instead"
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
           />
           <div className="flex items-center justify-between pt-1">
             <Button
@@ -1334,7 +1334,7 @@ function CrossTeamVerifyCard({
               onChange={(e) => setComment(e.target.value)}
               placeholder="Optional comment (visible in audit + to requester)"
               rows={2}
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
             {showSourceLane && (
               <div className="flex items-center justify-end gap-2">

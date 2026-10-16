@@ -326,7 +326,7 @@ function BinderPickerDrawer({
   return (
     <div className="fixed inset-0 z-40 flex">
       <button
-        className="flex-1 bg-bg/80 backdrop-blur-sm"
+        className="flex-1 bg-bg/80 backdrop-blur-xs"
         onClick={onClose}
         aria-label="Close"
       />

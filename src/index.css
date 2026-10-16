@@ -1,31 +1,145 @@
+@import 'tailwindcss';
+
 /*
- * Self-hosted fonts (UI-N-06). Same families + weights the old Google
- * Fonts link loaded (Inter 400-800, JetBrains Mono 400/500/700), all
- * unicode-range subsets, bundled into /assets/ by vite so the CSP can
- * stay at font-src 'self'. Browsers fetch only the faces + subsets a
- * page actually renders. Fonts are SIL OFL-1.1 (license ships in each
- * @fontsource package).
+ * Brand tokens synced from the Figma file "Secrets Bridge — Brand"
+ * (version 2358961245452574711, 2026-05-29). Mapping notes in
+ * `secrets-bridge/skills/ui/design/tokens/mapping.md`.
+ *
+ * Re-run the sync via `secrets-bridge/skills/ui/design/tokens/sync.sh`
+ * after every design rev; then update the values here to match.
+ * (Tailwind 4 CSS-first config; this replaces tailwind.config.js.)
  */
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-@import '@fontsource/inter/700.css';
-@import '@fontsource/inter/800.css';
-@import '@fontsource/jetbrains-mono/400.css';
-@import '@fontsource/jetbrains-mono/500.css';
-@import '@fontsource/jetbrains-mono/700.css';
+@theme {
+  /*
+   * In the Tailwind 3 config `blue`, `purple` and `teal` were single
+   * brand values that replaced the default scales, so classes such as
+   * bg-blue-400 generated nothing. Tailwind 4 would add the default
+   * scales back next to the brand value; clearing them keeps the
+   * rendered UI identical to v3.
+   */
+  --color-blue-*: initial;
+  --color-purple-*: initial;
+  --color-teal-*: initial;
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+  /* Semantic surfaces. */
+  --color-bg: #0b1220; /* Navy 900 — app canvas (deepest) */
+  --color-surface: #0f172a; /* Dark Navy — cards / drawers / modals (raised) */
+  --color-text: #cbd5e1; /* Slate 300 — primary readable text */
+  --color-muted: #64748b; /* Slate 500 — secondary text */
+  --color-accent: #06b6d4; /* Cyan — primary CTA, selected chips */
+  --color-border: #1e293b; /* derived (slate-800) — not yet in Figma */
 
-html,
-body,
-#root {
-  height: 100%;
+  /* Extended brand accents (use sparingly, intent-driven). */
+  --color-accent-bright: #22d3ee; /* Cyan Bright — hover, brand emphasis */
+  --color-teal: #14b8a6;
+  --color-blue: #2563eb;
+  --color-purple: #8b5cf6;
+  --color-success: #22c55e;
+
+  --font-sans: Inter, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /*
+   * Tailwind 3 line-heights for the default type scale. v4 made them
+   * unitless ratios, which an element inheriting from a text-sm parent
+   * but setting only an arbitrary size (text-[11px] table headers,
+   * pills) scales down: header rows came out ~5px shorter. Absolute
+   * values keep the v3 metrics.
+   */
+  --text-xs--line-height: 1rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+
+  /*
+   * Brand type ramp from Figma's 6 text styles. Numeric tracking
+   * preserved verbatim from the source; line-heights rounded to
+   * sensible values.
+   */
+  --text-display: 64px;
+  --text-display--line-height: 78px;
+  --text-display--letter-spacing: -1.5px;
+  --text-display--font-weight: 800;
+  --text-h1: 40px;
+  --text-h1--line-height: 48px;
+  --text-h1--letter-spacing: -0.5px;
+  --text-h1--font-weight: 700;
+  --text-h2: 26px;
+  --text-h2--line-height: 32px;
+  --text-h2--letter-spacing: -0.3px;
+  --text-h2--font-weight: 700;
+  --text-eyebrow: 14px;
+  --text-eyebrow--line-height: 17px;
+  --text-eyebrow--letter-spacing: 3px;
+  --text-eyebrow--font-weight: 700;
+  --text-body: 18px;
+  --text-body--line-height: 22px;
+  --text-body--font-weight: 400;
+  --text-caption: 13px;
+  --text-caption--line-height: 16px;
+  --text-caption--letter-spacing: 0.3px;
+  --text-caption--font-weight: 500;
+
+  /* Gradient (Cyan→Blue) from the Foundations page. */
+  --background-image-brand-gradient: linear-gradient(
+    90deg,
+    #22d3ee 0%,
+    #2563eb 100%
+  );
 }
 
-body {
-  @apply bg-bg text-text;
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  /*
+   * Tailwind 3 preflight defaults that v4 dropped: placeholders were
+   * gray-400 (v4: current text color at 50%) and buttons used a
+   * pointer cursor (v4: the browser default).
+   */
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/*
+ * In the base layer so utilities still win: Tailwind 4 emits real
+ * cascade layers, and unlayered CSS beats every layer regardless of
+ * specificity. Left unlayered, this font-family would override the
+ * `font-sans` (Inter) class on <body>, which it never did under v3.
+ */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-bg text-text;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
 }

@@ -163,7 +163,7 @@ export function ProjectPolicies() {
                   <div>
                     <div className="flex items-center gap-2">
                       <span
-                        className="rounded bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted"
+                        className="rounded-sm bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted"
                         title={
                           r.is_team_inherited && r.team_name
                             ? `From team ${r.team_name}`
@@ -399,7 +399,7 @@ function AuthorPolicyDrawer({
         }
       >
         <div className="space-y-3">
-          <div className="rounded border border-border bg-bg px-3 py-2 text-[12px] text-muted">
+          <div className="rounded-sm border border-border bg-bg px-3 py-2 text-[12px] text-muted">
             Loading platform settings…
           </div>
           <p className="text-[12px] text-muted italic">
@@ -425,7 +425,7 @@ function AuthorPolicyDrawer({
         }
       >
         <div className="space-y-3">
-          <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
             Could not load platform settings.{' '}
             {cap.error instanceof ApiError
               ? toPolicyRuleErrorToast(cap.error)
@@ -562,7 +562,7 @@ function AuthorPolicyForm({
           <input
             type="text"
             {...register('name')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
             placeholder="my-non-prod-policy"
           />
         </Field>
@@ -590,7 +590,7 @@ function AuthorPolicyForm({
           {envMatch === 'specific' && (
             <select
               {...register('environment_id')}
-              className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+              className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
             >
               <option value="">— pick a non-prod env —</option>
               {nonProdEnvs.map((e) => (
@@ -620,7 +620,7 @@ function AuthorPolicyForm({
           <input
             type="text"
             {...register('secret_ref_prefix')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text font-mono"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text font-mono"
             placeholder="billing/"
           />
         </Field>
@@ -634,7 +634,7 @@ function AuthorPolicyForm({
               server never sees operation="". */}
           <select
             {...register('operation')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
           >
             <option value="">— any operation —</option>
             {POLICY_SELECTOR_OPERATIONS.map((o) => (
@@ -651,7 +651,7 @@ function AuthorPolicyForm({
         >
           <select
             {...register('workflow_id')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
           >
             <option value="">— pick a workflow —</option>
             {eligibleWorkflows.map((w) => (
@@ -675,7 +675,7 @@ function AuthorPolicyForm({
           <input
             type="number"
             {...register('priority')}
-            className="w-full rounded border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
           />
         </Field>
 
@@ -685,7 +685,7 @@ function AuthorPolicyForm({
         </label>
 
         {errorToast && (
-          <div className="rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
             {errorToast}
           </div>
         )}
@@ -703,8 +703,11 @@ function Field({
   error?: string;
   children: React.ReactNode;
 }) {
+  // `[&>*+*]:mt-1` is Tailwind 3's space-y-1 (margin-top on later
+  // siblings). v4's space-y puts margin-bottom on the inline label
+  // <span>, where it has no effect.
   return (
-    <label className="block space-y-1">
+    <label className="block [&>*+*]:mt-1">
       <span className="text-text font-medium">{label}</span>
       {children}
       {error && (

@@ -283,7 +283,7 @@ export function Shell() {
         <input
           type="text"
           placeholder="Search secrets, requests, agents…"
-          className="hidden md:block w-80 bg-bg/60 border border-border rounded-full px-4 py-1.5 text-sm text-text placeholder-muted focus:outline-none focus:border-accent/40"
+          className="hidden md:block w-80 bg-bg/60 border border-border rounded-full px-4 py-1.5 text-sm text-text placeholder-muted focus:outline-hidden focus:border-accent/40"
         />
         <EnvSwitcher value="Production" />
         {identity && <Avatar name={identity.display_name} />}
@@ -376,9 +376,9 @@ function NavDot({ active }: { active: boolean }) {
   // sidebar uses a filled square for the active item and a hollow
   // square for inactive ones. Reads as a checkbox-like affordance.
   return active ? (
-    <span className="w-3 h-3 rounded-sm bg-accent" />
+    <span className="w-3 h-3 rounded-xs bg-accent" />
   ) : (
-    <span className="w-3 h-3 rounded-sm border border-border" />
+    <span className="w-3 h-3 rounded-xs border border-border" />
   );
 }
 

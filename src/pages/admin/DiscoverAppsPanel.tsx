@@ -133,7 +133,7 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded px-3 py-2">
+      <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
         Bulk-create gitops mappings from ArgoCD discovery. The shared binding below applies to every checked app; re-run the panel for a different binding.
       </div>
 
@@ -149,14 +149,14 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
             <button
               onClick={() => setActive(true)}
               disabled={discover.isFetching}
-              className="bg-accent text-bg font-medium px-4 rounded hover:opacity-90 disabled:opacity-50"
+              className="bg-accent text-bg font-medium px-4 rounded-sm hover:opacity-90 disabled:opacity-50"
             >
               {discover.isFetching ? 'Loading…' : 'Discover'}
             </button>
           </div>
         </Field>
 
-        <fieldset className="border border-border rounded p-3 space-y-3">
+        <fieldset className="border border-border rounded-sm p-3 space-y-3">
           <legend className="text-xs text-muted px-1">Shared binding — set exactly one for the batch</legend>
           <Field label="secret_mapping_id (UUID)">
             <input
@@ -181,13 +181,13 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
       </div>
 
       {discover.error && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
           {stringifyError(discover.error)}
         </div>
       )}
 
       {discover.data && discover.data.length === 0 && active && !discover.isFetching && (
-        <div className="bg-surface border border-border rounded p-4 text-center text-muted text-sm">
+        <div className="bg-surface border border-border rounded-sm p-4 text-center text-muted text-sm">
           No apps visible to the endpoint's token. Check the token's RBAC (e.g. ArgoCD project role with <code>applications, get</code>).
         </div>
       )}
@@ -205,7 +205,7 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
             </div>
           </div>
 
-          <div className="max-h-[420px] overflow-auto border border-border rounded">
+          <div className="max-h-[420px] overflow-auto border border-border rounded-sm">
             {groups.map((g) => {
               const groupKeys = g.apps.map(rowKey);
               const groupOn = groupKeys.every((k) => checked.has(k));
@@ -236,14 +236,14 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
                           />
                           <span className="text-text text-sm flex-1">{a.name}</span>
                           {a.project && (
-                            <span className="text-[11px] bg-bg border border-border text-muted rounded px-2">
+                            <span className="text-[11px] bg-bg border border-border text-muted rounded-sm px-2">
                               {a.project}
                             </span>
                           )}
                           {a.sync_status && (
                             <span
                               className={
-                                'text-[11px] rounded px-2 ' +
+                                'text-[11px] rounded-sm px-2 ' +
                                 (a.sync_status === 'Synced'
                                   ? 'bg-green-400/15 text-green-300'
                                   : 'bg-yellow-400/15 text-yellow-300')
@@ -273,8 +273,8 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
         <div
           className={
             bulk.failed === 0
-              ? 'text-xs text-green-300 bg-green-400/10 border border-green-400/30 rounded px-3 py-2'
-              : 'text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded px-3 py-2'
+              ? 'text-xs text-green-300 bg-green-400/10 border border-green-400/30 rounded-sm px-3 py-2'
+              : 'text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2'
           }
         >
           {bulk.done} created, {bulk.failed} failed.
@@ -300,13 +300,13 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
             !bindingValid ||
             !validId
           }
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50"
+          className="bg-accent text-bg font-medium px-4 py-2 rounded-sm hover:opacity-90 disabled:opacity-50"
         >
           {bulk.running ? 'Creating…' : `Create ${checked.size} mappings`}
         </button>
         <button
           onClick={onClose}
-          className="text-muted hover:text-text px-3 py-2 rounded border border-border"
+          className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border"
         >
           Close
         </button>
@@ -357,7 +357,7 @@ function stringifyError(e: unknown): string {
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm focus:outline-none focus:border-accent';
+  'w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent';
 
 function Field({
   label,

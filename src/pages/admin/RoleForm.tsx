@@ -174,7 +174,7 @@ export function RoleForm({
   return (
     <form onSubmit={handleSubmit(onValid)} className="space-y-4">
       {editMode && (
-        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded px-3 py-2">
+        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
           Name and description are <strong>immutable</strong> after create — only the permission list can be changed.
           {initial?.is_system && (
             <>
@@ -215,7 +215,7 @@ export function RoleForm({
         )}
 
         {catalog.isError && (
-          <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+          <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
             Failed to load permission catalog. Existing chips still work; new selections fall back to free-form.
           </div>
         )}
@@ -245,9 +245,9 @@ export function RoleForm({
                       className={
                         on
                           ? unknown
-                            ? 'text-[11px] rounded px-2 py-1 bg-yellow-400/15 border border-yellow-400/50 text-yellow-200'
-                            : 'text-[11px] rounded px-2 py-1 bg-accent/20 border border-accent/60 text-accent'
-                          : 'text-[11px] rounded px-2 py-1 bg-bg border border-border text-muted hover:text-text hover:border-border'
+                            ? 'text-[11px] rounded-sm px-2 py-1 bg-yellow-400/15 border border-yellow-400/50 text-yellow-200'
+                            : 'text-[11px] rounded-sm px-2 py-1 bg-accent/20 border border-accent/60 text-accent'
+                          : 'text-[11px] rounded-sm px-2 py-1 bg-bg border border-border text-muted hover:text-text hover:border-border'
                       }
                     >
                       {on && <span className="mr-1">✓</span>}
@@ -269,7 +269,7 @@ export function RoleForm({
       </div>
 
       {submitError instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
           {submitError.status}: {submitError.message}
         </div>
       )}
@@ -278,14 +278,14 @@ export function RoleForm({
         <button
           type="submit"
           disabled={submitting}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50"
+          className="bg-accent text-bg font-medium px-4 py-2 rounded-sm hover:opacity-90 disabled:opacity-50"
         >
           {submitting ? 'Saving…' : editMode ? 'Save permissions' : 'Create'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded border border-border"
+          className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border"
         >
           Cancel
         </button>
@@ -293,7 +293,7 @@ export function RoleForm({
       {pendingConfirmPerm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <button
-            className="absolute inset-0 bg-bg/80 backdrop-blur-sm"
+            className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
             onClick={() => setPendingConfirmPerm(null)}
             aria-label="Close"
           />
@@ -317,13 +317,13 @@ export function RoleForm({
               autoFocus
               value={confirmTyped}
               onChange={(e) => setConfirmTyped(e.target.value)}
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
               <button
                 type="button"
                 onClick={() => setPendingConfirmPerm(null)}
-                className="text-muted hover:text-text px-3 py-2 rounded border border-border text-sm"
+                className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border text-sm"
               >
                 Cancel
               </button>
@@ -337,7 +337,7 @@ export function RoleForm({
                     setConfirmTyped('');
                   }
                 }}
-                className="bg-red-500/90 hover:bg-red-500 text-bg disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded text-sm font-medium"
+                className="bg-red-500/90 hover:bg-red-500 text-bg disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-sm text-sm font-medium"
               >
                 Grant {pendingConfirmPerm}
               </button>
@@ -413,7 +413,7 @@ function CustomAdd({ onAdd }: { onAdd: (raw: string) => void }) {
       <button
         type="button"
         onClick={submit}
-        className="text-xs text-muted hover:text-text border border-border rounded px-3"
+        className="text-xs text-muted hover:text-text border border-border rounded-sm px-3"
       >
         Add
       </button>
@@ -422,10 +422,10 @@ function CustomAdd({ onAdd }: { onAdd: (raw: string) => void }) {
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm focus:outline-none focus:border-accent';
+  'w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent';
 
 const inputClsReadonly =
-  'w-full bg-bg/40 border border-border/60 rounded px-3 py-2 text-muted text-sm cursor-not-allowed';
+  'w-full bg-bg/40 border border-border/60 rounded-sm px-3 py-2 text-muted text-sm cursor-not-allowed';
 
 function Field({
   label,

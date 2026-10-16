@@ -311,7 +311,7 @@ function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. wrong target / not approved by oncall / use the read flow instead"
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
           />
           <div className="flex items-center justify-between pt-1">
             <Button

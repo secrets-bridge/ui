@@ -80,7 +80,7 @@ export function PolicyHistoryTimeline({
         <button
           type="button"
           onClick={onLoadMore}
-          className="w-full text-sm text-accent hover:underline border border-border rounded px-3 py-2"
+          className="w-full text-sm text-accent hover:underline border border-border rounded-sm px-3 py-2"
         >
           Load more (currently showing {limit})
         </button>

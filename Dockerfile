@@ -23,7 +23,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund
 
 COPY tsconfig.json tsconfig.app.json tsconfig.node.json ./
-COPY vite.config.ts postcss.config.js tailwind.config.js ./
+COPY vite.config.ts postcss.config.js ./
 COPY index.html ./
 COPY src ./src
 # Vite copies everything under `public/` to the dist/ root at build

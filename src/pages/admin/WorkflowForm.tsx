@@ -153,7 +153,7 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
   return (
     <form onSubmit={handleSubmit(onValid)} className="space-y-4">
       {initial?.is_system && (
-        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded px-3 py-2">
+        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
           This is a <strong>system seed</strong> workflow — editable but cannot be deleted.
         </div>
       )}
@@ -220,7 +220,7 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
       </div>
 
       {submitError instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
           {submitError.status}: {submitError.message}
         </div>
       )}
@@ -229,14 +229,14 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
         <button
           type="submit"
           disabled={submitting}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50"
+          className="bg-accent text-bg font-medium px-4 py-2 rounded-sm hover:opacity-90 disabled:opacity-50"
         >
           {submitting ? 'Saving…' : initial ? 'Save' : 'Create'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded border border-border"
+          className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border"
         >
           Cancel
         </button>
@@ -246,7 +246,7 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm focus:outline-none focus:border-accent';
+  'w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent';
 
 function Field({
   label,

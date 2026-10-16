@@ -429,7 +429,7 @@ function TeamForm({
       <FormField label="Name" error={errors.name?.message}>
         <input
           {...register('name')}
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent"
+          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent"
           placeholder="e.g. platform-east"
         />
       </FormField>
@@ -438,7 +438,7 @@ function TeamForm({
         <textarea
           {...register('description')}
           rows={2}
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent"
+          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent"
           placeholder="One-line purpose"
         />
       </FormField>
@@ -446,7 +446,7 @@ function TeamForm({
       <FormField label="Parent team (optional — empty = root)" error={errors.parent_team_id?.message}>
         <select
           {...register('parent_team_id')}
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent"
+          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent"
         >
           <option value="">(root)</option>
           {parentChoices.map((t) => (
@@ -536,7 +536,7 @@ function MembersPanel({ team }: { team: Team }) {
           value={userIDInput}
           onChange={(e) => setUserIDInput(e.target.value)}
           placeholder="paste user id (UUID)"
-          className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent"
+          className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent"
         />
         <Button onClick={onAdd} variant="secondary" disabled={!userIDInput.trim() || add.isPending}>
           Add

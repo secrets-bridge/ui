@@ -31,7 +31,7 @@ export function Drawer({ title, onClose, children, footer, wide }: Props) {
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <button
-        className="absolute inset-0 bg-bg/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-bg/70 backdrop-blur-xs"
         onClick={onClose}
         aria-label="Close drawer"
       />

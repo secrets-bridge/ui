@@ -143,7 +143,7 @@ function StepUpModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-sm"
+        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
         onClick={onCancel}
         aria-label="Close"
       />
@@ -303,7 +303,7 @@ function TOTPVerify({
           <select
             value={factorId}
             onChange={(e) => setFactorId(e.target.value)}
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
           >
             {factors.map((f) => (
               <option key={f.id} value={f.id}>
@@ -326,7 +326,7 @@ function TOTPVerify({
           autoComplete="one-time-code"
           maxLength={6}
           autoFocus
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-base font-mono tracking-widest text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-base font-mono tracking-widest text-center focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
         />
       </div>
       {(challenge.isError || verify.isError) && (

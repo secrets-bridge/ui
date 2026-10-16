@@ -268,7 +268,7 @@ function SecretRow({
                 ? 'Why do you need to view this secret right now?'
                 : 'Why are you requesting access? (visible to approvers)'
             }
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
           />
           {submitError && (
             <p className="text-red-300 text-xs">{submitError}</p>

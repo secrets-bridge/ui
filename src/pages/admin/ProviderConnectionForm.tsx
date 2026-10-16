@@ -422,7 +422,7 @@ function Field({
 
 function inputCls(err: unknown): string {
   const base =
-    'w-full bg-bg border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:ring-1';
+    'w-full bg-bg border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:ring-1';
   return err
     ? `${base} border-red-500/50 focus:border-red-400 focus:ring-red-400/40`
     : `${base} border-border focus:border-accent focus:ring-accent/40`;

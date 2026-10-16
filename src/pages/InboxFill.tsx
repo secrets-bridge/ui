@@ -224,7 +224,7 @@ function InboxFillView() {
                   }
                   autoComplete="off"
                   spellCheck={false}
-                  className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+                  className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
                 />
                 <button
                   type="button"
@@ -249,7 +249,7 @@ function InboxFillView() {
               onChange={(e) => setFillComment(e.target.value)}
               rows={2}
               placeholder="Visible to the requester + approver in the audit trail."
-              className="mt-1 w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="mt-1 w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
           </div>
         </CardBody>
@@ -297,7 +297,7 @@ function InboxFillView() {
               onChange={(e) => setRefuseReason(e.target.value)}
               rows={3}
               placeholder="Why are you refusing this request? (≥ 10 chars)"
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
             />
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
               <Button variant="secondary" size="md" onClick={() => setRefuseOpen(false)}>

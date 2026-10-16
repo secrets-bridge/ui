@@ -195,7 +195,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
   return (
     <form onSubmit={handleSubmit(onValid)} className="space-y-4">
       {initial?.is_system && (
-        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded px-3 py-2">
+        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
           This is a <strong>system seed</strong> policy — editable but cannot be deleted.
         </div>
       )}
@@ -212,7 +212,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
       {/* R-follow-up #3 — anchor picker. Immutable on edit per the
           api's storage-level ErrAnchorImmutable; to change a rule's
           anchor, delete + re-create. */}
-      <fieldset className="border border-border rounded p-3 space-y-2">
+      <fieldset className="border border-border rounded-sm p-3 space-y-2">
         <legend className="text-xs text-muted px-1">Anchor</legend>
         <label className="flex items-center gap-2 text-sm text-text">
           <input
@@ -292,7 +292,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
           <div className="text-xs text-red-400">failed to load workflows</div>
         )}
         {noWorkflows && !workflows.isError && (
-          <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded px-3 py-2 mt-1">
+          <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2 mt-1">
             No workflows exist yet. A policy must map to a workflow —
             create one on the Workflows page first, then return here.
           </div>
@@ -309,7 +309,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
       </div>
 
       {inReservedBand && (
-        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded px-3 py-2">
+        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
           Priority {String(priority)} is in the platform-reserved band
           (≥ {cap}). This is allowed for <strong>policy.edit</strong>{' '}
           admins on this admin surface, but scoped <strong>policy.author</strong>{' '}
@@ -318,7 +318,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
         </div>
       )}
 
-      <fieldset className="border border-border rounded p-3 space-y-3">
+      <fieldset className="border border-border rounded-sm p-3 space-y-3">
         <legend className="text-xs text-muted px-1">
           Selector — keys present must match the request scope; empty = wildcard
         </legend>
@@ -365,7 +365,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
       </fieldset>
 
       {submitError instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
           {submitError.status}: {submitError.message}
         </div>
       )}
@@ -375,14 +375,14 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
           type="submit"
           disabled={submitting || noWorkflows}
           title={noWorkflows ? 'Create a workflow first' : undefined}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="bg-accent text-bg font-medium px-4 py-2 rounded-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? 'Saving…' : initial ? 'Save' : 'Create'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded border border-border"
+          className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border"
         >
           Cancel
         </button>
@@ -392,7 +392,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm focus:outline-none focus:border-accent';
+  'w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent';
 
 function Field({
   label,

@@ -126,7 +126,7 @@ export function GitOpsAppMappingForm({ onSubmit, onCancel, submitting, submitErr
         <input type="text" {...register('cluster_name')} className={inputCls} placeholder="prod-eu" />
       </Field>
 
-      <fieldset className="border border-border rounded p-3 space-y-3">
+      <fieldset className="border border-border rounded-sm p-3 space-y-3">
         <legend className="text-xs text-muted px-1">Binding — set exactly one</legend>
         <div className="text-[11px] text-muted/80">
           Until provider-connections admin lands, paste a UUID from <code>secret_mappings.id</code> or <code>provider_connections.id</code> via psql. The api rejects the create if neither (or both) is set.
@@ -142,7 +142,7 @@ export function GitOpsAppMappingForm({ onSubmit, onCancel, submitting, submitErr
       </fieldset>
 
       {submitError instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded px-3 py-2">
+        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
           {submitError.status}: {submitError.message}
         </div>
       )}
@@ -151,14 +151,14 @@ export function GitOpsAppMappingForm({ onSubmit, onCancel, submitting, submitErr
         <button
           type="submit"
           disabled={submitting}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded hover:opacity-90 disabled:opacity-50"
+          className="bg-accent text-bg font-medium px-4 py-2 rounded-sm hover:opacity-90 disabled:opacity-50"
         >
           {submitting ? 'Saving…' : 'Create mapping'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded border border-border"
+          className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border"
         >
           Cancel
         </button>
@@ -168,7 +168,7 @@ export function GitOpsAppMappingForm({ onSubmit, onCancel, submitting, submitErr
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm focus:outline-none focus:border-accent';
+  'w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent';
 
 function Field({
   label,

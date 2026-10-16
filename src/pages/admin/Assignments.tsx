@@ -92,7 +92,7 @@ export function Assignments() {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter by user_id…"
-          className="flex-1 bg-bg border border-border rounded-lg px-3.5 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+          className="flex-1 bg-bg border border-border rounded-lg px-3.5 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
         />
         {filter && (
           <Button variant="secondary" size="sm" onClick={() => setFilter('')}>
@@ -494,7 +494,7 @@ function AssignmentForm({
             value={globalConfirmTyped}
             onChange={(e) => setGlobalConfirmTyped(e.target.value)}
             placeholder="type `global` to confirm"
-            className="w-full bg-bg border border-border rounded px-3 py-2 text-text text-sm font-mono focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
           />
         </div>
       )}
@@ -533,7 +533,7 @@ function AssignmentForm({
 // --- shared bits ----------------------------------------------------
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40';
 
 function Field({
   label,
