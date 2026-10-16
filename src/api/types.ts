@@ -190,17 +190,22 @@ export interface ProviderConnection {
  * `type` immutable post-create per §5 sign-off; the edit form
  * disables it. `name` editable. `scope` metadata only — handlers +
  * service enforce credential-shaped + secret-shaped value refusal.
+ *
+ * Every field is required so the form always sends what it manages:
+ * the PUT keeps the stored value for an absent key, so clearing
+ * cluster_name / description means sending "", and discovery off
+ * means sending false.
  */
 export interface ProviderConnectionInput {
   name: string;
   type: string;
-  cluster_name?: string;
-  description?: string;
-  status?: 'active' | 'disabled';
+  cluster_name: string;
+  description: string;
+  status: 'active' | 'disabled';
   scope: Record<string, unknown>;
-  auth_method?: string;
-  discover_enabled?: boolean;
-  discover_interval_seconds?: number;
+  auth_method: string;
+  discover_enabled: boolean;
+  discover_interval_seconds: number;
 }
 
 /**
@@ -283,10 +288,14 @@ export interface ProjectSecretBindingInput {
   created_by?: string;
 }
 
-/** Body shape for PUT /projects/:id/secrets/:secret_id. */
+/**
+ * Body shape for PUT /projects/:id/secrets/:secret_id. Both keys are
+ * always sent: the api keeps the stored value for an absent key, so
+ * "allow all keys" has to be an explicit null.
+ */
 export interface ProjectSecretBindingUpdate {
-  allowed_keys?: string[] | null;
-  allowed_ops?: string[];
+  allowed_keys: string[] | null;
+  allowed_ops: string[];
 }
 
 /**
@@ -472,10 +481,13 @@ export interface Workflow {
  * Body shape for POST / PUT. The api accepts the same shape for both
  * (modulo `id`, which the URL carries on PUT). `is_default` and
  * `is_system` are server-managed — the form omits them.
+ *
+ * PUT keeps the stored value for an absent key, so `description` is
+ * required: "" is how the form clears it.
  */
 export interface WorkflowInput {
   name: string;
-  description?: string;
+  description: string;
   min_approvers: number;
   wrap_ttl_created_seconds: number;
   wrap_ttl_approved_seconds: number;
