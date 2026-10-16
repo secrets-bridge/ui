@@ -23,7 +23,7 @@ import { useArgoCDEndpoints } from '../../api/integrations';
 
 const schema = z
   .object({
-    argocd_endpoint_id: z.string().uuid('pick an endpoint'),
+    argocd_endpoint_id: z.guid('pick an endpoint'),
     application_name: z.string().min(1, 'application_name is required').max(255),
     application_namespace: z.string().max(255).optional(),
     project_name: z.string().max(255).optional(),
@@ -33,8 +33,8 @@ const schema = z
     // source↔dest sync config; provider_connections is the newer model.
     // Neither has a real admin UI yet, so operators paste a UUID from
     // the database for now — friction documented in the field hints.
-    secret_mapping_id: z.string().uuid().optional().or(z.literal('')),
-    provider_connection_id: z.string().uuid().optional().or(z.literal('')),
+    secret_mapping_id: z.guid().optional().or(z.literal('')),
+    provider_connection_id: z.guid().optional().or(z.literal('')),
   })
   .refine(
     (d) =>

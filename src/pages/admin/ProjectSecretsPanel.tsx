@@ -244,7 +244,7 @@ function BindingRow({
 
 const bindSchema = z
   .object({
-    secret_id: z.string().uuid('pick a secret from the list'),
+    secret_id: z.guid('pick a secret from the list'),
     allow_all_keys: z.boolean(),
     allowed_keys_csv: z.string(),
     allowed_ops: z.array(z.enum(['read', 'patch', 'discover'])).min(1, 'at least one op'),

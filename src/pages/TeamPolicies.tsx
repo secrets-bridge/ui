@@ -376,7 +376,7 @@ function buildTeamAuthorSchema(cap: number) {
     // api#141 — optional operation from the backend-owned enum.
     // Empty string = wildcard (omitted from the submitted selector).
     operation: z.string().optional(),
-    workflow_id: z.string().uuid('pick a workflow'),
+    workflow_id: z.guid('pick a workflow'),
     priority: z.coerce
       .number()
       .int()
@@ -386,7 +386,11 @@ function buildTeamAuthorSchema(cap: number) {
   });
 }
 
-type TeamAuthorFormShape = z.infer<ReturnType<typeof buildTeamAuthorSchema>>;
+// z.coerce.number() fields make the schema's input type differ from
+// its output (zod 4 types coerce input as unknown), so the form holds
+// the input shape and onValid receives the parsed output.
+type TeamAuthorFormInput = z.input<ReturnType<typeof buildTeamAuthorSchema>>;
+type TeamAuthorFormShape = z.output<ReturnType<typeof buildTeamAuthorSchema>>;
 
 function TeamPolicyAuthorDrawer({
   teamID,
@@ -456,7 +460,7 @@ function TeamPolicyAuthorForm({
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<TeamAuthorFormShape>({
+  } = useForm<TeamAuthorFormInput, unknown, TeamAuthorFormShape>({
     resolver: zodResolver(schema),
     defaultValues: {
       name: '',

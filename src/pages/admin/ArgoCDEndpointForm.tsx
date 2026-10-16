@@ -24,15 +24,13 @@ import { ApiError } from '../../api/client';
 const schema = z.object({
   name: z.string().min(1, 'name is required').max(120),
   base_url: z
-    .string()
     .url('base_url must be a full URL (https://argocd.example.com)')
     .max(500),
   token: z.string().min(1, 'token is required'),
   tls_ca_pem: z.string().optional(),
   tls_server_name: z.string().max(255).optional(),
   environment_id: z
-    .string()
-    .uuid('environment_id must be a UUID if set')
+    .guid('environment_id must be a UUID if set')
     .optional()
     .or(z.literal('')),
 });

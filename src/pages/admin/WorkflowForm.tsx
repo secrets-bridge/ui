@@ -34,7 +34,11 @@ const schema = z.object({
   scoped_policy_authorable: z.boolean(),
 });
 
-type FormShape = z.infer<typeof schema>;
+// z.coerce.number() fields make the schema's input type differ from
+// its output (zod 4 types coerce input as unknown), so the form holds
+// the input shape and onValid receives the parsed output.
+type FormInput = z.input<typeof schema>;
+type FormShape = z.output<typeof schema>;
 
 interface Props {
   initial?: Workflow;
@@ -67,7 +71,7 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
     handleSubmit,
     reset,
     formState: { errors, dirtyFields },
-  } = useForm<FormShape>({
+  } = useForm<FormInput, unknown, FormShape>({
     resolver: zodResolver(schema),
     defaultValues: defaults,
   });

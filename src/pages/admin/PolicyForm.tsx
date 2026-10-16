@@ -38,7 +38,7 @@ import { usePlatformReservedPriority } from '../../api/platformSettings';
 
 const schema = z.object({
   name: z.string().min(1, 'name is required').max(120),
-  workflow_id: z.string().uuid('pick a workflow'),
+  workflow_id: z.guid('pick a workflow'),
   priority: z.coerce.number().int().min(0).max(10_000),
   enabled: z.boolean(),
   // R-follow-up #3 (api#127) — anchor picker. Mutually exclusive at
@@ -54,7 +54,11 @@ const schema = z.object({
   sel_secret_ref_prefix: z.string().max(255).optional(),
 });
 
-type FormShape = z.infer<typeof schema>;
+// z.coerce.number() fields make the schema's input type differ from
+// its output (zod 4 types coerce input as unknown), so the form holds
+// the input shape and onValid receives the parsed output.
+type FormInput = z.input<typeof schema>;
+type FormShape = z.output<typeof schema>;
 
 interface Props {
   initial?: Policy;
@@ -90,7 +94,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
     reset,
     watch,
     formState: { errors },
-  } = useForm<FormShape>({
+  } = useForm<FormInput, unknown, FormShape>({
     resolver: zodResolver(schema),
     defaultValues: defaults,
     // QA P0-1: surface required-field errors (notably workflow_id) as

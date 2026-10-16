@@ -344,7 +344,7 @@ function buildAuthorSchema(cap: number) {
       // api#141 — optional operation from the backend-owned enum.
       // Empty string = wildcard (omitted from the submitted selector).
       operation: z.string().optional(),
-      workflow_id: z.string().uuid('pick a workflow'),
+      workflow_id: z.guid('pick a workflow'),
       priority: z.coerce
         .number()
         .int()
@@ -355,7 +355,7 @@ function buildAuthorSchema(cap: number) {
     .superRefine((val, ctx) => {
       if (val.env_match === 'specific' && !val.environment_id) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           path: ['environment_id'],
           message: 'pick a non-prod environment',
         });
@@ -363,7 +363,11 @@ function buildAuthorSchema(cap: number) {
     });
 }
 
-type AuthorFormShape = z.infer<ReturnType<typeof buildAuthorSchema>>;
+// z.coerce.number() fields make the schema's input type differ from
+// its output (zod 4 types coerce input as unknown), so the form holds
+// the input shape and onValid receives the parsed output.
+type AuthorFormInput = z.input<ReturnType<typeof buildAuthorSchema>>;
+type AuthorFormShape = z.output<ReturnType<typeof buildAuthorSchema>>;
 
 function AuthorPolicyDrawer({
   projectId,
@@ -474,7 +478,7 @@ function AuthorPolicyForm({
     handleSubmit,
     watch,
     formState: { errors },
-  } = useForm<AuthorFormShape>({
+  } = useForm<AuthorFormInput, unknown, AuthorFormShape>({
     resolver: zodResolver(schema),
     defaultValues: {
       name: '',
