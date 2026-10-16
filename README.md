@@ -83,7 +83,7 @@ src/
     Button / Card / PageHeader / StatusPill / ConfirmModal / VersionChip / ErrorBoundary
 nginx/
   nginx.conf             SPA fallback + CSP + cache strategy + healthz
-Dockerfile               multi-stage: node-vite → nginx 1.27 alpine
+Dockerfile               multi-stage: node 24 + vite → nginx 1.30 alpine (digest-pinned)
 ```
 
 ## Configuration
@@ -107,7 +107,7 @@ docker run --rm -p 8080:8080 sb-ui:dev
 # → http://localhost:8080/login
 ```
 
-For interactive dev with hot reload, node 20 is required:
+For interactive dev with hot reload, node 24 (LTS) is required:
 
 ```bash
 npm ci
