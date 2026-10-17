@@ -3,10 +3,10 @@
  * actions (filters and at most one primary button).
  *
  * The h1 has `id="page-title"` and tabIndex -1 so the shell can move
- * focus to it on every route change.
+ * focus to it on every route change. The document title follows it.
  */
 
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 interface Props {
   title: string;
@@ -16,6 +16,11 @@ interface Props {
 }
 
 export function PageHeader({ title, description, actions }: Props) {
+  // The tab title names the page, so history and tabs are readable.
+  useEffect(() => {
+    document.title = `${title} · Secrets Bridge`;
+  }, [title]);
+
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
       <div className="min-w-0">

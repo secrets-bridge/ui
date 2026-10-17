@@ -81,7 +81,7 @@ export function Dashboard() {
   return (
     <div>
       <PageHeader
-        title="Dashboard"
+        title="Overview"
         description={
           isAdmin
             ? 'Platform health + the queues your role gates.'

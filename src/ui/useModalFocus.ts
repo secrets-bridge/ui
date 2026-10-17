@@ -40,6 +40,8 @@ export function useModalFocus(
   ref: RefObject<HTMLElement | null>,
   onClose: () => void,
   fallbackFocus: () => HTMLElement | null = defaultFallback,
+  /** Return false to leave focus alone on close (someone else moves it). */
+  shouldRestore: () => boolean = () => true,
 ): void {
   // The trigger is whatever had focus when the layer first rendered.
   // Captured during render, before any effect moves focus, so a
@@ -51,9 +53,11 @@ export function useModalFocus(
   // Keep the latest callbacks without re-running the open/close effect.
   const onCloseRef = useRef(onClose);
   const fallbackRef = useRef(fallbackFocus);
+  const shouldRestoreRef = useRef(shouldRestore);
   useEffect(() => {
     onCloseRef.current = onClose;
     fallbackRef.current = fallbackFocus;
+    shouldRestoreRef.current = shouldRestore;
   });
 
   useEffect(() => {
@@ -102,9 +106,13 @@ export function useModalFocus(
       if (at >= 0) layers.splice(at, 1);
       if (layers.length === 0) document.body.style.overflow = previousOverflow;
       // Return focus after React has finished removing the layer. A layer
-      // that is still on the page (StrictMode re-running effects) keeps it.
+      // that is still on the page (StrictMode re-running effects) keeps
+      // it, and so does a layer opened in the meantime (the phone menu
+      // closing as the sign-out dialog opens).
       window.setTimeout(() => {
         if (root.isConnected && root.contains(document.activeElement)) return;
+        if (layers.length > 0) return;
+        if (!shouldRestoreRef.current()) return;
         const target = opener && opener.isConnected ? opener : fallbackRef.current();
         target?.focus();
       }, 0);

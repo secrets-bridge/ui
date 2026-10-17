@@ -121,3 +121,22 @@ export function MinusSquareIcon(p: IconProps) {
     </Icon>
   );
 }
+
+/** Inbox: the agent icon reversed, a value arriving into the box. */
+export function InboxIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M3.5 11H20.5V20.5H3.5Z" />
+      <path d="M12 3.5V16M8.5 12.5L12 16L15.5 12.5" />
+    </Icon>
+  );
+}
+
+/** Catalog: stacked records. */
+export function CatalogIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M3.5 4H20.5V8.5H3.5ZM3.5 10H20.5V14.5H3.5ZM3.5 16H20.5V20.5H3.5Z" />
+    </Icon>
+  );
+}

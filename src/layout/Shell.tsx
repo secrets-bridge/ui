@@ -1,88 +1,77 @@
-import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
 import { useInboxCount } from '../api/crossTeam';
+import { useRequests } from '../api/requests';
+import { needsMyDecision } from '../lib/requestQueues';
 import { ConfirmModal } from '../ui/ConfirmModal';
-import { VersionChip } from '../ui/VersionChip';
+import {
+  AgentIcon,
+  AuditIcon,
+  CatalogIcon,
+  CloseIcon,
+  InboxIcon,
+  MenuIcon,
+  OverviewIcon,
+  RequestIcon,
+} from '../ui/icons';
 import { Logo } from '../ui/Logo';
 import { ThemeToggle } from '../ui/ThemeToggle';
+import { useModalFocus } from '../ui/useModalFocus';
+import { VersionChip } from '../ui/VersionChip';
 
 /**
- * Shell — sidebar + top bar + main content slot, matched against the
- * Figma frame on page 05 (Dashboard) and the 06 screens. Layout:
+ * Console shell: a 216px sidebar and the page. At 900px and below the
+ * sidebar becomes a menu button in a top bar that opens the same
+ * navigation in a modal panel.
  *
- *   ┌─────────────────────────────────────────────────────────────┐
- *   │ ⬛ SecretsBridge          Roles  ┌ search ┐ ⊙ Acme Corp  ⨀  │
- *   ├──────────────┬──────────────────────────────────────────────┤
- *   │ ☐ Agents     │                                              │
- *   │ ☐ Requests 3 │   <Outlet />                                 │
- *   │ ...          │                                              │
- *   │ ADMIN        │                                              │
- *   │ ⬛ Roles      │                                              │
- *   │ ...          │                                              │
- *   │              │                                              │
- *   │ Haider       │                                              │
- *   │ Platform admin                                              │
- *   └──────────────┴──────────────────────────────────────────────┘
- *
- * Some bits are aspirational for v1 (the search field is decorative;
- * the env-switcher pill is a placeholder; pending-request badges land
- * when Requests does). The shell shape is real today.
+ * - Nav items are gated by the live permission set and stay hidden
+ *   until /users/me resolves (fail-closed). Hiding a link is not
+ *   authorization; the api decides.
+ * - No organization switcher, no environment toggle and no search
+ *   field: none of them exist behind the UI.
+ * - A route change moves focus to the page h1 (#page-title), or to the
+ *   main region while the page is still loading.
  */
 export function Shell() {
-  const { identity, hasPermission, logout, meStatus } = useAuth();
-  const navigate = useNavigate();
+  const { identity, logout } = useAuth();
+  const location = useLocation();
+  const [navOpen, setNavOpen] = useState(false);
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<unknown>(null);
+  const mainRef = useRef<HTMLElement>(null);
 
-  // Sign Out is a one-click destructive action in the sidebar — easy
-  // to hit while exploring the user/profile area. A confirmation
-  // modal turns it into an explicit, two-step intent. Matches the
-  // pattern used by AWS Console / GitHub / Stripe Dashboard.
-  //
-  // The button itself only opens the modal; the actual /auth/logout
-  // POST fires from the modal's Confirm CTA. `signingOut` gates the
-  // CTA so double-clicks inside the modal can't fire duplicates,
-  // and the existing api-level idempotency is still the backstop.
+  // Move focus to the new page's heading on every route change, not on
+  // the first load. Comparing paths (rather than a "first run" flag)
+  // also holds when StrictMode runs the effect twice.
+  const lastPath = useRef(location.pathname);
+  useEffect(() => {
+    if (lastPath.current === location.pathname) return;
+    lastPath.current = location.pathname;
+    const raf = window.requestAnimationFrame(() => {
+      const h1 = document.getElementById('page-title');
+      (h1 ?? mainRef.current)?.focus();
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [location.pathname]);
+
+  // Sign out asks first (it's easy to hit by accident) and then does a
+  // HARD navigation to /login: logout() empties the query cache, and a
+  // router navigate() in the same tick can be lost to React's batching
+  // (UAT round 4, 2026-05-31). A full reload is the clean signed-out
+  // state. If the api call fails, the session is still alive, so the
+  // dialog stays open with the error and the user can retry or cancel.
   const confirmSignOut = async () => {
     if (signingOut) return;
     setSigningOut(true);
     setSignOutError(null);
     try {
       await logout();
-      // Success path — the api revoked the session and cleared the
-      // cookie. Use window.location.assign for a HARD navigation
-      // instead of react-router's navigate(): logout() synchronously
-      // calls queryClient.removeQueries which notifies the useMe
-      // observer, which schedules a re-render. In React 18's
-      // automatic batching, a navigate() call sandwiched between
-      // that observer notification and the next render can be eaten
-      // — UAT round 4 (2026-05-31) reproduced exactly that: modal
-      // closed, location.pathname stayed at /, identity gone
-      // (verified via /users/me 401), Dashboard kept rendering with
-      // stale chrome.
-      //
-      // window.location.assign side-steps the whole problem: it
-      // forces the browser to reload /login from scratch. All
-      // in-memory state (React tree, TanStack Query cache, any
-      // half-set Zustand store, whatever) is gone. The next boot is
-      // the canonical signed-out state.
-      //
-      // This is the right cost trade for logout specifically: the
-      // user is starting over anyway, so paying for one full SPA
-      // boot is fine. Don't apply this pattern to other navigations.
       setSignOutOpen(false);
       window.location.assign('/login');
     } catch (err) {
-      // Failure path — api returned 5xx (ALB restart blip, Postgres
-      // timeout, etc.) or the network call itself failed. The user is
-      // still authenticated server-side, so DON'T pretend logout
-      // worked: keep the modal open and surface the error via the
-      // existing ConfirmModal error banner. The user can retry; if
-      // they cancel, the cancel handler is gated on !signingOut so
-      // they can still bail out.
       setSignOutError(err);
     } finally {
       setSigningOut(false);
@@ -95,215 +84,62 @@ export function Shell() {
     setSignOutOpen(false);
   };
 
-  // Sidebar entries gated by the live permission set. Each entry
-  // can declare one or more required permissions; the item renders
-  // only when the user holds all of them. Until /users/me hydrates
-  // (meStatus !== 'ready') every gated item stays hidden — strict
-  // fail-closed behaviour.
-  //
-  // Mapping:
-  //   Requests        → secret.request OR secret.approve
-  //   Agents          → agent.list
-  //   Secrets         → secret.list
-  //   Audit           → audit.read
-  //   Admin/Teams     → team.edit
-  //   Admin/Projects  → team.edit (admins curate projects + teams together)
-  //   Admin/Roles     → role.edit
-  //   Admin/Asgmts    → user_role.edit
-  //   Admin/Wflows    → workflow.edit
-  //   Admin/Policies  → policy.edit
-  //   Admin/PltSettn  → policy.edit (R-follow-up #2 / api#113)
-  //   Admin/Intgrtns  → integration.edit
-  //
-  // Dashboard + /me are always visible (no gate).
-  const showRequests = hasPermission('secret.request') || hasPermission('secret.approve');
-  // Slice N5 — Inbox (cross-team value-provision queue) is gated on
-  // `secret.value.provide` at ANY scope. Fail-closed: until /users/me
-  // resolves, the entry stays hidden. The badge count query is also
-  // gated on the same flag so we don't fire it for users who can't see
-  // the inbox.
-  const showInbox = hasPermission('secret.value.provide');
-  const inboxCount = useInboxCount({ enabled: showInbox });
-  const inboxBadge = showInbox ? inboxCount.data?.total : undefined;
-  const showAgents = hasPermission('agent.list');
-  const showSecrets = hasPermission('secret.list');
-  const showAudit = hasPermission('audit.read');
-  const showTeams = hasPermission('team.edit');
-  const showRoles = hasPermission('role.edit');
-  const showAssignments = hasPermission('user_role.edit');
-  const showWorkflows = hasPermission('workflow.edit');
-  const showPolicies = hasPermission('policy.edit');
-  const showIntegrations = hasPermission('integration.edit');
-  // EPIC R (api#108) Slice R3 — sidebar entry gated by policy.author
-  // ONLY per §5 correction 2. policy.edit holders use /admin/policies
-  // for global rules; the project-anchored URL is NEVER auto-surfaced
-  // for admin perms.
-  const showProjectPolicies = hasPermission('policy.author');
-  const anyAdmin = showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showIntegrations;
+  const openSignOut = () => {
+    setNavOpen(false);
+    setSignOutOpen(true);
+  };
 
   return (
-    <div className="h-full grid grid-cols-[240px_1fr] grid-rows-[64px_1fr] bg-bg">
-      {/* SIDEBAR: spans both rows */}
-      <aside className="row-span-2 bg-surface border-r border-border flex flex-col">
-        {/* brand mark */}
-        <div className="px-5 py-4 flex items-center gap-2 border-b border-border/60">
-          <Logo size={20} />
-        </div>
+    <div className="flex min-h-full bg-bg">
+      <a
+        href="#main"
+        className="sr-only z-[70] rounded-md bg-surface px-3 py-2 text-ui font-semibold text-accent focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+      >
+        Skip to content
+      </a>
 
-        {/* nav */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-          <NavGroup>
-            <NavItem to="/" label="Dashboard" end />
-            {showRequests && <NavItem to="/requests" label="Requests" />}
-            {showInbox && (
-              <NavItem to="/inbox" label="Inbox" badge={inboxBadge} />
-            )}
-            {showAgents && <NavItem to="/agents" label="Agents" />}
-            {showSecrets && <NavItem to="/secrets" label="Secrets" />}
-            {showAudit && <NavItem to="/audit" label="Audit" />}
-          </NavGroup>
-
-          {/* Slice L5 — My Projects tree. The dev-facing entry-point;
-              consumes /users/me/projects which now (Slice L4) returns
-              each project's environments inline. */}
-          <SectionLabel>My Projects</SectionLabel>
-          <NavGroup>
-            <NavItem to="/projects" label="All projects" end />
-            {showProjectPolicies && (
-              <NavItem to="/projects/policies" label="Project policies" />
-            )}
-            {/* R-follow-up #3 (api#114) — Team policies entry. Coverage
-                is server-resolved via /me/policy-author-team-coverage;
-                the sidebar uses the same broad policy.author flag as
-                Project policies and relies on the page to render the
-                appropriate empty state when the actor doesn't actually
-                cover any team. Sidebar-side scope-aware filtering can
-                land later once coverage stream is hot on every nav. */}
-            {showProjectPolicies && (
-              <NavItem to="/teams/policies" label="Team policies" />
-            )}
-          </NavGroup>
-
-          {anyAdmin && (
-            <>
-              <SectionLabel>Admin</SectionLabel>
-              <NavGroup>
-                {showTeams && <NavItem to="/admin/projects" label="Projects" />}
-                {showTeams && <NavItem to="/admin/teams" label="Teams" />}
-                {showRoles && <NavItem to="/admin/roles" label="Roles" />}
-                {showAssignments && <NavItem to="/admin/assignments" label="Assignments" />}
-                {showWorkflows && <NavItem to="/admin/workflows" label="Workflows" />}
-                {showPolicies && <NavItem to="/admin/policies" label="Policies" />}
-                {showPolicies && (
-                  <NavItem to="/admin/platform-settings" label="Platform settings" />
-                )}
-                {showIntegrations && (
-                  <NavItem
-                    to="/admin/provider-connections"
-                    label="Provider connections"
-                  />
-                )}
-                {showIntegrations && <NavItem to="/admin/integrations" label="Integrations" />}
-              </NavGroup>
-            </>
-          )}
-
-          {meStatus === 'loading' && (
-            <div className="px-3 pt-4 text-[11px] text-muted/70">
-              Loading permissions…
-            </div>
-          )}
-        </nav>
-
-        {/* user profile pinned to bottom */}
-        {identity && (
-          <div className="px-3 py-3 border-t border-border/60 space-y-1">
-            <button
-              onClick={() => navigate('/me')}
-              className="w-full flex items-center gap-3 px-2 py-2 rounded-md hover:bg-bg/40 transition-colors text-left"
-              title="View your profile"
-            >
-              <Avatar name={identity.display_name} />
-              <div className="flex-1 min-w-0">
-                <div className="text-ink text-sm font-medium truncate">
-                  {identity.display_name}
-                </div>
-                <div className="text-muted text-xs truncate">
-                  {roleLabelFor(identity.permissions)}
-                </div>
-              </div>
-            </button>
-            {/* Slice I1: MFA enrollment shortcut. When the user has no
-                enrolled factor, render a louder "Add factor" CTA so
-                brand-new users don't have to discover /me/mfa via the
-                412 dead-end on a Tier-2 op. When enrolled, render a
-                quieter "Security" link for managing factors. */}
-            <button
-              type="button"
-              onClick={() => navigate('/me/mfa')}
-              className={
-                'w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md transition-colors text-left text-[11px] ' +
-                (identity.mfa_enrolled
-                  ? 'text-muted hover:text-ink hover:bg-bg/30'
-                  : 'text-accent hover:underline hover:bg-accent/10 border border-accent/30')
-              }
-              title={
-                identity.mfa_enrolled
-                  ? 'Manage your MFA factors'
-                  : 'Enroll a security key or authenticator app'
-              }
-            >
-              <span>{identity.mfa_enrolled ? 'Security' : 'Add MFA factor'}</span>
-              {!identity.mfa_enrolled && <span aria-hidden="true">→</span>}
-            </button>
-            <button
-              type="button"
-              onClick={() => setSignOutOpen(true)}
-              disabled={signingOut}
-              aria-busy={signingOut}
-              className="w-full text-[11px] text-muted hover:text-ink px-2 py-1.5 rounded-md hover:bg-bg/30 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Sign out"
-            >
-              {signingOut ? 'Signing out…' : 'Sign out'}
-            </button>
-            <div className="flex justify-center pt-1">
-              <VersionChip />
-            </div>
-          </div>
-        )}
+      <aside
+        aria-label="Console"
+        className="sticky top-0 flex h-screen w-sidebar shrink-0 flex-col border-r border-border bg-bg px-2.5 pb-2.5 pt-3.5 max-[900px]:hidden"
+      >
+        <SidebarContent onSignOut={openSignOut} />
       </aside>
 
-      {/* TOP BAR */}
-      <header className="bg-surface border-b border-border px-6 flex items-center gap-4">
-        {/* page title is filled by per-page <PageHeader>; the bar
-            itself just hosts global controls. */}
-        <div className="flex-1" />
-        <input
-          type="text"
-          placeholder="Search secrets, requests, agents…"
-          className="hidden md:block w-80 bg-bg/60 border border-border rounded-sm px-4 py-1.5 text-sm text-ink placeholder-muted focus:border-accent/40"
-        />
-        <EnvSwitcher value="Production" />
-        <ThemeToggle />
-        {identity && <Avatar name={identity.display_name} />}
-      </header>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-10 hidden h-[52px] items-center gap-1.5 border-b border-border bg-bg pl-1.5 pr-2.5 max-[900px]:flex">
+          <button
+            type="button"
+            aria-label="Open navigation"
+            aria-expanded={navOpen}
+            onClick={() => setNavOpen(true)}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-ink hover:bg-sunken"
+          >
+            <MenuIcon />
+          </button>
+          <NavLink to="/" aria-label="Secrets Bridge console, overview" className="px-1">
+            <Logo size={20} textSize={15} />
+          </NavLink>
+          <span className="flex-1" />
+          <ThemeToggle className="h-11 w-11" />
+          {identity && <Avatar name={identity.display_name} />}
+        </header>
 
-      {/* MAIN */}
-      <main className="overflow-auto bg-bg">
-        <div className="px-8 py-6">
+        <main ref={mainRef} id="main" tabIndex={-1} className="flex-1 px-7 pb-12 pt-6 max-[900px]:px-4 max-[900px]:pt-5">
           <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
+
+      {navOpen && <MobileNav onClose={() => setNavOpen(false)} onSignOut={openSignOut} />}
 
       {signOutOpen && (
         <ConfirmModal
-          title="Sign out of SecretsBridge?"
+          title="Sign out of Secrets Bridge?"
           body={
             signOutError
-              ? "Sign out didn't go through — your session is still active. The api returned an error; you can retry, or cancel to stay signed in."
-              : "You'll need to sign in again to come back. Any in-flight work isn't lost — requests, audit events, and approvals all live server-side."
+              ? "Sign out didn't go through, so your session is still active. Try again, or cancel to stay signed in."
+              : "You'll need to sign in again to come back. Your requests, approvals and audit events stay on the server."
           }
-          confirmText={signOutError ? 'Retry sign out' : 'Sign out'}
+          confirmText={signOutError ? 'Try again' : 'Sign out'}
           danger
           loading={signingOut}
           error={signOutError}
@@ -315,15 +151,120 @@ export function Shell() {
   );
 }
 
-// --- sidebar bits ---------------------------------------------------
+// --- navigation -----------------------------------------------------
 
-function NavGroup({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-0.5">{children}</div>;
+function SidebarContent({ onSignOut }: { onSignOut: () => void }) {
+  return (
+    <>
+      <NavLink to="/" aria-label="Secrets Bridge console, overview" className="mb-3.5 block px-2 pt-1">
+        <Logo size={20} textSize={15} />
+      </NavLink>
+      <Navigation />
+      <SidebarFooter onSignOut={onSignOut} />
+    </>
+  );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function Navigation() {
+  const { identity, hasPermission, meStatus } = useAuth();
+  const me = identity?.id ?? '';
+
+  // Sidebar entries gated by the live permission set:
+  //   Requests        → secret.request OR secret.approve
+  //   Inbox           → secret.value.provide (at any scope)
+  //   Agents          → agent.list
+  //   Secrets         → secret.list
+  //   Audit           → audit.read
+  //   Project / team policies → policy.author (never auto-shown for
+  //                     policy.edit holders; they use /admin/policies)
+  //   Admin pages     → team.edit, role.edit, user_role.edit,
+  //                     workflow.edit, policy.edit, integration.edit
+  const canApprove = hasPermission('secret.approve');
+  const showRequests = hasPermission('secret.request') || canApprove;
+  const showInbox = hasPermission('secret.value.provide');
+  const showAgents = hasPermission('agent.list');
+  const showSecrets = hasPermission('secret.list');
+  const showAudit = hasPermission('audit.read');
+  const showTeams = hasPermission('team.edit');
+  const showRoles = hasPermission('role.edit');
+  const showAssignments = hasPermission('user_role.edit');
+  const showWorkflows = hasPermission('workflow.edit');
+  const showPolicies = hasPermission('policy.edit');
+  const showIntegrations = hasPermission('integration.edit');
+  const showScopedPolicies = hasPermission('policy.author');
+  const anyAdmin =
+    showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showIntegrations;
+
+  // Requests count: for approvers, the requests waiting for their
+  // decision (the same query and rule as the Requests queue, so the
+  // two never disagree). Hidden at 0.
+  const pending = useRequests({ status: 'pending' }, { enabled: canApprove && !!me });
+  const decisionCount = useMemo(
+    () => (canApprove ? needsMyDecision(pending.data ?? [], me).length : 0),
+    [canApprove, pending.data, me],
+  );
+
+  const inboxCount = useInboxCount({ enabled: showInbox });
+  const inboxBadge = showInbox ? inboxCount.data?.total : undefined;
+
   return (
-    <div className="pt-5 pb-2 px-3 text-[11px] text-muted font-semibold">
+    <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+      <NavItem to="/" end label="Overview" icon={<OverviewIcon size={16} />} />
+      {showRequests && (
+        <NavItem
+          to="/requests"
+          label="Requests"
+          icon={<RequestIcon size={16} />}
+          count={decisionCount}
+          countLabel={`${decisionCount} waiting for your decision`}
+        />
+      )}
+      {showInbox && (
+        <NavItem
+          to="/inbox"
+          label="Inbox"
+          icon={<InboxIcon size={16} />}
+          count={inboxBadge}
+          countLabel={`${inboxBadge ?? 0} waiting for your team's values`}
+        />
+      )}
+      {showSecrets && <NavItem to="/secrets" label="Secrets" icon={<CatalogIcon size={16} />} />}
+      {showAgents && <NavItem to="/agents" label="Agents" icon={<AgentIcon size={16} />} />}
+      {showAudit && <NavItem to="/audit" label="Audit" icon={<AuditIcon size={16} />} />}
+
+      <NavGroup label="Projects">
+        <NavItem to="/projects" end label="My projects" />
+        {showScopedPolicies && <NavItem to="/projects/policies" label="Project policies" />}
+        {showScopedPolicies && <NavItem to="/teams/policies" label="Team policies" />}
+      </NavGroup>
+
+      {anyAdmin && (
+        <NavGroup label="Admin">
+          {showTeams && <NavItem to="/admin/projects" label="Projects" />}
+          {showTeams && <NavItem to="/admin/teams" label="Teams" />}
+          {showRoles && <NavItem to="/admin/roles" label="Roles" />}
+          {showAssignments && <NavItem to="/admin/assignments" label="Assignments" />}
+          {showWorkflows && <NavItem to="/admin/workflows" label="Workflows" />}
+          {showPolicies && <NavItem to="/admin/policies" label="Policies" />}
+          {showPolicies && <NavItem to="/admin/platform-settings" label="Platform settings" />}
+          {showIntegrations && <NavItem to="/admin/provider-connections" label="Provider connections" />}
+          {showIntegrations && <NavItem to="/admin/integrations" label="Integrations" />}
+        </NavGroup>
+      )}
+
+      {meStatus === 'loading' && (
+        <p className="px-2 pt-3 text-caption text-muted" role="status">
+          Loading your access…
+        </p>
+      )}
+    </nav>
+  );
+}
+
+function NavGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="mt-4 flex flex-col gap-0.5">
+      <p className="px-2 pb-1 text-label text-muted">{label}</p>
       {children}
     </div>
   );
@@ -332,14 +273,17 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 function NavItem({
   to,
   label,
-  badge,
+  icon,
+  count,
+  countLabel,
   end,
 }: {
   to: string;
   label: string;
-  badge?: number;
-  // NavLink defaults to prefix matching — `/` would otherwise stay
-  // active under every route. Pass `end` for the Dashboard root.
+  icon?: ReactNode;
+  count?: number;
+  countLabel?: string;
+  // NavLink matches by prefix; `end` keeps "/" from matching every route.
   end?: boolean;
 }) {
   return (
@@ -347,79 +291,150 @@ function NavItem({
       to={to}
       end={end}
       className={({ isActive }) =>
-        [
-          'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-          isActive
-            ? 'bg-accent/15 text-accent'
-            : 'text-muted hover:text-ink hover:bg-bg/30',
-        ].join(' ')
+        'group flex h-8 shrink-0 items-center gap-[9px] rounded-sm px-2 text-body max-[900px]:h-11 ' +
+        (isActive ? 'bg-sunken font-semibold text-ink' : 'font-medium text-ink hover:bg-sunken')
       }
     >
-      {({ isActive }) => (
-        <>
-          <NavDot active={isActive} />
-          <span className="flex-1">{label}</span>
-          {badge !== undefined && badge > 0 && (
-            <span className="bg-accent/20 text-accent text-[11px] rounded-sm px-2 py-0.5 font-medium">
-              {badge}
-            </span>
-          )}
-        </>
+      {icon && (
+        <span className="text-muted group-aria-[current=page]:text-accent">{icon}</span>
+      )}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {count !== undefined && count > 0 && (
+        <span
+          aria-label={countLabel}
+          className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-sm bg-accent px-[5px] font-mono text-[11px] font-medium text-on-accent"
+        >
+          {count}
+        </span>
       )}
     </NavLink>
   );
 }
 
-function NavDot({ active }: { active: boolean }) {
-  // Small square indicator on the left of each nav item — the Figma
-  // sidebar uses a filled square for the active item and a hollow
-  // square for inactive ones. Reads as a checkbox-like affordance.
-  return active ? (
-    <span className="w-3 h-3 rounded-xs bg-accent" />
-  ) : (
-    <span className="w-3 h-3 rounded-xs border border-border" />
-  );
-}
-
-// --- top bar bits ---------------------------------------------------
-
-function EnvSwitcher({ value }: { value: string }) {
+function SidebarFooter({ onSignOut }: { onSignOut: () => void }) {
+  const { identity } = useAuth();
+  const navigate = useNavigate();
+  if (!identity) return null;
   return (
-    <button
-      className="hidden md:inline-flex items-center gap-2 rounded-sm bg-bg/60 border border-border px-3 py-1.5 text-xs text-ink hover:bg-bg"
-      title="Environment context"
-    >
-      <span className="w-2 h-2 rounded-sm bg-ok" />
-      {value}
-    </button>
+    <div className="mt-2 border-t border-border pt-2.5">
+      <div className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2 pl-1.5 pr-0.5">
+        <Avatar name={identity.display_name} small />
+        <button
+          type="button"
+          onClick={() => navigate('/me')}
+          className="flex min-w-0 flex-col rounded-sm text-left leading-tight hover:underline"
+          title="Your profile"
+        >
+          <span className="truncate text-ui font-medium text-ink">{identity.display_name}</span>
+          <span className="truncate text-label font-normal text-muted">{roleLabelFor(identity.permissions)}</span>
+        </button>
+        <ThemeToggle />
+      </div>
+
+      {!identity.mfa_enrolled && (
+        <button
+          type="button"
+          onClick={() => navigate('/me/mfa')}
+          className="mt-2.5 w-full rounded-md border border-accent-line bg-accent-soft px-2.5 py-2 text-left text-caption text-ink hover:underline"
+        >
+          <span className="font-semibold">Add a second factor.</span> Approving and revealing need one.
+        </button>
+      )}
+
+      <div className="mt-2 flex items-center gap-3 whitespace-nowrap px-1.5 text-caption">
+        <button type="button" onClick={() => navigate('/me/mfa')} className="text-muted hover:text-ink hover:underline">
+          Security
+        </button>
+        <button type="button" onClick={onSignOut} className="text-muted hover:text-ink hover:underline">
+          Sign out
+        </button>
+      </div>
+      <div className="mt-2 px-1.5">
+        <VersionChip />
+      </div>
+    </div>
   );
 }
 
-// Heuristic label for the avatar's subtitle. The api doesn't return a
-// canonical "what kind of user is this" string — we approximate from
-// the permission set so the sidebar shows a reasonable label without
-// flipping to the profile page.
+function MobileNav({ onClose, onSignOut }: { onClose: () => void; onSignOut: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const openedAt = useRef(location.pathname);
+  // Following a link closes the menu, and the new page's heading takes
+  // focus (the shell does that), so the menu doesn't hand focus back to
+  // its button in that case.
+  const navigated = useRef(false);
+  useModalFocus(ref, onClose, undefined, () => !navigated.current);
+  useEffect(() => {
+    if (location.pathname !== openedAt.current) {
+      navigated.current = true;
+      onClose();
+    }
+  }, [location.pathname, onClose]);
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 bg-scrim" onClick={onClose} aria-hidden="true" />
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation"
+        tabIndex={-1}
+        className="absolute bottom-0 left-0 top-0 flex w-[min(300px,86%)] flex-col bg-surface p-3 shadow-overlay"
+      >
+        <div className="flex items-center justify-between px-1 pb-3.5">
+          <Logo size={20} textSize={15} product="Console" />
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={onClose}
+            data-autofocus
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-ink hover:bg-sunken"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+        <Navigation />
+        <SidebarFooter onSignOut={onSignOut} />
+      </div>
+    </div>
+  );
+}
+
+// --- people ---------------------------------------------------------
+
+// The api has no "kind of user" field, so the subtitle is read from the
+// permission set. "No role" is the honest label for a signed-in user
+// with zero grants (e.g. an OIDC user not yet in any mapped group).
 function roleLabelFor(perms: string[]): string {
   if (perms.includes('role.edit') || perms.includes('user_role.edit')) return 'Platform admin';
+  if (perms.includes('secret.security.approve')) return 'Security approver';
   if (perms.includes('secret.approve')) return 'Approver';
-  if (perms.includes('secret.request')) return 'Developer';
-  // perms.length === 0 reaches here only for a fully-hydrated user
-  // who genuinely has zero grants (e.g. a JIT-provisioned OIDC user
-  // not yet in any mapped group). The avatar+name button is gated on
-  // `identity`, which is null during hydration — so we never render
-  // this label while /users/me is in flight. Showing 'Loading…' here
-  // was misleading: it implied the SPA was still working when it
-  // wasn't, and stuck forever for zero-role users. 'No role' is the
-  // honest signal.
+  if (perms.includes('secret.value.provide')) return 'Value provider';
+  if (perms.includes('secret.request')) return 'Requester';
   if (perms.length === 0) return 'No role';
   return 'Member';
 }
 
-function Avatar({ name }: { name: string }) {
-  const initial = (name || '?').trim().charAt(0).toUpperCase();
+function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  const first = words[0].charAt(0);
+  const second = words.length > 1 ? words[words.length - 1].charAt(0) : '';
+  return (first + second).toUpperCase();
+}
+
+function Avatar({ name, small }: { name: string; small?: boolean }) {
   return (
-    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-accent text-bg text-sm font-semibold">
-      {initial}
+    <span
+      aria-hidden="true"
+      className={
+        'inline-flex shrink-0 items-center justify-center rounded-full bg-accent-soft font-semibold text-accent ' +
+        (small ? 'h-7 w-7 text-[11px]' : 'h-8 w-8 text-[12px]')
+      }
+    >
+      {initialsOf(name)}
     </span>
   );
 }

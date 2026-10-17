@@ -37,10 +37,12 @@ interface LogoProps {
   size?: number;
   /** Small mono tag after the name, such as "Console". */
   product?: string;
+  /** Name size in px; defaults to the lockup ratio (0.888 x size). */
+  textSize?: number;
   className?: string;
 }
 
-export function Logo({ variant = 'lockup', size = 20, product, className = '' }: LogoProps) {
+export function Logo({ variant = 'lockup', size = 20, product, textSize, className = '' }: LogoProps) {
   if (variant === 'mark') {
     return (
       <span role="img" aria-label="Secrets Bridge" className={'inline-flex ' + className}>
@@ -55,7 +57,7 @@ export function Logo({ variant = 'lockup', size = 20, product, className = '' }:
         className
       }
       style={{
-        fontSize: `${Math.round(size * 0.888 * 10) / 10}px`,
+        fontSize: `${textSize ?? Math.round(size * 0.888 * 10) / 10}px`,
         gap: `${Math.round(size * 0.375)}px`,
       }}
     >
