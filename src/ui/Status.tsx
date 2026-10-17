@@ -18,7 +18,7 @@ import type { AccessRequest } from '../api/types';
 import { statusLabel } from '../lib/requestStatus';
 
 export type RequestStatus = AccessRequest['status'];
-type Tone = 'warn' | 'ok' | 'bad' | 'neutral';
+export type Tone = 'warn' | 'ok' | 'bad' | 'neutral';
 
 const TONE: Record<RequestStatus, Tone> = {
   pending: 'warn',
@@ -49,15 +49,22 @@ export function Status({
   children?: ReactNode;
   className?: string;
 }) {
-  const tone = TONE[status] ?? 'neutral';
   return (
-    <span
-      className={
-        'inline-flex items-center gap-[7px] whitespace-nowrap text-ui font-medium text-ink ' + className
-      }
-    >
-      <span aria-hidden="true" className={'box-border h-2 w-2 shrink-0 ' + GLYPH[tone]} />
+    <ToneStatus tone={TONE[status] ?? 'neutral'} className={className}>
       {children ?? statusLabel(status)}
+    </ToneStatus>
+  );
+}
+
+/**
+ * The same glyph and word for anything that isn't a request (an agent,
+ * a catalog entry): pick the tone, pass the exact status word.
+ */
+export function ToneStatus({ tone, children, className = '' }: { tone: Tone; children: ReactNode; className?: string }) {
+  return (
+    <span className={'inline-flex items-center gap-[7px] whitespace-nowrap text-ui font-medium text-ink ' + className}>
+      <span aria-hidden="true" className={'box-border h-2 w-2 shrink-0 ' + GLYPH[tone]} />
+      {children}
     </span>
   );
 }

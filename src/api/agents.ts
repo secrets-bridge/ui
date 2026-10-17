@@ -1,77 +1,91 @@
 /**
- * Agent admin API surface.
+ * Agent administration (Agent Onboarding MVP, api#177).
  *
- *   GET    /api/v1/agents             — list (admin projection, no secrets)
- *   POST   /api/v1/agents             — mint a new agent (returns secret ONCE)
- *   POST   /api/v1/agents/:id/revoke  — revoke; heartbeats stop being accepted
+ *   GET  /api/v1/admin/agents                                    agent.list
+ *   POST /api/v1/admin/agents/:id/revoke  {reason?}              agent.revoke
+ *   POST /api/v1/provider-connections/:id/agent-enrollment-token agent.mint
  *
- * The mint endpoint returns `{id, agent_secret}` exactly once. The
- * agent_secret hash is what's stored in Postgres; the plaintext is
- * returned in the response and NEVER recoverable thereafter. UI must
- * surface that hard limit clearly — see the reveal-once modal in
- * `src/pages/Agents.tsx`.
+ * The list is the value-free admin projection: no secret hash, public
+ * key or credential. The enrollment token comes back exactly once, in
+ * the response to the POST; the api keeps only its hash. The SPA holds
+ * it in component state while the enrollment drawer is open and drops
+ * it on close. Direct mint (POST /agents) is a break-glass switch that
+ * is off by default (api#183), so the console onboards only through
+ * enrollment.
  */
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
 import { useSensitiveMutation } from './sensitiveMutation';
-import type { Agent } from './types';
+
+export type AgentStatus = 'enrolled' | 'active' | 'stale' | 'revoked' | 'disabled' | 'error';
+
+export interface AdminAgent {
+  id: string;
+  name: string;
+  status: AgentStatus;
+  provider_connection_id?: string;
+  provider_connection_name?: string;
+  provider_type?: string;
+  cluster_name?: string;
+  region?: string;
+  agent_version?: string;
+  capabilities: string[] | null;
+  last_seen_at?: string;
+  last_status?: string;
+  revoked_at?: string;
+  created_at: string;
+}
 
 export const agentsKey = {
   all: ['agents'] as const,
+  admin: ['agents', 'admin'] as const,
 };
 
-export function useAgents() {
+export function useAdminAgents(opts: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: agentsKey.all,
-    queryFn: () => api.get<Agent[]>('/api/v1/agents'),
-    // Poll every 10s so the live `online` / `pending` / `stale` badge
-    // in the Agents table reflects fresh heartbeats. The api-side
-    // status is owned by the worker's agents-stale sweeper (cutoff
-    // 5min by default); the SPA's narrower `online` window (90s) is
-    // computed from last_seen_at, which we want fresh.
-    refetchInterval: 10_000,
-    refetchOnWindowFocus: true,
-  });
-}
-
-export interface MintAgentInput {
-  name: string;
-  scope?: Record<string, unknown>;
-}
-
-/**
- * MintAgentResponse — the load-bearing security shape. `agent_secret`
- * is the ONLY moment plaintext exists in the SPA. Render it in a
- * reveal-once panel; clear from React state when the panel closes.
- */
-export interface MintAgentResponse {
-  id: string;
-  name: string;
-  agent_secret: string;
-}
-
-export function useMintAgent() {
-  // Don't invalidate on mint — let the caller decide WHEN to refetch
-  // (after the operator copies the secret). The Agents page calls
-  // invalidate() in its drawer's close handler.
-  // The response carries agent_secret: sensitive (UI-N-02).
-  return useSensitiveMutation({
-    mutationFn: (body: MintAgentInput) =>
-      api.post<MintAgentResponse>('/api/v1/agents', body),
+    queryKey: agentsKey.admin,
+    queryFn: async () => (await api.get<{ items: AdminAgent[] }>('/api/v1/admin/agents')).items ?? [],
+    enabled: opts.enabled ?? true,
+    // Heartbeats move "last seen" every 30 s or so; keep the table fresh
+    // while it is on screen.
+    refetchInterval: 15_000,
   });
 }
 
 export function useRevokeAgent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      api.post<void>(`/api/v1/agents/${id}/revoke`),
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      api.post<void>(`/api/v1/admin/agents/${encodeURIComponent(id)}/revoke`, reason ? { reason } : {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: agentsKey.all }),
+  });
+}
+
+export interface EnrollmentTokenInput {
+  connectionId: string;
+  expected_cluster_name?: string;
+  expires_in_seconds?: number;
+}
+
+export interface EnrollmentToken {
+  enrollment_token: string;
+  expires_at: string;
+  provider_connection_id: string;
+}
+
+/**
+ * Creates a one-time enrollment token. The response carries the token,
+ * so this is a sensitive mutation: call `reset()` once the result is in
+ * component state, so the MutationCache doesn't keep a second copy.
+ */
+export function useCreateEnrollmentToken() {
+  return useSensitiveMutation({
+    mutationFn: ({ connectionId, ...body }: EnrollmentTokenInput) =>
+      api.post<EnrollmentToken>(
+        `/api/v1/provider-connections/${encodeURIComponent(connectionId)}/agent-enrollment-token`,
+        body,
+      ),
   });
 }

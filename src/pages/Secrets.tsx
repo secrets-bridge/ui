@@ -31,7 +31,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { Input, Select } from '../ui/Field';
 import { SearchIcon } from '../ui/icons';
 import { PageHeader } from '../ui/PageHeader';
-import { StatusPill } from '../ui/StatusPill';
+import { ToneStatus } from '../ui/Status';
 import { DiscoverDrawer } from './DiscoverDrawer';
 
 const LIMIT = 200;
@@ -322,11 +322,7 @@ export function Secrets() {
 }
 
 function CatalogStatus({ status }: { status: Secret['status'] }) {
-  return (
-    <StatusPill variant={status === 'present' ? 'success' : 'warning'} tone="outline">
-      {status === 'present' ? 'Present' : 'Missing'}
-    </StatusPill>
-  );
+  return <ToneStatus tone={status === 'present' ? 'ok' : 'warn'}>{status === 'present' ? 'Present' : 'Missing'}</ToneStatus>;
 }
 
 function LabelChip({ k, v }: { k: string; v: unknown }) {

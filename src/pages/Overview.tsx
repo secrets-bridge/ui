@@ -15,14 +15,13 @@
  * small lookups that fill gaps until the api reports them.
  */
 
-import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { api } from '../api/client';
+import { useAdminAgents, type AgentStatus } from '../api/agents';
 import { useMe } from '../api/me';
 import { useRequests } from '../api/requests';
-import type { AccessRequest, Agent } from '../api/types';
+import type { AccessRequest } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { isOpen, needsMyDecision } from '../lib/requestQueues';
 import { requestRef } from '../lib/requestRef';
@@ -601,14 +600,18 @@ function Rail({
 }
 
 function AgentsBlock() {
-  const agents = useQuery({
-    queryKey: ['agents', 'overview'],
-    queryFn: () => api.get<Agent[]>('/api/v1/agents'),
-    staleTime: 30_000,
-  });
+  const agents = useAdminAgents();
   const rows = agents.data ?? [];
-  const active = rows.filter((a) => a.status === 'active').length;
-  const stale = rows.filter((a) => a.status === 'stale').length;
+  const count = (s: AgentStatus) => rows.filter((a) => a.status === s).length;
+  const summary = [
+    `${count('active')} active`,
+    count('stale') && `${count('stale')} stale`,
+    count('enrolled') && `${count('enrolled')} waiting for a heartbeat`,
+    count('error') && `${count('error')} with errors`,
+    count('revoked') && `${count('revoked')} revoked`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <section>
       <div className="mb-1 flex items-baseline justify-between border-b border-border pb-2">
@@ -624,7 +627,7 @@ function AgentsBlock() {
             ? "Couldn't load agents."
             : rows.length === 0
               ? 'No agents are connected yet.'
-              : `${active} active${stale ? ` · ${stale} stale` : ''}${rows.length - active - stale > 0 ? ` · ${rows.length - active - stale} revoked` : ''}`}
+              : summary}
       </p>
     </section>
   );
