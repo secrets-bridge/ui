@@ -1,612 +1,384 @@
 /**
- * Discovered-secrets page (`/secrets`).
+ * Secrets catalog (`/secrets`).
  *
- * Browse what the agents have surfaced via discovery jobs. Filter by
- * cluster / provider / ref prefix / status, plus repeatable
- * label=key:value chips that match native provider tags (Vault
- * custom_metadata, AWS Tags, etc.).
+ * What discovery found in the providers: path, provider, cluster, the
+ * provider's own labels (Vault custom_metadata, AWS tags) and whether
+ * the secret is still there. Metadata only: no values, no hashes and no
+ * "view value" shortcut; values only ever come through an approved
+ * request.
  *
- * Two-pane layout matches the Audit page (ui#21):
- *
- *   ┌── filter strip ───────────────────────────────────────────────────┐
- *   │ cluster · provider · ref prefix · status · + label chip      │
- *   ├── LEFT (table)                  ┬── RIGHT (selected details) ────┤
- *   │  ref · provider · cluster ·     │  full row + label list +       │
- *   │  labels · last seen · status    │  provider_config + versions    │
- *   └────────────────────────────────┴────────────────────────────────┘
- *
- * Hard rules respected:
- *   - This is metadata only — no plaintext, no provider credentials.
- *     The page never offers a 'view value' shortcut; that's the
- *     /requests flow.
- *   - `labels` is rendered verbatim from the api (Vault
- *     custom_metadata / AWS Tags / GCP labels / Azure tags) so the
- *     operator's existing tag conventions surface unmodified.
+ * Filters apply as you type (path prefix, project, provider, status,
+ * cluster and key:value labels, all ANDed) and Reset clears them. A row
+ * opens the secret's details in a drawer. Labels are operator-supplied
+ * text from the provider, so they are shown as plain text only.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
-import {
-  type Secret,
-  type SecretsFilter,
-  useSecrets,
-} from '../api/secrets';
+import { type Secret, type SecretsFilter, useSecrets } from '../api/secrets';
 import { useMyProjects } from '../api/tenancy';
+import { useAuth } from '../auth/AuthContext';
+import { providerLabel } from '../lib/providers';
+import { formatAge, formatExact } from '../lib/time';
+import { useNow } from '../lib/useNow';
+import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
+import { DataTable, type Column } from '../ui/DataTable';
+import { Drawer } from '../ui/Drawer';
+import { EmptyState } from '../ui/EmptyState';
+import { Input, Select } from '../ui/Field';
+import { SearchIcon } from '../ui/icons';
 import { PageHeader } from '../ui/PageHeader';
 import { StatusPill } from '../ui/StatusPill';
 import { DiscoverDrawer } from './DiscoverDrawer';
 
-const PROVIDER_LABELS: Record<string, string> = {
-  vault: 'HashiCorp Vault',
-  'aws-sm': 'AWS Secrets Manager',
-  'gcp-sm': 'GCP Secret Manager',
-  'azure-kv': 'Azure Key Vault',
-  'kubernetes': 'Kubernetes Secret',
-};
+const LIMIT = 200;
+const PROVIDERS = ['vault', 'aws-sm', 'gcp-sm', 'azure-kv'];
+
+/** The value of `text` once it has stopped changing for `ms`. */
+function useDebounced<T>(value: T, ms = 300): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = window.setTimeout(() => setV(value), ms);
+    return () => window.clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
 
 export function Secrets() {
-  const [filter, setFilter] = useState<SecretsFilter>({ limit: 200 });
-  const [draft, setDraft] = useState<SecretsFilter>(filter);
-  const [labelInput, setLabelInput] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
+  const { hasPermission } = useAuth();
+  const now = useNow();
   const myProjects = useMyProjects();
-  const list = useSecrets(filter);
+
+  const [prefix, setPrefix] = useState('');
+  const [cluster, setCluster] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [provider, setProvider] = useState('');
+  const [status, setStatus] = useState<'' | 'present' | 'missing'>('');
+  const [labels, setLabels] = useState<string[]>([]);
+  const [labelInput, setLabelInput] = useState('');
+  const [labelError, setLabelError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Secret | null>(null);
   const [discoverOpen, setDiscoverOpen] = useState(false);
+
+  const filter: SecretsFilter = {
+    ref_prefix: useDebounced(prefix.trim()) || undefined,
+    cluster_name: useDebounced(cluster.trim()) || undefined,
+    project_id: projectId || undefined,
+    provider: provider || undefined,
+    status: status || undefined,
+    labels: labels.length ? labels : undefined,
+    limit: LIMIT,
+  };
+  const list = useSecrets(filter);
   const rows = list.data?.items ?? [];
   const total = list.data?.total ?? 0;
-  const selected = rows.find((r) => r.id === selectedId) ?? null;
 
-  const apply = () => {
-    setFilter({
-      ...draft,
-      cluster_name: draft.cluster_name?.trim() || undefined,
-      provider: draft.provider || undefined,
-      ref_prefix: draft.ref_prefix?.trim() || undefined,
-      status: draft.status || undefined,
-      labels: draft.labels?.length ? draft.labels : undefined,
-      project_id: draft.project_id || undefined,
-      limit: draft.limit ?? 200,
-    });
-    setSelectedId(null);
-  };
-
-  const clear = () => {
-    const fresh: SecretsFilter = { limit: 200 };
-    setFilter(fresh);
-    setDraft(fresh);
+  const filtered = !!(prefix || cluster || projectId || provider || status || labels.length);
+  const reset = () => {
+    setPrefix('');
+    setCluster('');
+    setProjectId('');
+    setProvider('');
+    setStatus('');
+    setLabels([]);
     setLabelInput('');
-    setSelectedId(null);
+    setLabelError(null);
   };
 
   const addLabel = () => {
     const v = labelInput.trim();
     if (!v) return;
-    if (!v.includes(':')) return;
-    const next = {
-      ...draft,
-      labels: [...(draft.labels ?? []), v],
-    };
-    setDraft(next);
+    const i = v.indexOf(':');
+    if (i <= 0 || i === v.length - 1) {
+      setLabelError('Write a label as key:value, for example team:payments.');
+      return;
+    }
+    setLabelError(null);
+    if (!labels.includes(v)) setLabels([...labels, v]);
     setLabelInput('');
   };
 
-  const removeDraftLabel = (i: number) => {
-    setDraft({
-      ...draft,
-      labels: (draft.labels ?? []).filter((_, j) => j !== i),
-    });
-  };
-
-  const hasFilter =
-    !!filter.cluster_name ||
-    !!filter.provider ||
-    !!filter.ref_prefix ||
-    !!filter.status ||
-    !!filter.project_id ||
-    (filter.labels?.length ?? 0) > 0;
+  const columns: Column<Secret>[] = [
+    {
+      key: 'path',
+      header: 'Path',
+      render: (s) => (
+        <button
+          type="button"
+          onClick={() => setSelected(s)}
+          className="min-w-[260px] max-w-[420px] break-all text-left font-mono text-mono font-medium text-accent hover:underline"
+        >
+          {s.secret_ref}
+        </button>
+      ),
+    },
+    { key: 'provider', header: 'Provider', render: (s) => <span className="whitespace-nowrap">{providerLabel(s.provider_type)}</span> },
+    { key: 'cluster', header: 'Cluster', render: (s) => <span className="whitespace-nowrap font-mono text-mono">{s.cluster_name}</span> },
+    {
+      key: 'labels',
+      header: 'Labels',
+      render: (s) => {
+        const entries = Object.entries(s.labels ?? {});
+        if (entries.length === 0) return <span className="text-muted">None</span>;
+        return (
+          <span className="flex max-w-[360px] flex-wrap gap-1">
+            {entries.slice(0, 3).map(([k, v]) => (
+              <LabelChip key={k} k={k} v={v} />
+            ))}
+            {entries.length > 3 && <span className="text-caption text-muted">+{entries.length - 3} more</span>}
+          </span>
+        );
+      },
+    },
+    { key: 'status', header: 'Status', render: (s) => <CatalogStatus status={s.status} /> },
+    {
+      key: 'seen',
+      header: 'Last seen',
+      align: 'right',
+      render: (s) => (
+        <time title={formatExact(s.last_seen_at)} className="whitespace-nowrap font-mono text-mono text-muted">
+          {formatAge(s.last_seen_at, now)}
+        </time>
+      ),
+    },
+  ];
 
   return (
     <div>
       <PageHeader
-        title="Discovered secrets"
-        description="What the agents have surfaced via discovery jobs. Native provider tags (Vault custom_metadata, AWS Tags, etc.) are preserved as filterable labels."
+        title="Secrets"
+        description="What discovery found in your providers: paths, labels and whether each secret is still there. Never values."
         actions={
-          <div className="flex items-center gap-2">
-            {hasFilter && (
-              <Button variant="secondary" onClick={clear}>
-                Clear filters
-              </Button>
-            )}
+          // Free-form discovery jobs (POST /jobs) need job.enqueue, which
+          // no seeded role has. Admins run discovery per provider
+          // connection instead ("Discover now").
+          hasPermission('job.enqueue') ? (
             <Button variant="primary" onClick={() => setDiscoverOpen(true)}>
-              Discover…
+              Run discovery…
             </Button>
-          </div>
+          ) : hasPermission('integration.edit') ? (
+            <Link
+              to="/admin/provider-connections"
+              className="inline-flex h-(--control-md) items-center rounded-md border border-edge bg-surface px-3 text-ui font-medium text-ink hover:bg-sunken max-md:h-(--control-touch)"
+            >
+              Run discovery from a connection
+            </Link>
+          ) : undefined
         }
       />
 
-      {/* Filter strip */}
-      <Card className="p-4 mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="space-y-1">
-            <label className="block text-[11px] text-muted font-medium">
-              Project
-            </label>
-            <select
-              value={draft.project_id ?? ''}
-              onChange={(e) =>
-                setDraft({ ...draft, project_id: e.target.value || undefined })
-              }
-              className={inputCls}
-              disabled={myProjects.isLoading}
-            >
-              <option value="">
-                {myProjects.isLoading
-                  ? 'loading…'
-                  : myProjects.data && myProjects.data.length > 1
-                    ? '(all my projects)'
-                    : '(all)'}
+      <div className="mb-3 flex flex-wrap items-center gap-2.5">
+        <label className="relative min-w-0 flex-[1_1_260px] max-w-[340px] max-[600px]:max-w-none max-[600px]:basis-full">
+          <span className="sr-only">Path starts with</span>
+          <SearchIcon size={16} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+          <Input
+            type="search"
+            value={prefix}
+            onChange={(e) => setPrefix(e.target.value)}
+            placeholder="Path starts with…"
+            className="w-full pl-8 font-mono"
+            spellCheck={false}
+          />
+        </label>
+        <label className="flex-[0_1_200px] max-[600px]:flex-[1_1_140px]">
+          <span className="sr-only">Project</span>
+          <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-full">
+            <option value="">All my projects</option>
+            {(myProjects.data ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.status === 'archived' ? ' (archived)' : ''}
               </option>
-              {(myProjects.data ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.status === 'archived' ? ' (archived)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <FilterField
-            label="Cluster"
-            value={draft.cluster_name ?? ''}
-            onChange={(v) => setDraft({ ...draft, cluster_name: v })}
-            placeholder="prod-eu"
-          />
-          <div className="space-y-1">
-            <label className="block text-[11px] text-muted font-medium">
-              Provider
-            </label>
-            <select
-              value={draft.provider ?? ''}
-              onChange={(e) =>
-                setDraft({ ...draft, provider: e.target.value || undefined })
-              }
-              className={inputCls}
-            >
-              <option value="">(any)</option>
-              {Object.entries(PROVIDER_LABELS).map(([v, label]) => (
-                <option key={v} value={v}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <FilterField
-            label="Ref prefix"
-            value={draft.ref_prefix ?? ''}
-            onChange={(v) => setDraft({ ...draft, ref_prefix: v })}
-            placeholder="billing/"
-            mono
-          />
-          <div className="space-y-1">
-            <label className="block text-[11px] text-muted font-medium">
-              Status
-            </label>
-            <select
-              value={draft.status ?? ''}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  status:
-                    (e.target.value as SecretsFilter['status']) || undefined,
-                })
-              }
-              className={inputCls}
-            >
-              <option value="">(any)</option>
-              <option value="present">present</option>
-              <option value="missing">missing</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Label chip composer */}
-        <div className="mt-3 space-y-2">
-          <label className="block text-[11px] text-muted font-medium">
-            Labels (key:value, repeatable — ANDed)
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            {(draft.labels ?? []).map((l, i) => (
-              <DraftLabelChip key={i} value={l} onClear={() => removeDraftLabel(i)} />
             ))}
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={labelInput}
-                onChange={(e) => setLabelInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addLabel();
-                  }
-                }}
-                placeholder="Team:billing"
-                className={inputCls + ' font-mono w-48'}
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <Button
+          </Select>
+        </label>
+        <label className="flex-[0_1_190px] max-[600px]:flex-[1_1_140px]">
+          <span className="sr-only">Provider</span>
+          <Select value={provider} onChange={(e) => setProvider(e.target.value)} className="w-full">
+            <option value="">All providers</option>
+            {PROVIDERS.map((p) => (
+              <option key={p} value={p}>
+                {providerLabel(p)}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="flex-[0_1_150px] max-[600px]:flex-[1_1_140px]">
+          <span className="sr-only">Status</span>
+          <Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className="w-full">
+            <option value="">Any status</option>
+            <option value="present">Present</option>
+            <option value="missing">Missing</option>
+          </Select>
+        </label>
+        <label className="flex-[0_1_160px] max-[600px]:flex-[1_1_140px]">
+          <span className="sr-only">Cluster</span>
+          <Input value={cluster} onChange={(e) => setCluster(e.target.value)} placeholder="Cluster" className="w-full font-mono" />
+        </label>
+        <Button variant="quiet" onClick={reset} disabled={!filtered}>
+          Reset filters
+        </Button>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2">
+          <span className="text-caption text-muted">Label</span>
+          <Input
+            value={labelInput}
+            onChange={(e) => setLabelInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addLabel();
+              }
+            }}
+            placeholder="team:payments"
+            className="w-48 font-mono"
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby={labelError ? 'label-error' : undefined}
+            aria-invalid={labelError ? true : undefined}
+          />
+        </label>
+        <Button variant="secondary" size="sm" onClick={addLabel}>
+          Add label filter
+        </Button>
+        {labels.map((l) => {
+          const [k, ...rest] = l.split(':');
+          return (
+            <span key={l} className="inline-flex items-center gap-1 rounded-sm border border-accent-line bg-accent-soft px-2 py-0.5 font-mono text-[12px]">
+              <span className="text-muted">{k}</span>=<span>{rest.join(':')}</span>
+              <button
                 type="button"
-                variant="ghost"
-                size="sm"
-                onClick={addLabel}
+                onClick={() => setLabels(labels.filter((x) => x !== l))}
+                aria-label={`Remove label filter ${l}`}
+                className="ml-1 text-muted hover:text-ink"
               >
-                + Add
-              </Button>
-            </div>
-          </div>
-        </div>
+                ×
+              </button>
+            </span>
+          );
+        })}
+        {labelError && (
+          <p id="label-error" className="w-full text-caption font-medium text-bad">
+            {labelError}
+          </p>
+        )}
+        {list.data && (
+          <p role="status" className="ml-auto text-caption text-muted">
+            Showing {rows.length} of {total}
+            {total > LIMIT ? ` (the first ${LIMIT})` : ''}
+          </p>
+        )}
+      </div>
 
-        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-border/60">
-          <Button variant="secondary" size="sm" onClick={() => setDraft(filter)}>
-            Reset
-          </Button>
-          <Button variant="primary" size="sm" onClick={apply}>
-            Apply
-          </Button>
-        </div>
-      </Card>
-
-      {list.isLoading && (
-        <div className="text-muted text-sm">Loading…</div>
-      )}
+      {list.isLoading && <p className="text-muted">Loading the catalog…</p>}
       {list.isError && (
-        <Card className="border-bad-line p-5 text-sm mb-4">
-          <div className="text-bad font-medium">Failed to load secrets</div>
-          <div className="text-muted mt-1">{stringifyError(list.error)}</div>
-        </Card>
-      )}
-      {list.data && rows.length === 0 && (
-        <Card className="p-10 text-center text-muted text-sm">
-          {hasFilter
-            ? 'No discovered secrets match the current filters.'
-            : 'No discovered secrets yet. Run a discovery job on an agent to populate this view.'}
-        </Card>
-      )}
-
-      {rows.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
-          <Card className="overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="text-left text-muted text-[11px]">
-                <tr className="border-b border-border/60">
-                  <Th>Ref</Th>
-                  <Th>Provider</Th>
-                  <Th>Cluster</Th>
-                  <Th>Labels</Th>
-                  <Th>Status</Th>
-                  <Th className="text-right">Last seen</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((s) => (
-                  <SecretRow
-                    key={s.id}
-                    row={s}
-                    selected={s.id === selectedId}
-                    onSelect={() => setSelectedId(s.id)}
-                  />
-                ))}
-              </tbody>
-            </table>
-            <div className="px-5 py-3 border-t border-border/60 text-xs text-muted">
-              Showing {rows.length} of {total} secret{total === 1 ? '' : 's'}
-              {filter.limit ? ` (limit ${filter.limit})` : ''}
-            </div>
-          </Card>
-
-          <DetailsPane secret={selected} />
-        </div>
+        <Banner
+          tone="error"
+          title="Couldn't load the catalog."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void list.refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          {list.error instanceof ApiError ? `${list.error.status}: ${list.error.message}` : String(list.error)}
+        </Banner>
       )}
 
+      {list.data &&
+        (rows.length > 0 ? (
+          <DataTable
+            label="Discovered secrets"
+            columns={columns}
+            rows={rows}
+            rowKey={(s) => s.id}
+            onRowClick={setSelected}
+            minWidth={880}
+          />
+        ) : filtered ? (
+          <EmptyState
+            title="No secrets match these filters."
+            action={
+              <Button variant="secondary" onClick={reset}>
+                Reset filters
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState title="Discovery hasn't found any secrets yet.">
+            Secrets appear here once an agent runs discovery on a provider connection.
+          </EmptyState>
+        ))}
+
+      {selected && <SecretDrawer secret={selected} onClose={() => setSelected(null)} />}
       {discoverOpen && <DiscoverDrawer onClose={() => setDiscoverOpen(false)} />}
     </div>
   );
 }
 
-// --- row ------------------------------------------------------------
-
-function SecretRow({
-  row: s,
-  selected,
-  onSelect,
-}: {
-  row: Secret;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const labelEntries = Object.entries(s.labels ?? {});
-  const labelPreview = labelEntries.slice(0, 3);
-  const extra = labelEntries.length - labelPreview.length;
+function CatalogStatus({ status }: { status: Secret['status'] }) {
   return (
-    <tr
-      onClick={onSelect}
-      className={
-        'border-b border-border/40 last:border-0 align-top cursor-pointer ' +
-        (selected ? 'bg-accent/10' : 'hover:bg-bg/20')
-      }
-    >
-      <Td>
-        <span className="font-mono text-accent text-sm break-all">
-          {s.secret_ref}
-        </span>
-      </Td>
-      <Td>
-        <span className="text-ink text-sm">
-          {PROVIDER_LABELS[s.provider_type] ?? s.provider_type}
-        </span>
-      </Td>
-      <Td>
-        <span className="font-mono text-ink text-sm">{s.cluster_name}</span>
-      </Td>
-      <Td>
-        {labelEntries.length === 0 ? (
-          <span className="text-muted text-xs">none</span>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {labelPreview.map(([k, v]) => (
-              <LabelChip key={k} k={k} v={v} />
-            ))}
-            {extra > 0 && (
-              <span className="text-muted text-[11px] font-mono pt-1">
-                +{extra} more
-              </span>
-            )}
-          </div>
-        )}
-      </Td>
-      <Td>
-        <StatusPill
-          variant={s.status === 'present' ? 'success' : 'warning'}
-          tone="outline"
-        >
-          {s.status}
-        </StatusPill>
-      </Td>
-      <Td className="text-right text-muted text-xs whitespace-nowrap">
-        {formatRelativePast(s.last_seen_at)}
-      </Td>
-    </tr>
+    <StatusPill variant={status === 'present' ? 'success' : 'warning'} tone="outline">
+      {status === 'present' ? 'Present' : 'Missing'}
+    </StatusPill>
   );
 }
 
 function LabelChip({ k, v }: { k: string; v: unknown }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[11px] font-mono">
+    <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-sunken px-1.5 py-0.5 font-mono text-[11.5px]">
       <span className="text-muted">{k}</span>
-      <span className="text-muted/50">=</span>
-      <span className="text-accent">{String(v)}</span>
+      <span className="text-muted">=</span>
+      <span className="text-ink">{String(v)}</span>
     </span>
   );
 }
 
-function DraftLabelChip({
-  value,
-  onClear,
-}: {
-  value: string;
-  onClear: () => void;
-}) {
-  const [k, v] = value.split(':');
+function SecretDrawer({ secret: s, onClose }: { secret: Secret; onClose: () => void }) {
+  const labels = Object.entries(s.labels ?? {});
+  const rows: [string, React.ReactNode][] = [
+    ['Provider', providerLabel(s.provider_type)],
+    ['Cluster', <span key="c" className="font-mono text-mono">{s.cluster_name}</span>],
+    ['Status', <CatalogStatus key="s" status={s.status} />],
+    ...(s.version ? [['Version', <span key="v" className="font-mono text-mono">{s.version}</span>] as [string, React.ReactNode]] : []),
+    ['First seen', formatExact(s.first_seen_at)],
+    ['Last seen', formatExact(s.last_seen_at)],
+    ...(s.updated_at_source ? [['Changed in provider', formatExact(s.updated_at_source)] as [string, React.ReactNode]] : []),
+  ];
   return (
-    <span className="inline-flex items-center gap-1 rounded-sm bg-accent/10 border border-accent/40 px-2.5 py-0.5 text-[11px] font-mono">
-      <span className="text-muted">{k}</span>
-      <span className="text-muted/50">=</span>
-      <span className="text-accent">{v}</span>
-      <button onClick={onClear} className="ml-1 text-muted hover:text-ink">
-        ×
-      </button>
-    </span>
-  );
-}
-
-// --- details pane ---------------------------------------------------
-
-function DetailsPane({ secret }: { secret: Secret | null }) {
-  if (!secret) {
-    return (
-      <Card className="p-6 text-center text-muted text-sm">
-        Pick a row to inspect labels + provider config + versions.
-      </Card>
-    );
-  }
-  const labelEntries = Object.entries(secret.labels ?? {});
-  return (
-    <Card className="overflow-hidden sticky top-4">
-      <div className="px-5 py-4 border-b border-border/60">
-        <div className="text-ink font-semibold">Secret details</div>
-        <div className="text-muted text-xs mt-1 font-mono break-all">
-          {secret.secret_ref}
-        </div>
-      </div>
-      <dl className="px-5 py-4 space-y-2.5 text-sm">
-        <Row k="Cluster" mono v={secret.cluster_name} />
-        <Row
-          k="Provider"
-          v={
-            <span className="text-ink">
-              {PROVIDER_LABELS[secret.provider_type] ?? secret.provider_type}
-            </span>
-          }
-        />
-        <Row
-          k="Status"
-          v={
-            <StatusPill
-              variant={secret.status === 'present' ? 'success' : 'warning'}
-              tone="outline"
-            >
-              {secret.status}
-            </StatusPill>
-          }
-        />
-        {secret.version && <Row k="Version" mono v={secret.version} />}
-        {secret.checksum && (
-          <Row
-            k="Checksum"
-            v={
-              <span className="font-mono text-muted text-xs break-all">
-                {secret.checksum.slice(0, 16)}…
-              </span>
-            }
-          />
-        )}
-        <Row k="First seen" mono v={formatAbs(secret.first_seen_at)} />
-        <Row k="Last seen" mono v={formatAbs(secret.last_seen_at)} />
-        {secret.updated_at_source && (
-          <Row
-            k="Provider updated"
-            mono
-            v={formatAbs(secret.updated_at_source)}
-          />
-        )}
+    <Drawer title="Secret details" subtitle={<span className="break-all font-mono text-mono">{s.secret_ref}</span>} onClose={onClose}>
+      <dl className="m-0">
+        {rows.map(([k, v]) => (
+          <div key={k} className="grid grid-cols-[150px_minmax(0,1fr)] gap-3 border-b border-rule py-2.5 text-ui font-normal">
+            <dt className="text-muted">{k}</dt>
+            <dd className="m-0 min-w-0 break-words text-ink">{v}</dd>
+          </div>
+        ))}
       </dl>
-
-      {labelEntries.length > 0 && (
-        <div className="px-5 py-4 border-t border-border/60">
-          <div className="text-muted text-[11px] font-medium mb-2">
-            Labels ({labelEntries.length})
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {labelEntries.map(([k, v]) => (
-              <LabelChip key={k} k={k} v={v} />
-            ))}
-          </div>
-        </div>
+      <h3 className="mb-2 mt-5 text-block-heading text-ink">Labels {labels.length > 0 && <span className="font-mono text-mono-small font-normal text-muted">{labels.length}</span>}</h3>
+      {labels.length === 0 ? (
+        <p className="text-muted">The provider has no labels on this secret.</p>
+      ) : (
+        <p className="flex flex-wrap gap-1.5">
+          {labels.map(([k, v]) => (
+            <LabelChip key={k} k={k} v={v} />
+          ))}
+        </p>
       )}
-
-      {secret.provider_config && Object.keys(secret.provider_config).length > 0 && (
-        <div className="px-5 py-4 border-t border-border/60">
-          <div className="text-muted text-[11px] font-medium mb-2">
-            Provider config
-          </div>
-          <pre className="text-[11px] text-muted bg-bg/40 border border-border/60 rounded-md px-3 py-2 overflow-x-auto font-mono">
-            {JSON.stringify(secret.provider_config, null, 2)}
+      {s.provider_config && Object.keys(s.provider_config).length > 0 && (
+        <>
+          <h3 className="mb-2 mt-5 text-block-heading text-ink">Provider settings</h3>
+          <pre className="overflow-x-auto rounded-md border border-border bg-sunken px-3 py-2 font-mono text-mono-small text-ink">
+            {JSON.stringify(s.provider_config, null, 2)}
           </pre>
-        </div>
+        </>
       )}
-
-      <div className="px-5 py-3 border-t border-border/60 text-[11px] text-muted">
-        Metadata only. To view the value, submit a Read request from{' '}
-        <span className="font-mono text-ink">/requests</span>.
-      </div>
-    </Card>
+      <Banner className="mt-5">Metadata only. To see a value, request access to it from the project that uses it.</Banner>
+    </Drawer>
   );
-}
-
-// --- shared bits ----------------------------------------------------
-
-function FilterField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  mono,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-[11px] text-muted font-medium">
-        {label}
-      </label>
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={inputCls + (mono ? ' font-mono' : '')}
-        autoComplete="off"
-        spellCheck={false}
-      />
-    </div>
-  );
-}
-
-function Row({
-  k,
-  v,
-  mono,
-}: {
-  k: string;
-  v: React.ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <div className="grid grid-cols-[110px_1fr] gap-3 items-baseline">
-      <dt className="text-muted text-xs">{k}</dt>
-      <dd
-        className={
-          'text-sm break-all ' + (mono ? 'font-mono text-ink' : 'text-ink')
-        }
-      >
-        {v}
-      </dd>
-    </div>
-  );
-}
-
-function Th({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
-}
-
-function Td({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <td className={`px-5 py-3.5 align-top ${className}`}>{children}</td>;
-}
-
-const inputCls =
-  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent ';
-
-function formatRelativePast(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '—';
-  const seconds = Math.max(0, Math.round((Date.now() - t) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
-}
-
-function formatAbs(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '—';
-  const d = new Date(t);
-  return d.toISOString().replace('T', ' ').slice(0, 19) + 'Z';
-}
-
-function stringifyError(e: unknown): string {
-  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
-  if (e instanceof Error) return e.message;
-  return String(e);
 }

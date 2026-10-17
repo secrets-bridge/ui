@@ -1,108 +1,98 @@
 /**
- * Slice L5 — dev-facing "My Projects" landing page.
- *
- * Lists every project the caller has access to (filtered server-side
- * by team_members + perm scope on api/internal/handlers/me.go). Each
- * project card shows its environments as clickable nodes; clicking
- * an env navigates to ProjectEnv.tsx for the per-env actions.
- *
- * No mutation on this page — purely a discovery surface. Reveal /
- * Request actions live on the env detail page.
+ * My projects (`/projects`): every project and environment the
+ * signed-in person can work in, one row each. A row opens the
+ * environment page, where its secrets are listed and access is asked
+ * for. Reads `/users/me` (projects with their environments).
  */
 
-import { Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 import { useMe } from '../api/me';
-import type { MyEnvironment } from '../api/types';
-import { Card, CardBody, CardHeader } from '../ui/Card';
+import type { MyEnvironment, MyProject } from '../api/types';
+import { Banner } from '../ui/Banner';
+import { DataTable, type Column } from '../ui/DataTable';
+import { EmptyState } from '../ui/EmptyState';
+import { EnvTag } from '../ui/EnvTag';
 import { PageHeader } from '../ui/PageHeader';
-import { StatusPill } from '../ui/StatusPill';
+
+interface Row {
+  project: MyProject;
+  env: MyEnvironment;
+}
 
 export function MyProjects() {
   const me = useMe();
+  const navigate = useNavigate();
   const projects = me.data?.projects ?? [];
+  const rows: Row[] = projects
+    .flatMap((project) => (project.environments ?? []).map((env) => ({ project, env })))
+    .sort((a, b) => a.project.name.localeCompare(b.project.name) || a.env.name.localeCompare(b.env.name));
+  const withoutEnvs = projects.filter((p) => (p.environments ?? []).length === 0);
+  const to = (r: Row) => `/projects/${r.project.id}/env/${r.env.id}`;
+
+  const columns: Column<Row>[] = [
+    {
+      key: 'project',
+      header: 'Project',
+      render: (r) => (
+        <Link to={to(r)} className="font-medium text-accent hover:underline">
+          {r.project.name}
+          {r.project.status === 'archived' && <span className="ml-2 text-caption font-normal text-muted">archived</span>}
+        </Link>
+      ),
+    },
+    { key: 'env', header: 'Environment', render: (r) => <EnvTag kind={r.env.kind}>{r.env.name}</EnvTag> },
+    {
+      key: 'kind',
+      header: 'Kind',
+      render: (r) =>
+        r.env.kind === 'prod' ? (
+          <span>Production · approved reads only</span>
+        ) : (
+          <span className="text-muted">Non-production</span>
+        ),
+    },
+    { key: 'risk', header: 'Risk level', align: 'right', render: (r) => <span className="font-mono text-mono">{r.env.risk_level}</span> },
+  ];
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
-      <PageHeader
-        title="My Projects"
-        description="Drill into a project's environment to request or reveal secrets."
-      />
-
-      {me.isLoading && (
-        <Card>
-          <CardBody>
-            <p className="text-muted text-sm">Loading your projects…</p>
-          </CardBody>
-        </Card>
-      )}
-
-      {!me.isLoading && projects.length === 0 && (
-        <Card>
-          <CardBody>
-            <p className="text-muted text-sm">
-              You are not currently a member of any project. Ask your team
-              admin for a role assignment scoped to the project + environment
-              you need.
-            </p>
-          </CardBody>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {projects.map((p) => (
-          <Card key={p.id}>
-            <CardHeader>
-              <div className="min-w-0">
-                <h3 className="text-ink font-semibold text-base truncate">
-                  {p.name}
-                </h3>
-                <p className="text-muted text-xs">{p.status}</p>
-              </div>
-            </CardHeader>
-            <CardBody className="space-y-2">
-              {(!p.environments || p.environments.length === 0) && (
-                <p className="text-muted text-sm">
-                  No environments configured yet.
+    <div>
+      <PageHeader title="My projects" description="Open an environment to see the secrets bound to it and ask for access." />
+      {me.isLoading && <p className="text-muted">Loading your projects…</p>}
+      {me.isError && <Banner tone="error" title="Couldn't load your projects.">Try again in a moment.</Banner>}
+      {me.data &&
+        (rows.length > 0 ? (
+          <DataTable
+            label="Your projects and environments"
+            columns={columns}
+            rows={rows}
+            rowKey={(r) => r.env.id}
+            onRowClick={(r) => navigate(to(r))}
+            minWidth={560}
+            stacked={(r) => (
+              <div className="flex flex-col gap-1">
+                <p>
+                  <Link to={to(r)} className="font-medium text-accent hover:underline">
+                    {r.project.name}
+                  </Link>{' '}
+                  <EnvTag kind={r.env.kind}>{r.env.name}</EnvTag>
                 </p>
-              )}
-              {p.environments?.map((env) => (
-                <EnvRow key={env.id} projectId={p.id} env={env} />
-              ))}
-            </CardBody>
-          </Card>
+                <p className="text-caption text-muted">
+                  {r.env.kind === 'prod' ? 'Production · approved reads only' : 'Non-production'} · risk level {r.env.risk_level}
+                </p>
+              </div>
+            )}
+          />
+        ) : (
+          <EmptyState title="You don't have access to a project yet.">
+            Ask an administrator for a role on the project and environment you need.
+          </EmptyState>
         ))}
-      </div>
+      {withoutEnvs.length > 0 && (
+        <p className="mt-3 text-caption text-muted">
+          No environments yet in {withoutEnvs.map((p) => p.name).join(', ')}.
+        </p>
+      )}
     </div>
-  );
-}
-
-function EnvRow({ projectId, env }: { projectId: string; env: MyEnvironment }) {
-  return (
-    <Link
-      to={`/projects/${projectId}/env/${env.id}`}
-      className="flex items-center justify-between gap-3 bg-bg/40 hover:bg-bg/60 border border-border/60 rounded-md px-3 py-2 transition-colors"
-    >
-      <div className="min-w-0">
-        <div className="text-ink text-sm font-medium truncate">{env.name}</div>
-        <div className="text-muted text-xs">Risk level {env.risk_level}</div>
-      </div>
-      <KindBadge kind={env.kind} />
-    </Link>
-  );
-}
-
-function KindBadge({ kind }: { kind: MyEnvironment['kind'] }) {
-  if (kind === 'prod') {
-    return (
-      <StatusPill variant="accent" tone="outline">
-        prod
-      </StatusPill>
-    );
-  }
-  return (
-    <StatusPill variant="neutral" tone="outline">
-      non_prod
-    </StatusPill>
   );
 }
