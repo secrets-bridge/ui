@@ -27,7 +27,7 @@ import { isOpen, needsMyDecision } from '../lib/requestQueues';
 import { requestRef } from '../lib/requestRef';
 import { useNow } from '../lib/useNow';
 import { formatAge, formatExact, formatRemaining, formatShort, withinDays } from '../lib/time';
-import { closedDetail, keysOf, waitingOn } from '../requests/describe';
+import { closedDetail, keysOf, pathOf, waitingOn } from '../requests/describe';
 import { useRevealConditions, type RevealCondition } from '../requests/revealState';
 import {
   ALL_SCOPES,
@@ -53,6 +53,8 @@ import { useToast } from '../ui/toastContext';
 import { RequestAccessDrawer } from './RequestAccessDrawer';
 
 const RECENT_DAYS = 3;
+/** Rows per section; the overview is a summary, the Requests page has the rest. */
+const SHOW = 5;
 
 export function Overview() {
   const navigate = useNavigate();
@@ -66,6 +68,7 @@ export function Overview() {
   const scopes = useMemo(() => scopeOptions(meQ.data?.projects), [meQ.data]);
   const display = useScopeDisplay();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showAllNeeds, setShowAllNeeds] = useState(false);
 
   // Requester: my requests. Approver: everything pending (the api only
   // returns other people's requests to global approvers).
@@ -260,25 +263,38 @@ export function Overview() {
 
             {needsYou.length > 0 && (
               <Section title="Needs you" count={needsYou.length}>
-                <NeedsYou items={needsYou} />
+                <NeedsYou items={showAllNeeds ? needsYou : needsYou.slice(0, SHOW)} />
+                {needsYou.length > SHOW && (
+                  <Button variant="quiet" size="sm" className="mt-1.5" onClick={() => setShowAllNeeds((v) => !v)} aria-expanded={showAllNeeds}>
+                    {showAllNeeds ? 'Show fewer' : `Show ${needsYou.length - SHOW} more`}
+                  </Button>
+                )}
               </Section>
             )}
 
             {canApprove && queue.length > 0 && (
-              <Section title="Your queue" count={queue.length} link={{ to: '/requests', label: 'All requests' }}>
-                <QueueTable rows={queue} display={display} now={now} />
+              <Section
+                title="Your queue"
+                count={queue.length}
+                link={{ to: '/requests', label: queue.length > SHOW ? `All ${queue.length} waiting` : 'All requests' }}
+              >
+                <QueueTable rows={queue.slice(0, SHOW)} display={display} now={now} />
               </Section>
             )}
 
             {canRequest && open.length > 0 && (
-              <Section title="Open" count={open.length} link={{ to: '/requests', label: 'All requests' }}>
-                <OpenTable rows={open} display={display} now={now} />
+              <Section
+                title="Open"
+                count={open.length}
+                link={{ to: '/requests?tab=open', label: open.length > SHOW ? `All ${open.length} open requests` : 'Open requests' }}
+              >
+                <OpenTable rows={open.slice(0, SHOW)} display={display} now={now} />
               </Section>
             )}
 
             {canRequest && closed.length > 0 && (
-              <Section title={`Closed · last ${RECENT_DAYS} days`} count={closed.length} link={{ to: '/requests', label: 'All requests' }}>
-                <ClosedTable rows={closed} display={display} reveal={reveal} now={now} />
+              <Section title={`Closed · last ${RECENT_DAYS} days`} count={closed.length} link={{ to: '/requests?tab=closed', label: 'All closed requests' }}>
+                <ClosedTable rows={closed.slice(0, SHOW)} display={display} reveal={reveal} now={now} />
               </Section>
             )}
           </div>
@@ -384,6 +400,24 @@ function RefLink({ r }: { r: AccessRequest }) {
   );
 }
 
+/** Keys first (what was asked for), the reference and path under them. */
+function RequestCell({ r }: { r: AccessRequest }) {
+  return (
+    <div className="min-w-[160px] max-w-[250px]">
+      <Link
+        to={`/requests/${r.id}`}
+        title={keysOf(r).join(', ') || 'All keys'}
+        className="block truncate font-mono text-mono font-medium text-ink hover:text-accent hover:underline"
+      >
+        {keysOf(r).join(', ') || 'All keys'}
+      </Link>
+      <p className="mt-0.5 font-mono text-mono-small text-muted" title={pathOf(r)}>
+        {requestRef(r.id)}
+      </p>
+    </div>
+  );
+}
+
 function Age({ iso, now }: { iso?: string; now: number }) {
   return (
     <time title={formatExact(iso)} className="whitespace-nowrap font-mono text-mono text-muted">
@@ -421,8 +455,7 @@ function Stacked({ r, d, right, children }: { r: AccessRequest; d: ScopeDisplay;
 function OpenTable({ rows, display, now }: { rows: AccessRequest[]; display: Display; now: number }) {
   const open = useOpenRow();
   const columns: Column<AccessRequest>[] = [
-    { key: 'ref', header: 'Request', render: (r) => <RefLink r={r} /> },
-    { key: 'keys', header: 'Keys', render: (r) => <Keys keys={keysOf(r)} className="max-w-[260px]" /> },
+    { key: 'request', header: 'Request', render: (r) => <RequestCell r={r} /> },
     { key: 'scope', header: 'Scope', render: (r) => <ScopeCell d={display(r)} /> },
     { key: 'state', header: 'State', render: (r) => <Status status={r.status} /> },
     { key: 'wait', header: 'Waiting on', render: (r) => <span className="whitespace-nowrap text-muted">{waitingOn(r)}</span> },
@@ -435,6 +468,7 @@ function OpenTable({ rows, display, now }: { rows: AccessRequest[]; display: Dis
       rows={rows}
       rowKey={(r) => r.id}
       onRowClick={open}
+      alignTop
       stacked={(r) => (
         <Stacked r={r} d={display(r)} right={<Age iso={r.created_at} now={now} />}>
           <span className="text-caption text-muted">{waitingOn(r)}</span>
@@ -457,15 +491,14 @@ function ClosedTable({
 }) {
   const open = useOpenRow();
   const columns: Column<AccessRequest>[] = [
-    { key: 'ref', header: 'Request', render: (r) => <RefLink r={r} /> },
-    { key: 'keys', header: 'Keys', render: (r) => <Keys keys={keysOf(r)} className="max-w-[260px]" /> },
+    { key: 'request', header: 'Request', render: (r) => <RequestCell r={r} /> },
     { key: 'scope', header: 'Scope', render: (r) => <ScopeCell d={display(r)} /> },
-    { key: 'state', header: 'State', render: (r) => <Status status={r.status} /> },
+    { key: 'state', header: 'Outcome', render: (r) => <Status status={r.status} /> },
     {
       key: 'detail',
       header: 'Detail',
       render: (r) => (
-        <span title={closedDetail(r, reveal.get(r.id))} className="block max-w-[260px] truncate text-muted">
+        <span title={closedDetail(r, reveal.get(r.id))} className="block max-w-[200px] truncate text-muted">
           {closedDetail(r, reveal.get(r.id))}
         </span>
       ),
@@ -479,6 +512,7 @@ function ClosedTable({
       rows={rows}
       rowKey={(r) => r.id}
       onRowClick={open}
+      alignTop
       stacked={(r) => (
         <Stacked r={r} d={display(r)} right={<Age iso={r.updated_at} now={now} />}>
           <span className="text-caption text-muted">{closedDetail(r, reveal.get(r.id))}</span>
@@ -497,18 +531,15 @@ function QueueTable({ rows, display, now }: { rows: AccessRequest[]; display: Di
     </Button>
   );
   const columns: Column<AccessRequest>[] = [
-    { key: 'ref', header: 'Request', render: (r) => <RefLink r={r} /> },
+    { key: 'request', header: 'Request', render: (r) => <RequestCell r={r} /> },
     { key: 'who', header: 'Requester', render: (r) => <span className="whitespace-nowrap">{r.requester_display ?? 'Loading…'}</span> },
     {
       key: 'keys',
-      header: 'Keys and reason',
+      header: 'Reason',
       render: (r) => (
-        <div className="max-w-[320px]">
-          <Keys keys={keysOf(r)} />
-          <p title={r.justification} className="mt-0.5 truncate text-caption text-muted">
-            {r.justification}
-          </p>
-        </div>
+        <p title={r.justification} className="m-0 max-w-[190px] truncate text-muted">
+          {r.justification}
+        </p>
       ),
     },
     { key: 'scope', header: 'Scope', render: (r) => <ScopeCell d={display(r)} /> },
@@ -522,6 +553,7 @@ function QueueTable({ rows, display, now }: { rows: AccessRequest[]; display: Di
       rows={rows}
       rowKey={(r) => r.id}
       onRowClick={open}
+      alignTop
       stacked={(r) => (
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">

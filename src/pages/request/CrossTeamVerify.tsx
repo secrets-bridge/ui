@@ -28,6 +28,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { Field, Textarea } from '../../ui/Field';
 import { Keys } from '../../ui/Keys';
+import { Path } from '../../ui/Path';
 import { ToneStatus } from '../../ui/Status';
 import { useToast } from '../../ui/toastContext';
 
@@ -66,7 +67,7 @@ export function CrossTeamVerifyCard({ request: r, actorId }: { request: AccessRe
       'Destination',
       <span key="d">
         {r.destination_provider_label ?? r.target_provider_type ?? '—'}
-        {r.destination_secret_ref && <span className="block break-all font-mono text-mono">{r.destination_secret_ref}</span>}
+        {r.destination_secret_ref && <Path value={r.destination_secret_ref} className="block" />}
       </span>,
     ],
     ['Keys', <Keys key="k" keys={keysOf(r)} variant="chips" />],

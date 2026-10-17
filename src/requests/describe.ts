@@ -102,10 +102,11 @@ export function nextAction(r: AccessRequest, me: string, reveal?: RevealConditio
       return { text: 'Waiting for the agent to execute' };
     case 'executed':
       if (mine && reveal?.state === 'ready') return { cta: 'Reveal' };
-      if (reveal?.state === 'consumed') return { text: 'Closed · values were retrieved' };
-      return { text: 'Closed' };
+      if (reveal?.state === 'consumed') return { text: mine ? 'Nothing to do · you revealed the values' : 'Nothing to do · values were revealed' };
+      if (reveal?.state === 'expired') return { text: 'Request again if you still need them' };
+      return { text: 'Nothing to do' };
     case 'rejected':
-      return { text: 'Rejected · see reason' };
+      return { text: 'Open it to read the reason' };
     case 'refused':
       return { text: `Refused by ${r.target_team_name ?? 'the supplying team'}` };
     case 'failed':

@@ -29,6 +29,7 @@ import { Button } from '../ui/Button';
 import { DataTable, type Column } from '../ui/DataTable';
 import { EnvTag } from '../ui/EnvTag';
 import { Keys } from '../ui/Keys';
+import { Path } from '../ui/Path';
 import { useToast } from '../ui/toastContext';
 import { CrossTeamSubmitDrawer } from './CrossTeamSubmitDrawer';
 import { DirectRevealDrawer } from './project/DirectRevealDrawer';
@@ -93,7 +94,7 @@ export function ProjectEnv() {
     {
       key: 'ref',
       header: 'Path',
-      render: (s) => <span className="break-all font-mono text-mono text-ink">{s.ref}</span>,
+      render: (s) => <Path value={s.ref} className="text-ink" />,
       className: 'max-w-[360px]',
     },
     { key: 'provider', header: 'Provider', render: (s) => providerLabel(s.provider), className: 'whitespace-nowrap' },
@@ -179,7 +180,7 @@ export function ProjectEnv() {
               minWidth={680}
               stacked={(s) => (
                 <div className="flex flex-col gap-1.5">
-                  <p className="break-all font-mono text-mono text-ink">{s.ref}</p>
+                  <p><Path value={s.ref} className="text-ink" /></p>
                   <p className="text-caption text-muted">
                     {providerLabel(s.provider)} · {s.ops.map((o) => OPS[o] ?? o).join(', ') || 'Nothing allowed'}
                   </p>

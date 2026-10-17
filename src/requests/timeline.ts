@@ -29,7 +29,7 @@ const AGENT_PREFIX = /^Agent /;
 
 function actorName(e: AuditEvent, me: string): string {
   if (e.actor === `user:${me}`) return 'You';
-  if (e.actor.startsWith('agent:')) return `agent ${e.actor_display.replace(AGENT_PREFIX, '')}`;
+  if (e.actor.startsWith('agent:')) return `Agent ${e.actor_display.replace(AGENT_PREFIX, '')}`;
   if (e.actor.startsWith('system:')) return 'The control plane';
   return e.actor_display || 'Someone';
 }
@@ -87,7 +87,7 @@ export function timelineFromAudit(events: AuditEvent[], r: AccessRequest, me: st
         out.push({ ...base, kind: 'reject', action: 'refused to supply values', note: r.refuse_reason });
         break;
       case 'job.enqueue':
-        out.push({ ...base, kind: 'system', actor: 'The control plane', action: 'queued the job for an agent' });
+        out.push({ ...base, kind: 'system', actor: 'The control plane', action: 'handed the job to an agent' });
         break;
       case 'job.claim':
         out.push({ ...base, kind: 'execution', action: 'picked up the job' });
@@ -99,8 +99,8 @@ export function timelineFromAudit(events: AuditEvent[], r: AccessRequest, me: st
           kind: ok ? 'execution' : 'exec-fail',
           action: ok
             ? r.type === 'read'
-              ? 'read the provider · success · values held as single-use encrypted wraps'
-              : 'wrote the provider · success'
+              ? 'read the values from the provider. They stay encrypted until they are revealed, once.'
+              : 'wrote the new values to the provider'
             : 'reported a failure',
         });
         break;

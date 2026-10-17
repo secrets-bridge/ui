@@ -31,7 +31,7 @@ import { useAuth } from '../auth/AuthContext';
 import { crossTeamVerifyCapability } from '../auth/capabilities';
 import { providerLabel } from '../lib/providers';
 import { requestRef } from '../lib/requestRef';
-import { formatAge, formatClock, formatExact, formatRemaining } from '../lib/time';
+import { formatAge, formatExact, formatRemaining } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { conditionLine, keysOf, operationTitle, pathOf } from '../requests/describe';
 import { useRevealConditions, type RevealCondition } from '../requests/revealState';
@@ -44,6 +44,7 @@ import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
 import { EnvTag } from '../ui/EnvTag';
 import { Keys } from '../ui/Keys';
+import { Path } from '../ui/Path';
 import { Status } from '../ui/Status';
 import { Timeline } from '../ui/Timeline';
 import { useToast } from '../ui/toastContext';
@@ -207,7 +208,6 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
       <div className="mb-6 mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-ui">
         <Status status={r.status} />
         {line && <span className={line.tone === 'ok' ? 'text-ok' : 'text-muted'}>{line.text}</span>}
-        <span className="font-mono text-mono-small text-muted">status: {r.status}</span>
         <span aria-hidden="true" className="text-muted">
           ·
         </span>
@@ -278,7 +278,7 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
               <ApprovalLanes lanes={lanesFor(r, workflow, names, me)} />
             </Panel>
           )}
-          <DetailsPanel r={r} display={display} />
+          <DetailsPanel r={r} display={display} reasonShown={decisionOpen && !revealing} />
         </div>
       </div>
 
@@ -326,7 +326,6 @@ function Situation(p: {
   const { r, workflow, reveal, now } = p;
   const isMine = r.requester_id === p.me;
   const keys = keysOf(r);
-  const keyCount = `${keys.length || 'all'} key${keys.length === 1 ? '' : 's'}`;
   const approves = (r.approvals ?? []).filter((a) => a.decision === 'approve').length;
   const deadline =
     workflow && workflow.request_ttl_seconds > 0
@@ -357,7 +356,7 @@ function Situation(p: {
     return (
       <Card
         heading="Your decision is needed"
-        sentence={`${r.requester_display ?? 'The requester'} asked to ${r.type === 'patch' ? 'change' : 'read'} ${keyCount} in ${where}. Check the reason and the scope before you decide.`}
+        sentence={`${r.requester_display ?? 'The requester'} wants to ${r.type === 'patch' ? 'change' : 'read'} ${keys.length ? keys.join(', ') : 'every key'} in ${where} (${providerLabel(r.target_provider_type)}). Read the reason before you decide.`}
         actions={
           <>
             <Button variant="primary" onClick={p.onApprove}>
@@ -368,20 +367,29 @@ function Situation(p: {
             </Button>
           </>
         }
-        footnote="Approving records your decision. It doesn't run anything; execution is a separate agent event."
+        footnote="Approving records your decision. It doesn't run anything; the agent acts only once every approval is in."
       >
-        <Facts
-          rows={[
-            ['Requester', r.requester_display ?? '—'],
-            ['Operation', `${r.type === 'patch' ? 'Change' : 'Read'} · ${keyCount}`],
-            ['Where', `${where} · ${providerLabel(r.target_provider_type)}`],
-            ['Keys', <Keys key="k" keys={keys} variant="chips" />],
-            ['Reason', <span key="r">“{r.justification}”</span>],
-            ['Waiting', `${formatAge(r.created_at, now)} (since ${formatClock(r.created_at)})`],
-            ...(workflow ? [['Approvals', `${approves} of ${workflow.min_approvers} recorded`] as [string, ReactNode]] : []),
-            ...(deadline ? [['Expires', formatExact(deadline)] as [string, ReactNode]] : []),
-          ]}
-        />
+        <blockquote className="m-0 border-l-2 border-edge py-0.5 pl-3.5 text-body text-ink">
+          <p className="whitespace-pre-wrap break-words">{r.justification || 'No reason given.'}</p>
+          <footer className="mt-1 text-caption text-muted">{r.requester_display ?? 'The requester'}'s reason</footer>
+        </blockquote>
+        <p className="mt-3 flex flex-wrap gap-x-2 gap-y-0.5 text-ui font-normal text-muted">
+          <span title={`Since ${formatExact(r.created_at)}`}>Waiting {formatAge(r.created_at, now)}</span>
+          {workflow && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>
+                {approves} of {workflow.min_approvers} approval{workflow.min_approvers === 1 ? '' : 's'} recorded
+              </span>
+            </>
+          )}
+          {deadline && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span title={formatExact(deadline)}>Expires in {formatRemaining(deadline, now).replace(/ left$/, '')}</span>
+            </>
+          )}
+        </p>
       </Card>
     );
   }
@@ -532,19 +540,6 @@ function Card({
   );
 }
 
-function Facts({ rows }: { rows: [string, ReactNode][] }) {
-  return (
-    <dl className="m-0 grid grid-cols-[150px_minmax(0,1fr)] gap-x-3 gap-y-2 text-ui font-normal max-[600px]:grid-cols-1 max-[600px]:gap-y-0.5">
-      {rows.map(([k, v]) => (
-        <div key={k} className="contents">
-          <dt className="text-muted max-[600px]:mt-2">{k}</dt>
-          <dd className="m-0 min-w-0 break-words text-ink">{v}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 // --- side panels ----------------------------------------------------
 
 function Panel({ title, aside, children }: { title?: string; aside?: ReactNode; children: ReactNode }) {
@@ -577,7 +572,8 @@ function lanesFor(r: AccessRequest, wf: Workflow | undefined, names: Map<string,
       lanes.push({
         key: v.id,
         label,
-        who: `${nameOf(v.approver_id)} · ${formatExact(v.created_at)}`,
+        who: nameOf(v.approver_id),
+        when: formatExact(v.created_at),
         state: v.decision === 'approve' ? 'approved' : 'rejected',
         stateLabel: v.decision === 'approve' ? 'Approved' : 'Rejected',
         note: v.comment,
@@ -607,7 +603,7 @@ function lanesFor(r: AccessRequest, wf: Workflow | undefined, names: Map<string,
   return lanes;
 }
 
-function DetailsPanel({ r, display }: { r: AccessRequest; display: ScopeDisplay }) {
+function DetailsPanel({ r, display, reasonShown }: { r: AccessRequest; display: ScopeDisplay; reasonShown: boolean }) {
   const keys = keysOf(r);
   const rows: [string, ReactNode][] = [
     ['Requester', r.requester_display ?? '—'],
@@ -615,31 +611,29 @@ function DetailsPanel({ r, display }: { r: AccessRequest; display: ScopeDisplay 
       'Operation',
       `${r.type === 'patch' ? 'Change' : r.type === 'cross_team' ? 'Supply' : 'Read'} · ${keys.length || 'all'} key${keys.length === 1 ? '' : 's'}`,
     ],
-    ['Project', display.project],
     [
-      'Environment',
-      display.env ? (
-        <span key="e">
-          <EnvTag kind={display.envKind}>{display.env}</EnvTag>{' '}
-          <span className="text-muted">{display.envKind === 'prod' ? 'production' : 'non-production'}</span>
-        </span>
-      ) : (
-        '—'
-      ),
-    ],
-    ['Provider', r.type === 'cross_team' ? (r.destination_provider_label ?? '—') : providerLabel(r.target_provider_type)],
-    [
-      'Secret path',
-      <span key="p" className="break-all font-mono text-mono">
-        {pathOf(r) || '—'}
+      'Where',
+      <span key="w">
+        {display.project}
+        {display.env && (
+          <>
+            {' '}
+            <EnvTag kind={display.envKind}>{display.env}</EnvTag>
+            <span className="sr-only">{display.envKind === 'prod' ? ' (production)' : ' (non-production)'}</span>
+          </>
+        )}
       </span>,
     ],
+    ['Provider', r.type === 'cross_team' ? (r.destination_provider_label ?? '—') : providerLabel(r.target_provider_type)],
+    ['Secret path', pathOf(r) ? <Path key="p" value={pathOf(r)} /> : '—'],
     ['Keys', <Keys key="k" keys={keys} variant="chips" />],
-    ['Reason', <span key="r">“{r.justification}”</span>],
+    // The decision card quotes the reason in full; don't repeat it here.
+    ...(reasonShown ? [] : [['Reason', <span key="r" className="whitespace-pre-wrap">“{r.justification}”</span>] as [string, ReactNode]]),
     ['Created', formatExact(r.created_at, true)],
   ];
   const tech: [string, string | null | undefined][] = [
     ['Request id', r.id],
+    ['Status', r.status],
     ['Correlation id', r.id],
     ['Type', r.type],
     ['Workflow id', r.workflow_id],

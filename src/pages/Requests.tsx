@@ -19,7 +19,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { useRequests } from '../api/requests';
 import type { AccessRequest } from '../api/types';
@@ -27,7 +27,7 @@ import { useAuth } from '../auth/AuthContext';
 import { needsMyDecision } from '../lib/requestQueues';
 import { requestRef } from '../lib/requestRef';
 import { statusLabel } from '../lib/requestStatus';
-import { formatAge, formatExact, formatRemaining } from '../lib/time';
+import { formatAge, formatExact } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { conditionLine, keysOf, nextAction, operationTitle, pathOf } from '../requests/describe';
 import { useRevealConditions, type RevealCondition } from '../requests/revealState';
@@ -47,8 +47,8 @@ import { TabPanel, Tabs } from '../ui/Tabs';
 import { useToast } from '../ui/toastContext';
 import { RequestAccessDrawer } from './RequestAccessDrawer';
 
-type Tab = 'decide' | 'mine';
-type StatusFilter = 'all' | 'reveal_ready' | 'closed' | AccessRequest['status'];
+type Tab = 'decide' | 'open' | 'closed';
+type StatusFilter = 'all' | 'reveal_ready' | AccessRequest['status'];
 
 const STATUSES: AccessRequest['status'][] = [
   'pending',
@@ -76,7 +76,9 @@ export function Requests() {
   const display = useScopeDisplay();
   const now = useNow();
 
-  const [tab, setTab] = useState<Tab>(canApprove ? 'decide' : 'mine');
+  const [params] = useSearchParams();
+  const asked = params.get('tab');
+  const [tab, setTab] = useState<Tab>(asked === 'open' || asked === 'closed' ? asked : canApprove ? 'decide' : 'open');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [q, setQ] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -96,8 +98,10 @@ export function Requests() {
     [candidates, details, me],
   );
 
-  const activeTab: Tab = canApprove && (tab === 'decide' || !canRequest) ? 'decide' : 'mine';
-  const tabAll = activeTab === 'decide' ? decideAll : mineAll;
+  const activeTab: Tab = canApprove && (tab === 'decide' || !canRequest) ? 'decide' : tab === 'decide' ? 'open' : tab;
+  const mineOpen = useMemo(() => mineAll.filter((r) => !isClosed(r, reveal.get(r.id))), [mineAll, reveal]);
+  const mineClosed = useMemo(() => mineAll.filter((r) => isClosed(r, reveal.get(r.id))), [mineAll, reveal]);
+  const tabAll = activeTab === 'decide' ? decideAll : activeTab === 'open' ? mineOpen : mineClosed;
   const base = useMemo(() => tabAll.filter((r) => inScope(r, scope)), [tabAll, scope]);
 
   const rows = useMemo(() => {
@@ -138,7 +142,12 @@ export function Requests() {
 
   const tabs = [
     ...(canApprove ? [{ id: 'decide', label: 'Needs my decision', count: decideAll.filter((r) => inScope(r, scope)).length }] : []),
-    ...(canApprove && canRequest ? [{ id: 'mine', label: 'My requests', count: mineAll.filter((r) => inScope(r, scope)).length }] : []),
+    ...(canRequest
+      ? [
+          { id: 'open', label: canApprove ? 'My open requests' : 'Open', count: mineOpen.filter((r) => inScope(r, scope)).length },
+          { id: 'closed', label: canApprove ? 'My closed requests' : 'Closed', count: mineClosed.filter((r) => inScope(r, scope)).length },
+        ]
+      : []),
   ];
 
   const statusCount = (s: StatusFilter) => base.filter((r) => matchesStatus(r, s, reveal.get(r.id))).length;
@@ -204,9 +213,8 @@ export function Requests() {
           <span className="sr-only">Status</span>
           <Select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className="w-full">
             <option value="all">All statuses ({base.length})</option>
-            {activeTab === 'mine' && <option value="reveal_ready">Reveal ready ({statusCount('reveal_ready')})</option>}
-            <option value="closed">Closed ({statusCount('closed')})</option>
-            {STATUSES.map((s) => (
+            {activeTab === 'open' && <option value="reveal_ready">Reveal ready ({statusCount('reveal_ready')})</option>}
+            {STATUSES.filter((s) => statusCount(s) > 0).map((s) => (
               <option key={s} value={s}>
                 {statusLabel(s)} ({statusCount(s)})
               </option>
@@ -270,6 +278,19 @@ export function Requests() {
             <EmptyState title="Nothing is waiting for your decision.">
               Requests in your approval scope appear here, oldest first.
             </EmptyState>
+          ) : activeTab === 'open' && mineAll.length > 0 ? (
+            <EmptyState
+              title="Nothing open right now."
+              action={
+                <Button variant="secondary" onClick={() => setTab('closed')}>
+                  See closed requests
+                </Button>
+              }
+            >
+              Open requests are the ones waiting for a decision, an agent or your reveal.
+            </EmptyState>
+          ) : activeTab === 'closed' ? (
+            <EmptyState title="No closed requests yet.">Requests appear here once they are revealed, rejected, cancelled, expired or failed.</EmptyState>
           ) : (
             <EmptyState
               title="You haven't requested access yet."
@@ -293,7 +314,7 @@ export function Requests() {
           onCreated={(id) => {
             setDrawerOpen(false);
             toast(`Request ${requestRef(id)} submitted.`, { to: `/requests/${id}`, label: 'Open it' });
-            if (canApprove) setTab('mine');
+            setTab('open');
             navigate('/requests', { replace: true });
           }}
         />
@@ -309,7 +330,6 @@ function isClosed(r: AccessRequest, reveal?: RevealCondition): boolean {
 
 function matchesStatus(r: AccessRequest, s: StatusFilter, reveal?: RevealCondition): boolean {
   if (s === 'all') return true;
-  if (s === 'closed') return isClosed(r, reveal);
   if (s === 'reveal_ready') return r.status === 'executed' && reveal?.state === 'ready';
   return r.status === s;
 }
@@ -341,15 +361,16 @@ function RequestTable({
       key: 'request',
       header: 'Request',
       render: (r) => (
-        <div className="min-w-[220px] max-w-[360px]">
-          <Link to={`/requests/${r.id}`} className="font-mono text-mono font-medium text-accent hover:underline">
-            {requestRef(r.id)}
-          </Link>
-          <p className="mt-0.5 truncate font-mono text-mono text-ink" title={operationTitle(r)}>
+        <div className="min-w-[220px] max-w-[380px]">
+          <Link
+            to={`/requests/${r.id}`}
+            title={operationTitle(r)}
+            className="block truncate font-mono text-mono font-medium text-ink hover:text-accent hover:underline"
+          >
             {keysOf(r).join(', ') || 'All keys'}
-          </p>
-          <p className="truncate font-mono text-mono-small text-muted" title={pathOf(r)}>
-            {pathOf(r)}
+          </Link>
+          <p className="mt-0.5 truncate font-mono text-mono-small text-muted" title={pathOf(r)}>
+            {requestRef(r.id)} · {pathOf(r)}
           </p>
         </div>
       ),
@@ -360,14 +381,9 @@ function RequestTable({
       render: (r) => {
         const d = display(r);
         return (
-          <div className="whitespace-nowrap">
-            <p>{d.project}</p>
-            {d.env && (
-              <p className="mt-0.5">
-                <EnvTag kind={d.envKind}>{d.env}</EnvTag>
-              </p>
-            )}
-          </div>
+          <span className="whitespace-nowrap">
+            {d.project} {d.env && <EnvTag kind={d.envKind}>{d.env}</EnvTag>}
+          </span>
         );
       },
     },
@@ -406,15 +422,7 @@ function RequestTable({
       header: 'Age',
       align: 'right',
       render: (r) => {
-        const c = reveal.get(r.id);
-        if (c?.state === 'ready') {
-          return (
-            <time title={`Reveal deadline ${formatExact(c.deadline)}`} className="whitespace-nowrap font-mono text-mono text-ok">
-              {formatRemaining(c.deadline, now)}
-            </time>
-          );
-        }
-        const at = ['pending', 'pending_values', 'pending_verification', 'approved'].includes(r.status)
+        const at = ['pending', 'pending_values', 'pending_verification', 'approved'].includes(r.status) || reveal.get(r.id)?.state === 'ready'
           ? r.created_at
           : (r.updated_at ?? r.created_at);
         return (
@@ -450,6 +458,7 @@ function RequestTable({
       rowKey={(r) => r.id}
       onRowClick={open}
       minWidth={860}
+      alignTop
     />
   );
 }
