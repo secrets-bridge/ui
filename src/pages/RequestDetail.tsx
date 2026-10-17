@@ -61,11 +61,9 @@ import { clearCopiedSecret, copySecret } from '../lib/secretClipboard';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { StatusPill } from '../ui/StatusPill';
-import {
-  RequestStatusPill,
-  formatRelativeShort,
-  shortId,
-} from './Requests';
+import { requestRef as shortId } from '../lib/requestRef';
+import { formatAgo as formatRelativeShort } from '../lib/time';
+import { Status } from '../ui/Status';
 
 export function RequestDetail() {
   const { id } = useParams<{ id: string }>();
@@ -126,7 +124,7 @@ export function RequestDetail() {
           <span className="font-mono">{displayRef}</span>
         </h1>
         <div className="flex items-center gap-2 flex-wrap mt-3">
-          <RequestStatusPill status={r.status} />
+          <Status status={r.status} />
           <span className="text-muted text-xs">type</span>
           <StatusPill
             variant={r.type === 'patch' ? 'accent' : 'pending'}

@@ -76,3 +76,9 @@ export function formatRemaining(iso: string | null | undefined, now = Date.now()
   const d = Math.floor(h / 24);
   return h % 24 ? `${d}d ${h % 24}h left` : `${d}d left`;
 }
+
+/** "5m ago", "3h ago", "2d ago". */
+export function formatAgo(iso: string | null | undefined, now = Date.now()): string {
+  const age = formatAge(iso, now);
+  return age === '—' || age === 'now' ? age : `${age} ago`;
+}

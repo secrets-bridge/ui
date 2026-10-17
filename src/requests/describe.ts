@@ -64,3 +64,57 @@ export function operationTitle(r: AccessRequest): string {
   const op = r.type === 'patch' ? 'Change' : r.type === 'cross_team' ? 'Supply' : 'Read';
   return keys.length > 0 ? `${op} ${keys.join(', ')}` : `${op} all keys`;
 }
+
+/** The reveal condition line shown under an executed or approved read. */
+export function conditionLine(r: AccessRequest, reveal?: RevealCondition): { text: string; tone: 'ok' | 'muted' } | null {
+  if (r.status === 'approved') return { text: 'No execution event yet', tone: 'muted' };
+  if (r.status !== 'executed' || r.type !== 'read' || !reveal) return null;
+  switch (reveal.state) {
+    case 'ready':
+      return { text: `Reveal ready until ${formatShort(reveal.deadline)} UTC`, tone: 'ok' };
+    case 'consumed':
+      return { text: 'Reveal consumed', tone: 'muted' };
+    case 'expired':
+      return { text: 'Reveal expired', tone: 'muted' };
+    default:
+      return null;
+  }
+}
+
+export interface NextAction {
+  text?: string;
+  /** A call to action that opens the request. */
+  cta?: string;
+}
+
+/** The single next step for the person looking at the list. */
+export function nextAction(r: AccessRequest, me: string, reveal?: RevealCondition, decide?: boolean): NextAction {
+  if (decide) return { cta: 'Review and decide' };
+  const mine = r.requester_id === me;
+  switch (r.status) {
+    case 'pending':
+      return { text: 'Waiting for approval' };
+    case 'pending_values':
+      return { text: `Waiting for ${r.target_team_name ?? 'the supplying team'} to supply values` };
+    case 'pending_verification':
+      return { text: 'Waiting for verification' };
+    case 'approved':
+      return { text: 'Waiting for the agent to execute' };
+    case 'executed':
+      if (mine && reveal?.state === 'ready') return { cta: 'Reveal' };
+      if (reveal?.state === 'consumed') return { text: 'Closed · values were retrieved' };
+      return { text: 'Closed' };
+    case 'rejected':
+      return { text: 'Rejected · see reason' };
+    case 'refused':
+      return { text: `Refused by ${r.target_team_name ?? 'the supplying team'}` };
+    case 'failed':
+      return mine ? { cta: 'Review failure' } : { text: 'Failed at the agent' };
+    case 'expired':
+      return { text: 'Expired without a decision' };
+    case 'cancelled':
+      return { text: mine ? 'Cancelled by you' : 'Cancelled by the requester' };
+    default:
+      return {};
+  }
+}

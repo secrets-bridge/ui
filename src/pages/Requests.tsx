@@ -1,199 +1,301 @@
 /**
- * Requests page (`/requests`) — matches Figma frame 27:2.
+ * Requests (`/requests`).
  *
- * Two stacked sections:
- *   1. **My requests** — table of the signed-in user's own requests
- *      with status pills + a filter pill row (All / Pending / Approved
- *      / Rejected / Executed) and a type toggle (patch / read).
- *   2. **Approver queue** — pending requests submitted by someone
- *      ELSE, with inline Approve / Reject buttons and an
- *      auto-rejects-on-TTL-expiry note. The eyebrow chip surfaces the
- *      permission gating (`secret.approve`).
+ * A requester sees "My requests", newest first. An approver sees tabs:
+ * "Needs my decision" (pending, someone else's, not yet voted on;
+ * oldest first) and, when they also request, "My requests". The api
+ * doesn't report approval lanes or who decided yet, so the handoff's
+ * "Coming to me" and "Decided by me" tabs wait for it (api#228,
+ * api#232).
  *
- * Data sourcing:
- *   - `useRequests({ requester_id: me })` hydrates the My-requests
- *     table.
- *   - `useRequests({ status: 'pending' })` hydrates the Approver
- *     queue, filtered client-side to exclude the signed-in user's own
- *     requests (the api doesn't have a `requester_id != me` filter
- *     today, so we trim locally — the list is small).
+ * Filters work together: search (ref, id, key, path, reason, requester,
+ * project, environment, status), a status select with the real status
+ * names and their counts, the shared scope filter and Reset filters.
+ * "Showing n of m" updates live. The whole row opens the request and
+ * the ref is a real link. The table scrolls inside its own box.
  *
- * Hard rules (UI-side):
- *   - NEVER display secret values; the request shape carries metadata
- *     only.
- *   - Self-approval is silently hidden — bob approving bob's own
- *     request would be rejected by the api with 403 anyway, but
- *     trimming it client-side keeps the queue clean.
+ * Filtering runs in the browser over what GET /requests returns (the
+ * newest 100); server-side paging and search are api#232.
  */
 
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { ApiError } from '../api/client';
-import {
-  useApproveRequest,
-  useRejectRequest,
-  useRequests,
-} from '../api/requests';
+import { useRequests } from '../api/requests';
 import type { AccessRequest } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import { needsMyDecision } from '../lib/requestQueues';
+import { requestRef } from '../lib/requestRef';
+import { statusLabel } from '../lib/requestStatus';
+import { formatAge, formatExact, formatRemaining } from '../lib/time';
+import { useNow } from '../lib/useNow';
+import { conditionLine, keysOf, nextAction, operationTitle, pathOf } from '../requests/describe';
+import { useRevealConditions, type RevealCondition } from '../requests/revealState';
+import { ALL_SCOPES, inScope, scopeOptions, useScope, useScopeDisplay, type ScopeDisplay } from '../requests/scope';
+import { useRequestDetails } from '../requests/useRequestDetails';
+import { useMe } from '../api/me';
+import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
+import { DataTable, type Column } from '../ui/DataTable';
+import { EmptyState } from '../ui/EmptyState';
+import { EnvTag } from '../ui/EnvTag';
+import { Input, Select } from '../ui/Field';
+import { SearchIcon } from '../ui/icons';
 import { PageHeader } from '../ui/PageHeader';
 import { Status } from '../ui/Status';
-import { StatusPill } from '../ui/StatusPill';
+import { TabPanel, Tabs } from '../ui/Tabs';
+import { useToast } from '../ui/toastContext';
 import { SubmitRequestDrawer } from './SubmitRequestDrawer';
 
-type StatusFilter = 'all' | AccessRequest['status'];
-type TypeFilter = 'all' | AccessRequest['type'];
+type Tab = 'decide' | 'mine';
+type StatusFilter = 'all' | 'reveal_ready' | 'closed' | AccessRequest['status'];
+
+const STATUSES: AccessRequest['status'][] = [
+  'pending',
+  'pending_values',
+  'pending_verification',
+  'approved',
+  'executed',
+  'rejected',
+  'refused',
+  'cancelled',
+  'expired',
+  'failed',
+];
 
 export function Requests() {
   const navigate = useNavigate();
+  const toast = useToast();
   const { identity, hasPermission } = useAuth();
   const me = identity?.id ?? '';
-  // Approver queue is only meaningful when the caller actually holds
-  // secret.approve. For everyone else it's noise — hide the section so
-  // a scoped developer's Requests page is just My-requests.
+  const canRequest = hasPermission('secret.request');
   const canApprove = hasPermission('secret.approve');
+  const { scope, setScope } = useScope();
+  const meQ = useMe();
+  const scopes = useMemo(() => scopeOptions(meQ.data?.projects), [meQ.data]);
+  const display = useScopeDisplay();
+  const now = useNow();
 
-  const myRequests = useRequests({ requester_id: me });
-  const allPending = useRequests({ status: 'pending' }, { enabled: canApprove });
-
+  const [tab, setTab] = useState<Tab>(canApprove ? 'decide' : 'mine');
   const [status, setStatus] = useState<StatusFilter>('all');
-  const [type, setType] = useState<TypeFilter>('all');
-  const [submitting, setSubmitting] = useState(false);
+  const [q, setQ] = useState('');
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const filteredMine = useMemo(() => {
-    const rows = myRequests.data ?? [];
-    return rows.filter((r) => {
-      if (status !== 'all' && r.status !== status) return false;
-      if (type !== 'all' && r.type !== type) return false;
-      return true;
+  const mineQ = useRequests({ requester_id: me }, { enabled: !!me && canRequest });
+  const pendingQ = useRequests({ status: 'pending' }, { enabled: !!me && canApprove });
+
+  const mineAll = useMemo(() => (mineQ.data ?? []).filter((r) => r.requester_id === me), [mineQ.data, me]);
+  const reveal = useRevealConditions(mineAll, me);
+
+  // Needs my decision: the queue rule plus each row's detail, for the
+  // requester's name and the votes already cast.
+  const candidates = useMemo(() => needsMyDecision(pendingQ.data ?? [], me), [pendingQ.data, me]);
+  const details = useRequestDetails(useMemo(() => candidates.map((r) => r.id), [candidates]));
+  const decideAll = useMemo(
+    () => needsMyDecision(candidates.map((r) => details.get(r.id) ?? r), me),
+    [candidates, details, me],
+  );
+
+  const activeTab: Tab = canApprove && (tab === 'decide' || !canRequest) ? 'decide' : 'mine';
+  const tabAll = activeTab === 'decide' ? decideAll : mineAll;
+  const base = useMemo(() => tabAll.filter((r) => inScope(r, scope)), [tabAll, scope]);
+
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const filtered = base.filter((r) => {
+      if (!matchesStatus(r, status, reveal.get(r.id))) return false;
+      if (!needle) return true;
+      const d = display(r);
+      const hay = [
+        requestRef(r.id),
+        r.id,
+        pathOf(r),
+        keysOf(r).join(' '),
+        r.justification,
+        r.requester_display ?? '',
+        d.project,
+        d.env ?? '',
+        r.status,
+        statusLabel(r.status),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(needle);
     });
-  }, [myRequests.data, status, type]);
+    const byNew = (a: AccessRequest, b: AccessRequest) => Date.parse(b.created_at) - Date.parse(a.created_at);
+    return filtered.sort(activeTab === 'decide' ? (a, b) => -byNew(a, b) : byNew);
+  }, [base, status, q, reveal, display, activeTab]);
 
-  const queue = useMemo(() => {
-    const rows = allPending.data ?? [];
-    return rows.filter((r) => r.requester_id !== me);
-  }, [allPending.data, me]);
+  const filtered = q.trim() !== '' || status !== 'all' || scope !== ALL_SCOPES;
+  const reset = () => {
+    setQ('');
+    setStatus('all');
+    setScope(ALL_SCOPES);
+  };
+
+  const query = activeTab === 'decide' ? pendingQ : mineQ;
+  const isApproverView = canApprove;
+
+  const tabs = [
+    ...(canApprove ? [{ id: 'decide', label: 'Needs my decision', count: decideAll.filter((r) => inScope(r, scope)).length }] : []),
+    ...(canApprove && canRequest ? [{ id: 'mine', label: 'My requests', count: mineAll.filter((r) => inScope(r, scope)).length }] : []),
+  ];
+
+  const statusCount = (s: StatusFilter) => base.filter((r) => matchesStatus(r, s, reveal.get(r.id))).length;
+
+  const table = (
+    <RequestTable
+      rows={rows}
+      me={me}
+      decide={activeTab === 'decide'}
+      showRequester={isApproverView}
+      reveal={reveal}
+      display={display}
+      now={now}
+    />
+  );
 
   return (
     <div>
       <PageHeader
-        title="Requests"
-        description="Track your own requests and act on those awaiting your decision."
+        title={isApproverView ? 'Requests' : 'My requests'}
+        description={
+          isApproverView
+            ? 'Requests waiting for your decision, and your own requests. Values never appear in this list.'
+            : 'Every request you made, newest first. Values never appear in this list.'
+        }
         actions={
-          <Button
-            variant="primary"
-            onClick={() => setSubmitting(true)}
-            disabled={!me}
-          >
-            + New request
-          </Button>
+          canRequest ? (
+            <Button variant="primary" onClick={() => setDrawerOpen(true)}>
+              New request
+            </Button>
+          ) : undefined
         }
       />
 
-      <Card className="overflow-hidden mb-6">
-        <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-          <h3 className="text-ink font-semibold">My requests</h3>
-        </div>
-        <div className="px-5 py-4 flex items-center gap-3 flex-wrap border-b border-border/60">
-          <FilterPills
-            value={status}
-            onChange={setStatus}
-            options={[
-              { value: 'all', label: 'All' },
-              { value: 'pending', label: 'Pending' },
-              { value: 'approved', label: 'Approved' },
-              { value: 'rejected', label: 'Rejected' },
-              { value: 'executed', label: 'Executed' },
-            ]}
-          />
-          <span className="text-muted text-xs ml-2">type:</span>
-          <FilterPills
-            value={type}
-            onChange={setType}
-            options={[
-              { value: 'all', label: 'All' },
-              { value: 'patch', label: 'patch' },
-              { value: 'read', label: 'read' },
-            ]}
+      {tabs.length > 1 && (
+        <div className="mb-4">
+          <Tabs
+            label="Request queues"
+            idPrefix="requests"
+            tabs={tabs}
+            value={activeTab}
+            onChange={(id) => {
+              setTab(id as Tab);
+              setStatus('all');
+            }}
           />
         </div>
-
-        {myRequests.isError && (
-          <ErrorRow title="Failed to load requests" err={myRequests.error} />
-        )}
-        {myRequests.isLoading && (
-          <div className="px-5 py-8 text-muted text-sm">Loading…</div>
-        )}
-        {myRequests.data && filteredMine.length === 0 && (
-          <div className="px-5 py-8 text-muted text-sm">
-            {status === 'all' && type === 'all'
-              ? 'You haven’t submitted any requests yet.'
-              : 'No requests match the current filters.'}
-          </div>
-        )}
-        {filteredMine.length > 0 && (
-          <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px]">
-              <tr className="border-b border-border/60">
-                <Th>ID</Th>
-                <Th>Target</Th>
-                <Th>Type</Th>
-                <Th>Status</Th>
-                <Th className="text-right">Created</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredMine.map((r) => (
-                <RequestRow key={r.id} row={r} />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
-
-      {canApprove && (
-        <>
-          <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-ink text-base font-semibold">Approver queue</h2>
-            <StatusPill variant="accent" tone="outline">
-              secret.approve
-            </StatusPill>
-          </div>
-          <p className="text-muted text-xs mb-4">
-            Oldest first (FIFO). Reject requires a reason. Self-approval is
-            blocked unless the workflow allows it.
-          </p>
-
-          {allPending.isError && (
-            <ErrorBanner title="Failed to load approver queue" err={allPending.error} />
-          )}
-          {allPending.isLoading && (
-            <div className="text-muted text-sm">Loading queue…</div>
-          )}
-          {allPending.data && queue.length === 0 && (
-            <Card className="p-10 text-center text-muted text-sm">
-              The queue is empty. No requests are awaiting your decision.
-            </Card>
-          )}
-
-          <div className="space-y-4">
-            {queue.map((r) => (
-              <ApproverQueueCard key={r.id} row={r} />
-            ))}
-          </div>
-        </>
       )}
 
-      {submitting && (
+      <div className="mb-3 flex flex-wrap items-center gap-2.5">
+        <label className="relative min-w-0 flex-[1_1_280px] max-w-[380px] max-[600px]:max-w-none max-[600px]:basis-full">
+          <span className="sr-only">Search requests</span>
+          <SearchIcon size={16} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+          <Input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search key, path, reason or ID"
+            className="w-full pl-8"
+          />
+        </label>
+        <label className="flex-[0_1_200px] max-[600px]:flex-[1_1_140px]">
+          <span className="sr-only">Status</span>
+          <Select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className="w-full">
+            <option value="all">All statuses ({base.length})</option>
+            {activeTab === 'mine' && <option value="reveal_ready">Reveal ready ({statusCount('reveal_ready')})</option>}
+            <option value="closed">Closed ({statusCount('closed')})</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {statusLabel(s)} ({statusCount(s)})
+              </option>
+            ))}
+          </Select>
+        </label>
+        {scopes.length > 0 && (
+          <label className="flex-[0_1_220px] max-[600px]:flex-[1_1_140px]">
+            <span className="sr-only">Scope</span>
+            <Select value={scope} onChange={(e) => setScope(e.target.value)} className="w-full">
+              <option value={ALL_SCOPES}>All my scopes</option>
+              {scopes.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
+        <Button variant="quiet" onClick={reset} disabled={!filtered}>
+          Reset filters
+        </Button>
+        {!query.isLoading && !query.isError && (
+          <p role="status" className="ml-auto whitespace-nowrap text-caption text-muted max-[600px]:ml-0 max-[600px]:w-full">
+            Showing {rows.length} of {tabAll.length}
+          </p>
+        )}
+      </div>
+
+      {query.isError && (
+        <Banner
+          tone="error"
+          title="Couldn't load requests."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void query.refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          Nothing is counted until they load.
+        </Banner>
+      )}
+      {query.isLoading && <p className="text-muted">Loading requests…</p>}
+
+      {!query.isLoading && !query.isError && (
+        <TabPanel idPrefix="requests" value={activeTab}>
+          {rows.length > 0 ? (
+            table
+          ) : filtered ? (
+            <EmptyState
+              title="No requests match these filters."
+              action={
+                <Button variant="secondary" onClick={reset}>
+                  Reset filters
+                </Button>
+              }
+            >
+              Try a different search or status, or reset the filters to see everything in your scopes.
+            </EmptyState>
+          ) : activeTab === 'decide' ? (
+            <EmptyState title="Nothing is waiting for your decision.">
+              Requests in your approval scope appear here, oldest first.
+            </EmptyState>
+          ) : (
+            <EmptyState
+              title="You haven't requested access yet."
+              action={
+                canRequest ? (
+                  <Button variant="primary" onClick={() => setDrawerOpen(true)}>
+                    New request
+                  </Button>
+                ) : undefined
+              }
+            >
+              Requests you make appear here with their status and next step.
+            </EmptyState>
+          )}
+        </TabPanel>
+      )}
+
+      {drawerOpen && identity && (
         <SubmitRequestDrawer
-          requesterId={me}
-          onClose={() => setSubmitting(false)}
+          requesterId={identity.id}
+          onClose={() => setDrawerOpen(false)}
           onCreated={(id) => {
-            setSubmitting(false);
-            navigate(`/requests/${id}`);
+            setDrawerOpen(false);
+            toast(`Request ${requestRef(id)} submitted.`, { to: `/requests/${id}`, label: 'Open it' });
+            if (canApprove) setTab('mine');
+            navigate('/requests', { replace: true });
           }}
         />
       )}
@@ -201,276 +303,154 @@ export function Requests() {
   );
 }
 
-// --- my requests row ------------------------------------------------
-
-function RequestRow({ row: r }: { row: AccessRequest }) {
-  return (
-    <tr className="border-b border-border/40 last:border-0 hover:bg-bg/20 align-middle">
-      <Td>
-        <Link
-          to={`/requests/${r.id}`}
-          className="font-mono text-accent hover:underline text-sm"
-        >
-          {shortId(r.id)}
-        </Link>
-      </Td>
-      <Td>
-        <span className="font-mono text-ink text-sm break-all">
-          {r.target_secret_ref}
-        </span>
-      </Td>
-      <Td>
-        <span className="font-mono text-muted text-xs">{r.type}</span>
-      </Td>
-      <Td>
-        <RequestStatusPill status={r.status} />
-      </Td>
-      <Td className="text-right text-muted text-xs whitespace-nowrap">
-        {formatRelativeShort(r.created_at)}
-      </Td>
-    </tr>
-  );
+function isClosed(r: AccessRequest, reveal?: RevealCondition): boolean {
+  if (r.status === 'executed') return reveal?.state !== 'ready';
+  return ['rejected', 'refused', 'cancelled', 'expired', 'failed'].includes(r.status);
 }
 
-// --- approver queue card --------------------------------------------
-
-function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
-  const approve = useApproveRequest(r.id);
-  const reject = useRejectRequest(r.id);
-  const [showReason, setShowReason] = useState(false);
-  const [reason, setReason] = useState('');
-
-  return (
-    <Card className="p-5">
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-start">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-ink text-sm">
-              {r.requester_id}
-            </span>
-            <span className="text-muted text-xs">requests</span>
-            <StatusPill
-              variant={r.type === 'patch' ? 'accent' : 'pending'}
-              tone="outline"
-            >
-              {r.type}
-            </StatusPill>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-muted text-xs">target</span>
-            <span className="font-mono text-accent text-sm break-all">
-              {r.target_secret_ref}
-            </span>
-          </div>
-          {r.justification && (
-            <p className="text-muted text-xs">
-              &ldquo;{r.justification}&rdquo;
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-col items-end gap-3 min-w-[200px]">
-          <div className="text-right">
-            <div className="text-muted text-[11px]">
-              Submitted
-            </div>
-            <div className="text-ink font-mono text-sm mt-0.5">
-              {formatRelativeShort(r.created_at)}
-            </div>
-            <div className="text-muted text-[10px] mt-0.5">
-              auto-rejects on TTL expiry
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="primary"
-              size="md"
-              disabled={approve.isPending}
-              onClick={() => approve.mutate({})}
-            >
-              {approve.isPending ? 'Working…' : 'Approve'}
-            </Button>
-            <Button
-              variant="danger"
-              size="md"
-              disabled={reject.isPending}
-              onClick={() => setShowReason((v) => !v)}
-            >
-              Reject
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {showReason && (
-        <div className="mt-4 pt-4 border-t border-border/60 space-y-2">
-          <label className="block text-xs text-muted font-medium">
-            Reject reason
-          </label>
-          <textarea
-            rows={2}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. wrong target / not approved by oncall / use the read flow instead"
-            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
-          />
-          <div className="flex items-center justify-between pt-1">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setShowReason(false);
-                setReason('');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={!reason.trim() || reject.isPending}
-              onClick={() =>
-                reject.mutate({ reason: reason.trim() })
-              }
-            >
-              {reject.isPending ? 'Working…' : 'Confirm reject'}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {(approve.error || reject.error) && (
-        <InlineApiError
-          err={(approve.error ?? reject.error) as unknown}
-          className="mt-3"
-        />
-      )}
-    </Card>
-  );
+function matchesStatus(r: AccessRequest, s: StatusFilter, reveal?: RevealCondition): boolean {
+  if (s === 'all') return true;
+  if (s === 'closed') return isClosed(r, reveal);
+  if (s === 'reveal_ready') return r.status === 'executed' && reveal?.state === 'ready';
+  return r.status === s;
 }
 
-// --- status --------------------------------------------------------
+// --- table ----------------------------------------------------------
 
-export function RequestStatusPill({
-  status,
+function RequestTable({
+  rows,
+  me,
+  decide,
+  showRequester,
+  reveal,
+  display,
+  now,
 }: {
-  status: AccessRequest['status'];
+  rows: AccessRequest[];
+  me: string;
+  decide: boolean;
+  showRequester: boolean;
+  reveal: Map<string, RevealCondition>;
+  display: (r: AccessRequest) => ScopeDisplay;
+  now: number;
 }) {
-  return <Status status={status} />;
-}
+  const navigate = useNavigate();
+  const open = (r: AccessRequest) => navigate(`/requests/${r.id}`);
 
-// --- filter pills ---------------------------------------------------
-
-function FilterPills<T extends string>({
-  value,
-  onChange,
-  options,
-}: {
-  value: T;
-  onChange: (v: T) => void;
-  options: { value: T; label: string }[];
-}) {
-  return (
-    <div className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border p-0.5">
-      {options.map((o) => {
-        const on = o.value === value;
+  const columns: Column<AccessRequest>[] = [
+    {
+      key: 'request',
+      header: 'Request',
+      render: (r) => (
+        <div className="min-w-[220px] max-w-[360px]">
+          <Link to={`/requests/${r.id}`} className="font-mono text-mono font-medium text-accent hover:underline">
+            {requestRef(r.id)}
+          </Link>
+          <p className="mt-0.5 truncate font-mono text-mono text-ink" title={operationTitle(r)}>
+            {keysOf(r).join(', ') || 'All keys'}
+          </p>
+          <p className="truncate font-mono text-mono-small text-muted" title={pathOf(r)}>
+            {pathOf(r)}
+          </p>
+        </div>
+      ),
+    },
+    {
+      key: 'scope',
+      header: 'Project · environment',
+      render: (r) => {
+        const d = display(r);
         return (
-          <button
-            key={o.value}
-            onClick={() => onChange(o.value)}
-            className={
-              'px-3.5 py-1 rounded-sm text-xs font-medium transition-colors ' +
-              (on
-                ? 'bg-accent/20 text-accent'
-                : 'text-muted hover:text-ink')
-            }
-          >
-            {o.label}
-          </button>
+          <div className="whitespace-nowrap">
+            <p>{d.project}</p>
+            {d.env && (
+              <p className="mt-0.5">
+                <EnvTag kind={d.envKind}>{d.env}</EnvTag>
+              </p>
+            )}
+          </div>
         );
-      })}
-    </div>
-  );
-}
+      },
+    },
+    ...(showRequester
+      ? [
+          {
+            key: 'requester',
+            header: 'Requester',
+            render: (r: AccessRequest) => (
+              <span className="whitespace-nowrap">
+                {r.requester_id === me ? 'You' : (r.requester_display ?? 'Loading…')}
+              </span>
+            ),
+          },
+        ]
+      : []),
+    {
+      key: 'state',
+      header: 'State',
+      render: (r) => {
+        const line = conditionLine(r, reveal.get(r.id));
+        return (
+          <div>
+            <Status status={r.status} />
+            {line && (
+              <p className={'mt-0.5 whitespace-nowrap text-caption ' + (line.tone === 'ok' ? 'text-ok' : 'text-muted')}>
+                {line.text}
+              </p>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'age',
+      header: 'Age',
+      align: 'right',
+      render: (r) => {
+        const c = reveal.get(r.id);
+        if (c?.state === 'ready') {
+          return (
+            <time title={`Reveal deadline ${formatExact(c.deadline)}`} className="whitespace-nowrap font-mono text-mono text-ok">
+              {formatRemaining(c.deadline, now)}
+            </time>
+          );
+        }
+        const at = ['pending', 'pending_values', 'pending_verification', 'approved'].includes(r.status)
+          ? r.created_at
+          : (r.updated_at ?? r.created_at);
+        return (
+          <time title={formatExact(at)} className="whitespace-nowrap font-mono text-mono text-muted">
+            {formatAge(at, now)}
+          </time>
+        );
+      },
+    },
+    {
+      key: 'next',
+      header: 'Next action',
+      render: (r) => {
+        const n = nextAction(r, me, reveal.get(r.id), decide);
+        if (n.cta) {
+          return (
+            <Button variant="secondary" size="sm" onClick={() => open(r)}>
+              {n.cta}
+              <span className="sr-only"> {requestRef(r.id)}</span>
+            </Button>
+          );
+        }
+        return <span className="text-caption text-muted">{n.text}</span>;
+      },
+    },
+  ];
 
-// --- shared bits ----------------------------------------------------
-
-function Th({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
-}
-
-function Td({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <td className={`px-5 py-3.5 align-middle ${className}`}>{children}</td>;
-}
-
-function ErrorRow({ title, err }: { title: string; err: unknown }) {
   return (
-    <div className="px-5 py-4 border-b border-border/60 text-sm">
-      <div className="text-bad font-medium">{title}</div>
-      <div className="text-muted mt-1 text-xs">{stringifyError(err)}</div>
-    </div>
+    <DataTable
+      label={decide ? 'Requests waiting for your decision' : 'Your requests'}
+      columns={columns}
+      rows={rows}
+      rowKey={(r) => r.id}
+      onRowClick={open}
+      minWidth={860}
+    />
   );
-}
-
-function ErrorBanner({ title, err }: { title: string; err: unknown }) {
-  return (
-    <Card className="border-bad-line p-5 text-sm mb-4">
-      <div className="text-bad font-medium">{title}</div>
-      <div className="text-muted mt-1">{stringifyError(err)}</div>
-    </Card>
-  );
-}
-
-function InlineApiError({ err, className = '' }: { err: unknown; className?: string }) {
-  if (!(err instanceof ApiError)) return null;
-  return (
-    <div
-      className={
-        'text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2 ' +
-        className
-      }
-    >
-      {err.status}: {err.message}
-    </div>
-  );
-}
-
-function stringifyError(e: unknown): string {
-  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
-  if (e instanceof Error) return e.message;
-  return String(e);
-}
-
-export function shortId(id: string): string {
-  // REQ-style display: take the first 4 hex chars of the UUID and
-  // upper-case them so the URL prefix is short + reader-friendly.
-  if (!id) return '—';
-  const head = id.replace(/-/g, '').slice(0, 4).toUpperCase();
-  return `REQ-${head}`;
-}
-
-export function formatRelativeShort(iso: string | undefined): string {
-  if (!iso) return '—';
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '—';
-  const seconds = Math.max(0, Math.round((Date.now() - t) / 1000));
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
 }
