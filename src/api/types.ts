@@ -404,11 +404,12 @@ export interface Approval {
   created_at: string;
 }
 
-/** Body shape for POST /requests/read. Values never leave the user. */
+/**
+ * Body shape for POST /requests/read. Values never leave the user. The
+ * requester is the session identity (API-N-02); there is no requester
+ * field.
+ */
 export interface ReadRequestInput {
-  // TODO(UI-N-01): drop once api PR fix/security-approval-gates merges;
-  // until then the api still reads requester_id from this body.
-  requester_id: string;
   project_id?: string;
   environment?: string;
   target_provider_type: string;
@@ -430,8 +431,6 @@ export interface ReadRequestInput {
  * immediately after the submit promise settles.
  */
 export interface PatchRequestInput {
-  // TODO(UI-N-01): drop with ReadRequestInput.requester_id.
-  requester_id: string;
   project_id?: string;
   environment?: string;
   target_provider_type: string;

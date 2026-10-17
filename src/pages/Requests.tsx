@@ -45,7 +45,7 @@ import { PageHeader } from '../ui/PageHeader';
 import { Status } from '../ui/Status';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { useToast } from '../ui/toastContext';
-import { SubmitRequestDrawer } from './SubmitRequestDrawer';
+import { RequestAccessDrawer } from './RequestAccessDrawer';
 
 type Tab = 'decide' | 'mine';
 type StatusFilter = 'all' | 'reveal_ready' | 'closed' | AccessRequest['status'];
@@ -288,8 +288,7 @@ export function Requests() {
       )}
 
       {drawerOpen && identity && (
-        <SubmitRequestDrawer
-          requesterId={identity.id}
+        <RequestAccessDrawer
           onClose={() => setDrawerOpen(false)}
           onCreated={(id) => {
             setDrawerOpen(false);

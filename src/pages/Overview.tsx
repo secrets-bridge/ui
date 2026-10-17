@@ -51,7 +51,7 @@ import { PageHeader } from '../ui/PageHeader';
 import { Select } from '../ui/Field';
 import { Status } from '../ui/Status';
 import { useToast } from '../ui/toastContext';
-import { SubmitRequestDrawer } from './SubmitRequestDrawer';
+import { RequestAccessDrawer } from './RequestAccessDrawer';
 
 const RECENT_DAYS = 3;
 
@@ -296,8 +296,7 @@ export function Overview() {
       )}
 
       {drawerOpen && identity && (
-        <SubmitRequestDrawer
-          requesterId={identity.id}
+        <RequestAccessDrawer
           onClose={() => setDrawerOpen(false)}
           onCreated={(id) => {
             setDrawerOpen(false);
