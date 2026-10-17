@@ -8,7 +8,7 @@
  * Flow:
  *
  *   Tier-2 op → 401 step_up_required
- *     → queryClient onError calls requestStepUp(returnTo)
+ *     → client.ts calls requestStepUp() (the reveal calls it up front)
  *     → this provider registers a handler that opens the modal
  *     → user picks TOTP or security key (filtered by what they have)
  *     → POST /auth/mfa/challenge {kind}
@@ -18,8 +18,10 @@
  *
  * Error cases the modal handles directly:
  *
- *   410 challenge expired         → reset back to factor picker
- *   400 verification_failed       → restart the ceremony from challenge
+ *   400 verification failed and
+ *   410 challenge expired         → ask for a fresh challenge (each
+ *                                   one is single-shot) and let the
+ *                                   user type the code again
  *   412 mfa_enrollment_required   → navigate to /me/mfa
  *   412 mfa_kind_not_enrolled     → hint to switch factor
  *   401 factor_compromised        → hard-navigate to /login (sessions
@@ -47,12 +49,13 @@ import {
   setCompromisedHandler,
   setEnrollmentRequiredHandler,
   setStepUpHandler,
+  type StepUpPurpose,
 } from './stepUp';
 
 type Stage = 'picker' | 'totp' | 'webauthn' | 'done';
 
 export function StepUpModalProvider({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<StepUpPurpose | null>(null);
   const navigate = useNavigate();
   const { logout } = useAuth();
 
@@ -62,11 +65,11 @@ export function StepUpModalProvider({ children }: { children: React.ReactNode })
   // every exit path in the modal passes the right value.
   const close = useCallback((outcome: 'verified' | 'cancelled') => {
     resolveStepUp(outcome);
-    setOpen(false);
+    setOpen(null);
   }, []);
 
   useEffect(() => {
-    setStepUpHandler(() => setOpen(true));
+    setStepUpHandler((purpose) => setOpen(purpose));
     setEnrollmentRequiredHandler(() => {
       // Bounce the user straight to enrollment. Don't open the modal
       // — there's nothing to verify with.
@@ -92,6 +95,7 @@ export function StepUpModalProvider({ children }: { children: React.ReactNode })
       {children}
       {open && (
         <StepUpModal
+          purpose={open}
           onCancel={() => close('cancelled')}
           onVerified={() => close('verified')}
         />
@@ -103,9 +107,11 @@ export function StepUpModalProvider({ children }: { children: React.ReactNode })
 // --- modal ----------------------------------------------------------
 
 function StepUpModal({
+  purpose,
   onCancel,
   onVerified,
 }: {
+  purpose: StepUpPurpose;
   onCancel: () => void;
   onVerified: () => void;
 }) {
@@ -158,8 +164,9 @@ function StepUpModal({
       }
     >
       <p className="text-muted">
-        This action needs your second factor. After you confirm, you
-        won't be asked again for 15 minutes.
+        {purpose === 'reveal'
+          ? 'Enter your authentication code to reveal the values. Nothing is retrieved until you confirm, and closing this retrieves nothing.'
+          : "This action needs your second factor. After you confirm, you won't be asked again for 15 minutes."}
       </p>
 
       {stage === 'picker' && (
@@ -167,6 +174,7 @@ function StepUpModal({
       )}
       {stage === 'totp' && (
         <TOTPVerify
+          purpose={purpose}
           factors={list.filter((f) => f.kind === 'totp')}
           initialFactor={pickedFactor}
           canGoBack={!totpOnly}
@@ -238,12 +246,14 @@ function FactorPicker({
 // --- TOTP -----------------------------------------------------------
 
 function TOTPVerify({
+  purpose,
   factors,
   initialFactor,
   canGoBack,
   onBack,
   onSuccess,
 }: {
+  purpose: StepUpPurpose;
   factors: MFAFactor[];
   initialFactor: MFAFactor | null;
   canGoBack: boolean;
@@ -340,7 +350,7 @@ function TOTPVerify({
         )}
       </Field>
       {(challenge.isError || verify.isError) && (
-        <ErrorBanner err={challenge.error ?? verify.error} />
+        <ErrorBanner err={challenge.error ?? verify.error} purpose={purpose} />
       )}
       <div className="flex items-center gap-2.5">
         <Button
@@ -455,13 +465,14 @@ function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
 
 // --- shared bits ----------------------------------------------------
 
-function ErrorBanner({ err }: { err: unknown }) {
+function ErrorBanner({ err, purpose }: { err: unknown; purpose: StepUpPurpose }) {
   // A wrong or stale code is the common case: say so plainly. The
   // original action has not run yet, so nothing happened.
   if (err instanceof ApiError && (err.status === 400 || err.status === 410)) {
     return (
       <Banner tone="error" title="That code wasn't accepted.">
-        Nothing has happened yet. Check the code in your authenticator app and try again.
+        {purpose === 'reveal' ? 'Nothing was retrieved.' : 'Nothing has happened yet.'} Check the code in your
+        authenticator app and try again.
       </Banner>
     );
   }

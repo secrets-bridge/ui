@@ -45,7 +45,10 @@
  * verbatim; client.ts matches on them and routes here.
  */
 
-type StepUpHandler = () => void;
+/** What the step-up is for; changes the dialog's wording only. */
+export type StepUpPurpose = 'action' | 'reveal';
+
+type StepUpHandler = (purpose: StepUpPurpose) => void;
 type EnrollmentRequiredHandler = () => void;
 type CompromisedHandler = () => void;
 
@@ -81,7 +84,7 @@ export function setCompromisedHandler(fn: CompromisedHandler | null): void {
  * Resolves immediately with 'cancelled' when no modal provider is
  * mounted (there's no sensible fallback at module scope).
  */
-export function requestStepUp(): Promise<'verified' | 'cancelled'> {
+export function requestStepUp(purpose: StepUpPurpose = 'action'): Promise<'verified' | 'cancelled'> {
   if (pendingStepUp) return pendingStepUp.promise;
   if (!stepUpHandler) return Promise.resolve('cancelled');
 
@@ -93,7 +96,7 @@ export function requestStepUp(): Promise<'verified' | 'cancelled'> {
   promise.finally(() => {
     pendingStepUp = null;
   });
-  stepUpHandler();
+  stepUpHandler(purpose);
   return promise;
 }
 

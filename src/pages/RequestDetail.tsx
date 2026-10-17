@@ -14,8 +14,8 @@
  * A request the person can't read answers 404 from the api; the page
  * says so and shows nothing else about it.
  *
- * Values never appear here except through the reveal, which is its own
- * component (see request/LegacyReveal.tsx until the inline reveal lands).
+ * Values never appear here except inside the reveal (request/Reveal.tsx),
+ * which only starts on the requester's click and an MFA step-up.
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,7 +24,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import type { AuditEvent } from '../api/audit';
 import { api, ApiError } from '../api/client';
-import { requestsKey, useRequest, useRequestGitOps, useRequestWraps } from '../api/requests';
+import { requestsKey, useRequest, useRequestGitOps } from '../api/requests';
 import type { AccessRequest, Workflow } from '../api/types';
 import { useWorkflows } from '../api/workflows';
 import { useAuth } from '../auth/AuthContext';
@@ -50,7 +50,7 @@ import { useToast } from '../ui/toastContext';
 import { CrossTeamApprovalChainCard, CrossTeamVerifyCard } from './request/CrossTeamVerify';
 import { ApproveDialog, CancelDialog, RejectDialog } from './request/DecisionDialogs';
 import { GitOpsCard } from './request/GitOps';
-import { WrapsCard } from './request/LegacyReveal';
+import { Reveal } from './request/Reveal';
 import { SubmitRequestDrawer } from './SubmitRequestDrawer';
 
 type DialogKind = 'approve' | 'reject' | 'cancel' | null;
@@ -132,6 +132,17 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
     [audit.data, r, me],
   );
 
+  // After a decision the card changes under the closing dialog. Once the
+  // refreshed request arrives, focus its new state heading (handoff:
+  // focus goes to the state heading when the trigger is gone).
+  const focusStateOnUpdate = useRef(false);
+  useEffect(() => {
+    if (!focusStateOnUpdate.current) return;
+    focusStateOnUpdate.current = false;
+    const raf = window.requestAnimationFrame(() => document.getElementById('state-heading')?.focus());
+    return () => window.cancelAnimationFrame(raf);
+  }, [r.status, r.updated_at, reveal?.state]);
+
   const myVote = (r.approvals ?? []).find((a) => a.approver_id === me);
   const decisionOpen =
     r.type !== 'cross_team' && r.status === 'pending' && !isMine && hasPermission('secret.approve') && !myVote;
@@ -142,21 +153,39 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
       ? crossTeamVerifyCapability(r, me, identity?.permissions)
       : null;
 
-  // The values card appears only while a reveal is ready for this person.
-  const showValues = r.type === 'read' && isMine && reveal?.state === 'ready';
-  const wraps = useRequestWraps(r.id, showValues);
+  // The reveal stays mounted while values may be on screen, even after
+  // the wrap summaries say "consumed", so a refresh can't cut it short.
+  const [revealing, setRevealing] = useState(false);
+  const revealDeadline = reveal?.state === 'ready' ? reveal.deadline : undefined;
+  const [lastDeadline, setLastDeadline] = useState<string | undefined>(revealDeadline);
+  if (revealDeadline && revealDeadline !== lastDeadline) setLastDeadline(revealDeadline);
+  // Once a reveal ends on this page, don't offer it again while the
+  // summaries catch up: the values are gone.
+  const [revealDone, setRevealDone] = useState(false);
+  const showReveal = r.type === 'read' && isMine && (revealing || (!!revealDeadline && !revealDone));
   const gitops = useRequestGitOps(r.id, isMine);
 
-  // After a decision the card changes under the closing dialog. Once the
-  // refreshed request arrives, focus its new state heading (handoff:
-  // focus goes to the state heading when the trigger is gone).
-  const focusStateOnUpdate = useRef(false);
+  // While approved, follow the request until the agent reports back
+  // (a direct reveal lands here at once). Read-only: it never starts or
+  // repeats anything.
   useEffect(() => {
-    if (!focusStateOnUpdate.current) return;
-    focusStateOnUpdate.current = false;
-    const raf = window.requestAnimationFrame(() => document.getElementById('state-heading')?.focus());
-    return () => window.cancelAnimationFrame(raf);
-  }, [r.status, r.updated_at]);
+    if (r.status !== 'approved') return;
+    let n = 0;
+    const t = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      if (++n > 60) return window.clearInterval(t);
+      refetch();
+    }, 3000);
+    return () => window.clearInterval(t);
+  }, [r.status, refetch]);
+
+  const revealFinished = () => {
+    setRevealing(false);
+    setRevealDone(true);
+    focusStateOnUpdate.current = true;
+    void qc.invalidateQueries({ queryKey: requestsKey.one(r.id) });
+    void qc.invalidateQueries({ queryKey: ['audit-events'] });
+  };
 
   const done = (message: string) => {
     focusStateOnUpdate.current = true;
@@ -166,7 +195,8 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
     void qc.invalidateQueries({ queryKey: ['audit-events'] });
   };
 
-  const line = conditionLine(r, reveal);
+  // Opening the values consumes the reveal, so say so while they show.
+  const line = revealing ? { text: 'Reveal consumed', tone: 'muted' as const } : conditionLine(r, reveal);
 
   return (
     <div>
@@ -200,6 +230,17 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
               myVote={myVote?.decision}
               crossVerifying={!!crossVerify}
               refetching={refetching}
+              revealSlot={
+                showReveal && lastDeadline ? (
+                  <Reveal
+                    request={r}
+                    deadline={lastDeadline}
+                    now={now}
+                    onActiveChange={setRevealing}
+                    onFinished={revealFinished}
+                  />
+                ) : undefined
+              }
               onApprove={() => setDialog('approve')}
               onReject={() => setDialog('reject')}
               onCancel={() => setDialog('cancel')}
@@ -207,8 +248,6 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
               onRequestAgain={() => setDrawerOpen(true)}
             />
           </Panel>
-
-          {showValues && <WrapsCard request={r} query={wraps} />}
 
           {crossVerify && <CrossTeamVerifyCard request={r} actorId={me} />}
 
@@ -265,6 +304,7 @@ function Situation(p: {
   myVote?: 'approve' | 'reject';
   crossVerifying: boolean;
   refetching: boolean;
+  revealSlot?: ReactNode;
   onApprove: () => void;
   onReject: () => void;
   onCancel: () => void;
@@ -298,6 +338,8 @@ function Situation(p: {
       Cancel request…
     </Button>
   );
+
+  if (p.revealSlot) return <>{p.revealSlot}</>;
 
   if (p.decisionOpen) {
     return (
@@ -387,14 +429,6 @@ function Situation(p: {
     case 'executed':
       if (r.type !== 'read') {
         return <Card heading="Done" sentence="The agent wrote the new values to the provider." actions={isMine ? again : undefined} />;
-      }
-      if (reveal?.state === 'ready' && isMine) {
-        return (
-          <Card
-            heading="Values are ready to reveal"
-            sentence={`You can reveal them once, until ${formatExact(reveal.deadline)} (${formatRemaining(reveal.deadline, now)}). Revealing retrieves the values once.`}
-          />
-        );
       }
       if (reveal?.state === 'consumed') {
         return (
