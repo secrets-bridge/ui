@@ -54,7 +54,7 @@ export function MyProjects() {
           <Card key={p.id}>
             <CardHeader>
               <div className="min-w-0">
-                <h3 className="text-text font-semibold text-base truncate">
+                <h3 className="text-ink font-semibold text-base truncate">
                   {p.name}
                 </h3>
                 <p className="text-muted text-xs">{p.status}</p>
@@ -81,10 +81,10 @@ function EnvRow({ projectId, env }: { projectId: string; env: MyEnvironment }) {
   return (
     <Link
       to={`/projects/${projectId}/env/${env.id}`}
-      className="flex items-center justify-between gap-3 bg-bg/40 hover:bg-bg/60 border border-border/60 rounded-lg px-3 py-2 transition-colors"
+      className="flex items-center justify-between gap-3 bg-bg/40 hover:bg-bg/60 border border-border/60 rounded-md px-3 py-2 transition-colors"
     >
       <div className="min-w-0">
-        <div className="text-text text-sm font-medium truncate">{env.name}</div>
+        <div className="text-ink text-sm font-medium truncate">{env.name}</div>
         <div className="text-muted text-xs">Risk level {env.risk_level}</div>
       </div>
       <KindBadge kind={env.kind} />

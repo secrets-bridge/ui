@@ -195,7 +195,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
   return (
     <form onSubmit={handleSubmit(onValid)} className="space-y-4">
       {initial?.is_system && (
-        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
+        <div className="text-xs text-warn bg-warn-bg border border-warn-line rounded-sm px-3 py-2">
           This is a <strong>system seed</strong> policy — editable but cannot be deleted.
         </div>
       )}
@@ -214,7 +214,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
           anchor, delete + re-create. */}
       <fieldset className="border border-border rounded-sm p-3 space-y-2">
         <legend className="text-xs text-muted px-1">Anchor</legend>
-        <label className="flex items-center gap-2 text-sm text-text">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="radio"
             value="platform"
@@ -224,7 +224,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
           />
           Platform (global)
         </label>
-        <label className="flex items-center gap-2 text-sm text-text">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="radio"
             value="project"
@@ -234,7 +234,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
           />
           Project
         </label>
-        <label className="flex items-center gap-2 text-sm text-text">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="radio"
             value="team"
@@ -245,7 +245,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
           Team (cascades subtree-down)
         </label>
         {initial && (
-          <p className="text-[11px] text-muted/80 italic">
+          <p className="text-[11px] text-muted/80">
             Anchor is immutable. Delete and re-create with a new anchor.
           </p>
         )}
@@ -270,7 +270,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-muted/80 italic mt-1">
+            <p className="text-[11px] text-muted/80 mt-1">
               Team rules MUST carry selector.environment_kind=non_prod and cannot pin selector.project_id or selector.environment.
             </p>
           </Field>
@@ -289,10 +289,10 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
           ))}
         </select>
         {workflows.isError && (
-          <div className="text-xs text-red-400">failed to load workflows</div>
+          <div className="text-xs text-bad">failed to load workflows</div>
         )}
         {noWorkflows && !workflows.isError && (
-          <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2 mt-1">
+          <div className="text-xs text-warn bg-warn-bg border border-warn-line rounded-sm px-3 py-2 mt-1">
             No workflows exist yet. A policy must map to a workflow —
             create one on the Workflows page first, then return here.
           </div>
@@ -309,7 +309,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
       </div>
 
       {inReservedBand && (
-        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
+        <div className="text-xs text-warn bg-warn-bg border border-warn-line rounded-sm px-3 py-2">
           Priority {String(priority)} is in the platform-reserved band
           (≥ {cap}). This is allowed for <strong>policy.edit</strong>{' '}
           admins on this admin surface, but scoped <strong>policy.author</strong>{' '}
@@ -365,7 +365,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
       </fieldset>
 
       {submitError instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
+        <div className="text-xs text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
           {submitError.status}: {submitError.message}
         </div>
       )}
@@ -382,7 +382,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
         <button
           type="button"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border"
+          className="text-muted hover:text-ink px-3 py-2 rounded-sm border border-border"
         >
           Cancel
         </button>
@@ -392,7 +392,7 @@ export function PolicyForm({ initial, onSubmit, onCancel, submitting, submitErro
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent';
+  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent';
 
 function Field({
   label,
@@ -410,7 +410,7 @@ function Field({
       <label className="block text-xs text-muted">{label}</label>
       {children}
       {hint && !error && <div className="text-[11px] text-muted/80">{hint}</div>}
-      {error && <div className="text-xs text-red-400">{error}</div>}
+      {error && <div className="text-xs text-bad">{error}</div>}
     </div>
   );
 }
@@ -426,7 +426,7 @@ type ToggleProps = {
 };
 const Toggle = forwardRef<HTMLInputElement, ToggleProps>(function Toggle({ label, ...rest }, ref) {
   return (
-    <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
+    <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
       <input type="checkbox" ref={ref} {...rest} className="h-4 w-4 accent-accent" />
       {label}
     </label>

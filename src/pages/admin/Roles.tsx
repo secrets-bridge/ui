@@ -67,8 +67,8 @@ export function Roles() {
       />
 
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">Failed to load roles</div>
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">Failed to load roles</div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
         </Card>
       )}
@@ -87,7 +87,7 @@ export function Roles() {
         <>
           <Card className="overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+              <thead className="text-left text-muted text-[11px]">
                 <tr className="border-b border-border/60">
                   <Th>Name</Th>
                   <Th>Description</Th>
@@ -179,18 +179,18 @@ function RoleRow({
       </Td>
       <Td className="text-muted">
         {role.description || (
-          <span className="italic text-muted/60">no description</span>
+          <span className=" text-muted/60">no description</span>
         )}
       </Td>
       <Td>
         <PermissionsCell role={role} />
       </Td>
-      <Td className="text-text">{sys ? 'System' : 'Custom'}</Td>
+      <Td className="text-ink">{sys ? 'System' : 'Custom'}</Td>
       <Td className="text-right">
         <div className="flex items-center justify-end gap-3">
           <button
             onClick={onEdit}
-            className="text-accent hover:text-accent-bright text-sm font-medium"
+            className="text-accent hover:underline text-sm font-medium"
           >
             Edit
           </button>
@@ -201,7 +201,7 @@ function RoleRow({
             className={
               sys
                 ? 'text-muted/50 cursor-not-allowed text-sm font-medium'
-                : 'text-red-300 hover:text-red-200 text-sm font-medium'
+                : 'text-bad hover:underline text-sm font-medium'
             }
           >
             Delete
@@ -221,7 +221,7 @@ function PermissionsCell({ role }: { role: Role }) {
     return <span className="text-accent text-sm font-medium">all</span>;
   }
   if (n === 0) {
-    return <span className="text-muted italic text-sm">none</span>;
+    return <span className="text-muted text-sm">none</span>;
   }
   return (
     <span className="text-accent text-sm font-medium">

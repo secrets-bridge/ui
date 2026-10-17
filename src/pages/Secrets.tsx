@@ -132,7 +132,7 @@ export function Secrets() {
       <Card className="p-4 mb-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="space-y-1">
-            <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+            <label className="block text-[11px] text-muted font-medium">
               Project
             </label>
             <select
@@ -165,7 +165,7 @@ export function Secrets() {
             placeholder="prod-eu"
           />
           <div className="space-y-1">
-            <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+            <label className="block text-[11px] text-muted font-medium">
               Provider
             </label>
             <select
@@ -191,7 +191,7 @@ export function Secrets() {
             mono
           />
           <div className="space-y-1">
-            <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+            <label className="block text-[11px] text-muted font-medium">
               Status
             </label>
             <select
@@ -214,7 +214,7 @@ export function Secrets() {
 
         {/* Label chip composer */}
         <div className="mt-3 space-y-2">
-          <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+          <label className="block text-[11px] text-muted font-medium">
             Labels (key:value, repeatable — ANDed)
           </label>
           <div className="flex flex-wrap items-center gap-2">
@@ -263,8 +263,8 @@ export function Secrets() {
         <div className="text-muted text-sm">Loading…</div>
       )}
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">Failed to load secrets</div>
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">Failed to load secrets</div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
         </Card>
       )}
@@ -280,7 +280,7 @@ export function Secrets() {
         <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
           <Card className="overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+              <thead className="text-left text-muted text-[11px]">
                 <tr className="border-b border-border/60">
                   <Th>Ref</Th>
                   <Th>Provider</Th>
@@ -344,16 +344,16 @@ function SecretRow({
         </span>
       </Td>
       <Td>
-        <span className="text-text text-sm">
+        <span className="text-ink text-sm">
           {PROVIDER_LABELS[s.provider_type] ?? s.provider_type}
         </span>
       </Td>
       <Td>
-        <span className="font-mono text-text text-sm">{s.cluster_name}</span>
+        <span className="font-mono text-ink text-sm">{s.cluster_name}</span>
       </Td>
       <Td>
         {labelEntries.length === 0 ? (
-          <span className="text-muted text-xs italic">none</span>
+          <span className="text-muted text-xs">none</span>
         ) : (
           <div className="flex flex-wrap gap-1">
             {labelPreview.map(([k, v]) => (
@@ -384,7 +384,7 @@ function SecretRow({
 
 function LabelChip({ k, v }: { k: string; v: unknown }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-bg/60 border border-border px-2 py-0.5 text-[11px] font-mono">
+    <span className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[11px] font-mono">
       <span className="text-muted">{k}</span>
       <span className="text-muted/50">=</span>
       <span className="text-accent">{String(v)}</span>
@@ -401,11 +401,11 @@ function DraftLabelChip({
 }) {
   const [k, v] = value.split(':');
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 border border-accent/40 px-2.5 py-0.5 text-[11px] font-mono">
+    <span className="inline-flex items-center gap-1 rounded-sm bg-accent/10 border border-accent/40 px-2.5 py-0.5 text-[11px] font-mono">
       <span className="text-muted">{k}</span>
       <span className="text-muted/50">=</span>
       <span className="text-accent">{v}</span>
-      <button onClick={onClear} className="ml-1 text-muted hover:text-text">
+      <button onClick={onClear} className="ml-1 text-muted hover:text-ink">
         ×
       </button>
     </span>
@@ -426,7 +426,7 @@ function DetailsPane({ secret }: { secret: Secret | null }) {
   return (
     <Card className="overflow-hidden sticky top-4">
       <div className="px-5 py-4 border-b border-border/60">
-        <div className="text-text font-semibold">Secret details</div>
+        <div className="text-ink font-semibold">Secret details</div>
         <div className="text-muted text-xs mt-1 font-mono break-all">
           {secret.secret_ref}
         </div>
@@ -436,7 +436,7 @@ function DetailsPane({ secret }: { secret: Secret | null }) {
         <Row
           k="Provider"
           v={
-            <span className="text-text">
+            <span className="text-ink">
               {PROVIDER_LABELS[secret.provider_type] ?? secret.provider_type}
             </span>
           }
@@ -476,7 +476,7 @@ function DetailsPane({ secret }: { secret: Secret | null }) {
 
       {labelEntries.length > 0 && (
         <div className="px-5 py-4 border-t border-border/60">
-          <div className="text-muted text-[11px] uppercase tracking-wider font-medium mb-2">
+          <div className="text-muted text-[11px] font-medium mb-2">
             Labels ({labelEntries.length})
           </div>
           <div className="flex flex-wrap gap-1">
@@ -489,10 +489,10 @@ function DetailsPane({ secret }: { secret: Secret | null }) {
 
       {secret.provider_config && Object.keys(secret.provider_config).length > 0 && (
         <div className="px-5 py-4 border-t border-border/60">
-          <div className="text-muted text-[11px] uppercase tracking-wider font-medium mb-2">
+          <div className="text-muted text-[11px] font-medium mb-2">
             Provider config
           </div>
-          <pre className="text-[11px] text-muted bg-bg/40 border border-border/60 rounded-lg px-3 py-2 overflow-x-auto font-mono">
+          <pre className="text-[11px] text-muted bg-bg/40 border border-border/60 rounded-md px-3 py-2 overflow-x-auto font-mono">
             {JSON.stringify(secret.provider_config, null, 2)}
           </pre>
         </div>
@@ -500,7 +500,7 @@ function DetailsPane({ secret }: { secret: Secret | null }) {
 
       <div className="px-5 py-3 border-t border-border/60 text-[11px] text-muted">
         Metadata only. To view the value, submit a Read request from{' '}
-        <span className="font-mono text-text">/requests</span>.
+        <span className="font-mono text-ink">/requests</span>.
       </div>
     </Card>
   );
@@ -523,7 +523,7 @@ function FilterField({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+      <label className="block text-[11px] text-muted font-medium">
         {label}
       </label>
       <input
@@ -550,10 +550,10 @@ function Row({
 }) {
   return (
     <div className="grid grid-cols-[110px_1fr] gap-3 items-baseline">
-      <dt className="text-muted text-xs uppercase tracking-wider">{k}</dt>
+      <dt className="text-muted text-xs">{k}</dt>
       <dd
         className={
-          'text-sm break-all ' + (mono ? 'font-mono text-text' : 'text-text')
+          'text-sm break-all ' + (mono ? 'font-mono text-ink' : 'text-ink')
         }
       >
         {v}
@@ -583,7 +583,7 @@ function Td({
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent ';
 
 function formatRelativePast(iso: string): string {
   const t = Date.parse(iso);

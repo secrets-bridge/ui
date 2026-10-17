@@ -80,8 +80,8 @@ export function Projects() {
       />
 
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">Failed to load projects</div>
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">Failed to load projects</div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
         </Card>
       )}
@@ -140,7 +140,7 @@ function ProjectsList({
 }) {
   return (
     <Card className="overflow-hidden">
-      <div className="px-5 py-3 border-b border-border/60 text-[11px] uppercase tracking-wider text-muted">
+      <div className="px-5 py-3 border-b border-border/60 text-[11px] text-muted">
         {projects.length} project{projects.length === 1 ? '' : 's'}
       </div>
       <ul className="max-h-[640px] overflow-auto">
@@ -165,8 +165,8 @@ function ProjectsList({
                       (archived
                         ? 'text-muted line-through'
                         : on
-                          ? 'text-accent-bright'
-                          : 'text-text')
+                          ? 'text-accent'
+                          : 'text-ink')
                     }
                   >
                     {p.name}
@@ -230,7 +230,7 @@ function TabButton({
         'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ' +
         (active
           ? 'text-accent border-accent'
-          : 'text-muted border-transparent hover:text-text')
+          : 'text-muted border-transparent hover:text-ink')
       }
     >
       {children}
@@ -289,7 +289,7 @@ function EnvironmentsPanel({ project }: { project: Project }) {
           </Button>
         </div>
         {status.error instanceof ApiError && (
-          <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2 mt-3">
+          <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2 mt-3">
             {status.error.status}: {status.error.message}
           </div>
         )}
@@ -299,7 +299,7 @@ function EnvironmentsPanel({ project }: { project: Project }) {
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-border/60">
           <div>
-            <div className="text-text font-medium">Environments</div>
+            <div className="text-ink font-medium">Environments</div>
             <div className="text-muted text-xs mt-0.5">
               {envs.data?.length ?? 0} configured · names unique within this
               project
@@ -324,7 +324,7 @@ function EnvironmentsPanel({ project }: { project: Project }) {
 
         {envs.data && envs.data.length > 0 && (
           <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+            <thead className="text-left text-muted text-[11px]">
               <tr className="border-b border-border/60">
                 <Th>Name</Th>
                 <Th>Type</Th>
@@ -352,7 +352,7 @@ function EnvironmentsPanel({ project }: { project: Project }) {
                   <Td className="text-right">
                     <button
                       onClick={() => setConfirmDelete(e)}
-                      className="text-red-300 hover:text-red-200 text-sm font-medium"
+                      className="text-bad hover:underline text-sm font-medium"
                     >
                       Delete
                     </button>
@@ -416,7 +416,7 @@ function EnvTypePill({ type }: { type: Environment['type'] }) {
             ? 'success'
             : 'neutral';
   return (
-    <StatusPill variant={variant} tone="outline" className="uppercase">
+    <StatusPill variant={variant} tone="outline" className="">
       {type}
     </StatusPill>
   );
@@ -480,7 +480,7 @@ function ProjectForm({
       </Field>
 
       {create.error instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
+        <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
           {create.error.status}: {create.error.message}
         </div>
       )}
@@ -570,7 +570,7 @@ function EnvironmentForm({
       </Field>
 
       {submitError instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
+        <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
           {submitError.status}: {submitError.message}
         </div>
       )}
@@ -600,7 +600,7 @@ function EnvironmentForm({
 // --- shared bits ----------------------------------------------------
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent ';
 
 function Field({
   label,
@@ -615,14 +615,14 @@ function Field({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+      <label className="block text-xs text-muted font-medium">
         {label}
       </label>
       {children}
       {hint && !error && (
         <div className="text-[11px] text-muted/80">{hint}</div>
       )}
-      {error && <div className="text-xs text-red-300">{error}</div>}
+      {error && <div className="text-xs text-bad">{error}</div>}
     </div>
   );
 }

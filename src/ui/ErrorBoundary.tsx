@@ -35,9 +35,9 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-bg flex items-center justify-center px-4">
-          <div className="w-full max-w-2xl bg-surface border border-red-500/40 rounded-2xl p-6 space-y-4 shadow-2xl">
+          <div className="w-full max-w-2xl bg-surface border border-bad-line rounded-md p-6 space-y-4 shadow-overlay">
             <div>
-              <div className="text-red-300 font-semibold text-lg">
+              <div className="text-bad font-semibold text-lg">
                 Something went wrong.
               </div>
               <div className="text-muted text-xs mt-1">
@@ -46,13 +46,13 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
                 stack trace.
               </div>
             </div>
-            <pre className="bg-bg border border-border rounded-lg p-3 text-text text-xs font-mono whitespace-pre-wrap break-all">
+            <pre className="bg-bg border border-border rounded-md p-3 text-ink text-xs font-mono whitespace-pre-wrap break-all">
               {this.state.error.message}
             </pre>
             <div className="flex gap-2">
               <button
                 onClick={this.reset}
-                className="px-3 py-1.5 rounded-lg bg-accent text-bg text-sm font-medium hover:bg-accent-bright transition-colors"
+                className="px-3 py-1.5 rounded-md bg-accent text-bg text-sm font-medium hover:opacity-90 transition-colors"
               >
                 Try again
               </button>
@@ -60,7 +60,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
                 onClick={() => {
                   window.location.href = '/';
                 }}
-                className="px-3 py-1.5 rounded-lg border border-border text-text text-sm font-medium hover:bg-bg/30 transition-colors"
+                className="px-3 py-1.5 rounded-md border border-border text-ink text-sm font-medium hover:bg-bg/30 transition-colors"
               >
                 Go home
               </button>

@@ -176,26 +176,26 @@ function InboxFillView() {
 
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold text-sm">Destination</h3>
+          <h3 className="text-ink font-semibold text-sm">Destination</h3>
         </CardHeader>
         <CardBody className="text-sm space-y-1">
           <p className="text-muted">
-            <span className="text-text">{r.destination_provider_label ?? r.target_provider_type}</span>
+            <span className="text-ink">{r.destination_provider_label ?? r.target_provider_type}</span>
             {r.destination_secret_ref && (
               <>
                 {' · '}
-                <span className="font-mono text-text">{r.destination_secret_ref}</span>
+                <span className="font-mono text-ink">{r.destination_secret_ref}</span>
               </>
             )}
           </p>
-          <p className="text-muted">Target team: <span className="text-text">{r.target_team_name ?? r.target_team_id}</span></p>
-          <p className="text-muted">Target project / env: <span className="text-text">{r.target_project_name ?? r.target_project_id} / {r.target_environment_name ?? r.target_environment_id}</span></p>
+          <p className="text-muted">Target team: <span className="text-ink">{r.target_team_name ?? r.target_team_id}</span></p>
+          <p className="text-muted">Target project / env: <span className="text-ink">{r.target_project_name ?? r.target_project_id} / {r.target_environment_name ?? r.target_environment_id}</span></p>
         </CardBody>
       </Card>
 
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold text-sm">Justification</h3>
+          <h3 className="text-ink font-semibold text-sm">Justification</h3>
         </CardHeader>
         <CardBody className="text-sm text-muted whitespace-pre-wrap">
           {r.justification}
@@ -204,7 +204,7 @@ function InboxFillView() {
 
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold text-sm">Values</h3>
+          <h3 className="text-ink font-semibold text-sm">Values</h3>
           <span className="text-muted text-xs">
             {keys.length} {keys.length === 1 ? 'key' : 'keys'}
           </span>
@@ -212,7 +212,7 @@ function InboxFillView() {
         <CardBody className="space-y-3">
           {keys.map((k) => (
             <div key={k}>
-              <label className="block text-[11px] text-muted font-medium uppercase tracking-wider font-mono">
+              <label className="block text-[11px] text-muted font-medium font-mono">
                 {k}
               </label>
               <div className="mt-1 flex gap-2">
@@ -224,14 +224,14 @@ function InboxFillView() {
                   }
                   autoComplete="off"
                   spellCheck={false}
-                  className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+                  className="flex-1 bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
                 />
                 <button
                   type="button"
                   onClick={() =>
                     setReveal((prev) => ({ ...prev, [k]: !prev[k] }))
                   }
-                  className="px-3 py-2 text-xs text-muted hover:text-text border border-border rounded-lg"
+                  className="px-3 py-2 text-xs text-muted hover:text-ink border border-border rounded-md"
                   title={reveal[k] ? 'Hide value' : 'Show value (one-shot)'}
                 >
                   {reveal[k] ? 'Hide' : 'Show'}
@@ -241,7 +241,7 @@ function InboxFillView() {
           ))}
 
           <div>
-            <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+            <label className="block text-[11px] text-muted font-medium">
               Comment (optional)
             </label>
             <textarea
@@ -249,14 +249,14 @@ function InboxFillView() {
               onChange={(e) => setFillComment(e.target.value)}
               rows={2}
               placeholder="Visible to the requester + approver in the audit trail."
-              className="mt-1 w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="mt-1 w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
             />
           </div>
         </CardBody>
       </Card>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2 text-sm text-red-200">
+        <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2 text-sm text-bad">
           {error}
         </div>
       )}
@@ -285,7 +285,7 @@ function InboxFillView() {
       {refuseOpen && (
         <Card>
           <CardHeader>
-            <h3 className="text-text font-semibold text-sm">Refuse this request</h3>
+            <h3 className="text-ink font-semibold text-sm">Refuse this request</h3>
           </CardHeader>
           <CardBody className="space-y-2">
             <p className="text-muted text-xs">
@@ -297,7 +297,7 @@ function InboxFillView() {
               onChange={(e) => setRefuseReason(e.target.value)}
               rows={3}
               placeholder="Why are you refusing this request? (≥ 10 chars)"
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
             />
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
               <Button variant="secondary" size="md" onClick={() => setRefuseOpen(false)}>

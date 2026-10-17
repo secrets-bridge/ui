@@ -83,8 +83,8 @@ export function RequestDetail() {
   }
   if (req.isError) {
     return (
-      <Card className="border-red-500/40 p-5 text-sm">
-        <div className="text-red-300 font-medium">Failed to load request</div>
+      <Card className="border-bad-line p-5 text-sm">
+        <div className="text-bad font-medium">Failed to load request</div>
         <div className="text-muted mt-1">{stringifyError(req.error)}</div>
       </Card>
     );
@@ -119,10 +119,10 @@ export function RequestDetail() {
             Requests
           </Link>
           <span className="mx-1.5">·</span>
-          <span className="text-text font-mono">{shortId(r.id)}</span>
+          <span className="text-ink font-mono">{shortId(r.id)}</span>
         </div>
-        <h1 className="text-text text-2xl font-bold mt-2 tracking-tight">
-          <span className="text-accent-bright capitalize">{r.type}</span>{' '}
+        <h1 className="text-ink text-2xl font-semibold mt-2 tracking-tight">
+          <span className="text-accent capitalize">{r.type}</span>{' '}
           <span className="font-mono">{displayRef}</span>
         </h1>
         <div className="flex items-center gap-2 flex-wrap mt-3">
@@ -135,7 +135,7 @@ export function RequestDetail() {
             {r.type}
           </StatusPill>
           <span className="text-muted text-xs ml-2">requested by</span>
-          <span className="text-text text-sm">{requesterLabel}</span>
+          <span className="text-ink text-sm">{requesterLabel}</span>
           <span className="text-muted text-xs">
             · {formatRelativeShort(r.created_at)}
           </span>
@@ -144,12 +144,12 @@ export function RequestDetail() {
           {displayProvider && (
             <>
               Provider:{' '}
-              <span className="text-text font-mono">{displayProvider}</span>{' '}
+              <span className="text-ink font-mono">{displayProvider}</span>{' '}
               ·{' '}
             </>
           )}
           workflow:{' '}
-          <span className="text-text font-mono">{workflowName}</span> · values
+          <span className="text-ink font-mono">{workflowName}</span> · values
           are never shown — only metadata + single-use wraps.
         </p>
       </div>
@@ -208,7 +208,7 @@ function TimelineCard({ request: r }: { request: AccessRequest }) {
   return (
     <Card className="overflow-hidden">
       <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-        <h3 className="text-text font-semibold">Timeline</h3>
+        <h3 className="text-ink font-semibold">Timeline</h3>
         <span className="text-muted text-xs ml-auto font-mono">
           correlation_id
         </span>
@@ -217,10 +217,10 @@ function TimelineCard({ request: r }: { request: AccessRequest }) {
         {nodes.map((n, i) => (
           <li key={i} className="flex items-start gap-3">
             <span
-              className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${TIMELINE_DOT[n.tone]}`}
+              className={`w-2.5 h-2.5 rounded-sm mt-1.5 shrink-0 ${TIMELINE_DOT[n.tone]}`}
             />
             <div className="flex-1 min-w-0">
-              <div className="text-text text-sm font-medium">{n.label}</div>
+              <div className="text-ink text-sm font-medium">{n.label}</div>
               {n.sub && (
                 <div className="text-muted text-xs font-mono mt-0.5">
                   {n.sub}
@@ -239,13 +239,13 @@ function TimelineCard({ request: r }: { request: AccessRequest }) {
 
 const TIMELINE_DOT: Record<TimelineNode['tone'], string> = {
   created: 'bg-accent',
-  workflow: 'bg-purple-400',
-  enqueued: 'bg-yellow-400',
-  approved: 'bg-success',
-  rejected: 'bg-red-400',
-  claimed: 'bg-blue-400',
-  completed: 'bg-success',
-  failed: 'bg-red-400',
+  workflow: 'bg-info',
+  enqueued: 'bg-warn',
+  approved: 'bg-ok',
+  rejected: 'bg-bad',
+  claimed: 'bg-info',
+  completed: 'bg-ok',
+  failed: 'bg-bad',
   cancelled: 'bg-muted',
 };
 
@@ -320,7 +320,7 @@ function ApprovalsCard({ request: r }: { request: AccessRequest }) {
   return (
     <Card className="overflow-hidden">
       <div className="px-5 py-4 border-b border-border/60">
-        <h3 className="text-text font-semibold">Approvals</h3>
+        <h3 className="text-ink font-semibold">Approvals</h3>
       </div>
       {approvals.length === 0 ? (
         <div className="px-5 py-6 text-muted text-sm">
@@ -334,13 +334,13 @@ function ApprovalsCard({ request: r }: { request: AccessRequest }) {
               className="flex items-start gap-3 px-5 py-4 border-b border-border/40 last:border-0"
             >
               <span
-                className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${
-                  a.decision === 'approve' ? 'bg-success' : 'bg-red-400'
+                className={`mt-1.5 w-2 h-2 rounded-sm shrink-0 ${
+                  a.decision === 'approve' ? 'bg-ok' : 'bg-bad'
                 }`}
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-text text-sm">
+                  <span className="font-mono text-ink text-sm">
                     {a.approver_id}
                   </span>
                   <StatusPill
@@ -351,7 +351,7 @@ function ApprovalsCard({ request: r }: { request: AccessRequest }) {
                   </StatusPill>
                 </div>
                 {a.comment && (
-                  <p className="text-muted text-xs mt-1 italic">
+                  <p className="text-muted text-xs mt-1">
                     &ldquo;{a.comment}&rdquo;
                   </p>
                 )}
@@ -395,7 +395,7 @@ function WrapsCard({
   return (
     <Card className="overflow-hidden">
       <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-        <h3 className="text-text font-semibold">Wraps</h3>
+        <h3 className="text-ink font-semibold">Wraps</h3>
         <span className="text-muted text-xs ml-auto">
           single-use · reveal consumes the wrap permanently
         </span>
@@ -411,7 +411,7 @@ function WrapsCard({
           <p className="text-muted text-xs">
             No wraps issued yet. Once approved, an agent claims the read
             job, fetches from{' '}
-            <span className="font-mono text-text">{r.target_provider_type}</span>
+            <span className="font-mono text-ink">{r.target_provider_type}</span>
             , and posts a single-use wrap per requested key.
           </p>
         )}
@@ -427,10 +427,10 @@ function WrapsCard({
             {ready.map((w) => (
               <li
                 key={w.id}
-                className="flex items-center justify-between gap-3 bg-bg/40 border border-border/60 rounded-lg px-3 py-2"
+                className="flex items-center justify-between gap-3 bg-bg/40 border border-border/60 rounded-md px-3 py-2"
               >
                 <div className="min-w-0">
-                  <div className="font-mono text-text text-sm truncate">
+                  <div className="font-mono text-ink text-sm truncate">
                     {w.key_name || '(default)'}
                   </div>
                   <div className="text-muted text-[11px]">
@@ -462,7 +462,7 @@ function WrapsCard({
             {consumed.map((w) => (
               <li
                 key={w.id}
-                className="flex items-center justify-between gap-3 bg-bg/20 border border-border/40 rounded-lg px-3 py-2 opacity-60"
+                className="flex items-center justify-between gap-3 bg-bg/20 border border-border/40 rounded-md px-3 py-2 opacity-60"
               >
                 <span className="font-mono text-muted text-sm truncate line-through">
                   {w.key_name || '(default)'}
@@ -475,8 +475,8 @@ function WrapsCard({
           </ul>
         )}
 
-        <div className="bg-yellow-400/10 border border-yellow-400/40 border-l-4 border-l-yellow-400 rounded-lg px-3 py-2 text-xs">
-          <div className="text-yellow-300 font-semibold">Reveal-once.</div>
+        <div className="bg-warn-bg border border-warn-line border-l-4 border-l-warn rounded-md px-3 py-2 text-xs">
+          <div className="text-warn font-semibold">Reveal-once.</div>
           <div className="text-muted mt-0.5">
             {sessionFlow
               ? 'This is a direct reveal: its values open together in a timed reveal session and clear when the session ends. Each wrap is single-use.'
@@ -513,7 +513,7 @@ function RevealSessionLink({ request: r }: { request: AccessRequest }) {
     projectId && envId ? revealSessionPath(projectId, envId, r.id) : null;
 
   return (
-    <div className="bg-bg/40 border border-border/60 rounded-lg px-3 py-2 space-y-2">
+    <div className="bg-bg/40 border border-border/60 rounded-md px-3 py-2 space-y-2">
       <div className="flex items-center justify-between gap-3">
         <span className="text-muted text-xs">
           Direct reveal values are shown in a reveal session.
@@ -530,7 +530,7 @@ function RevealSessionLink({ request: r }: { request: AccessRequest }) {
         </Button>
       </div>
       {!path && !envs.isLoading && (
-        <p className="text-xs text-red-300">
+        <p className="text-xs text-bad">
           Couldn't find this request's environment. Open it from{' '}
           <Link to="/projects" className="text-accent underline">
             My Projects
@@ -649,14 +649,14 @@ function RevealModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
+        className="absolute inset-0 bg-scrim"
         onClick={onClose}
         aria-label="Close"
       />
-      <div className="relative bg-surface border border-border rounded-2xl w-[520px] max-w-full p-6 space-y-4 shadow-2xl">
+      <div className="relative bg-surface border border-border rounded-md w-[520px] max-w-full p-6 space-y-4 shadow-overlay">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-text font-bold text-xl tracking-tight">
+            <div className="text-ink font-semibold text-xl tracking-tight">
               Reveal{' '}
               <span className="font-mono text-accent">
                 {wrap.key_name || '(default)'}
@@ -669,7 +669,7 @@ function RevealModal({
           </div>
           <button
             onClick={onClose}
-            className="text-muted hover:text-text text-xl leading-none w-8 h-8 rounded-full hover:bg-bg/40 transition-colors"
+            className="text-muted hover:text-ink text-xl leading-none w-8 h-8 rounded-sm hover:bg-bg/40 transition-colors"
             aria-label="Close"
           >
             ×
@@ -678,12 +678,12 @@ function RevealModal({
 
         {phase === 'confirm' && (
           <>
-            <div className="bg-yellow-400/10 border border-yellow-400/40 border-l-4 border-l-yellow-400 rounded-lg px-4 py-3 text-sm">
-              <div className="text-yellow-300 font-semibold">
+            <div className="bg-warn-bg border border-warn-line border-l-4 border-l-warn rounded-md px-4 py-3 text-sm">
+              <div className="text-warn font-semibold">
                 Single-use — copy it now.
               </div>
               <div className="text-muted text-xs mt-1">
-                Clicking <span className="text-text">Reveal</span> consumes
+                Clicking <span className="text-ink">Reveal</span> consumes
                 the wrap permanently. You won't be able to retrieve this
                 value again from this request.
               </div>
@@ -709,7 +709,7 @@ function RevealModal({
           <>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+                <label className="block text-xs text-muted font-medium">
                   {revealed.key_name || 'value'}
                 </label>
                 <TtlChip seconds={ttlLeft} />
@@ -719,7 +719,7 @@ function RevealModal({
                 value={decoded}
                 rows={3}
                 onFocus={(e) => e.currentTarget.select()}
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono break-all focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+                className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono break-all focus:border-accent"
               />
               <div className="text-muted text-[11px] font-mono">
                 {revealed.byte_length} bytes · sha256{' '}
@@ -748,8 +748,8 @@ function RevealModal({
 
         {phase === 'expired' && (
           <>
-            <div className="bg-bg/40 border border-border rounded-lg px-4 py-6 text-center text-sm space-y-2">
-              <div className="text-text font-semibold">Value cleared from this tab.</div>
+            <div className="bg-bg/40 border border-border rounded-md px-4 py-6 text-center text-sm space-y-2">
+              <div className="text-ink font-semibold">Value cleared from this tab.</div>
               <div className="text-muted text-xs">
                 {revealed === null
                   ? 'The 60-second window elapsed (or you clicked Hide now).'
@@ -790,14 +790,14 @@ function TtlChip({ seconds }: { seconds: number }) {
     seconds > 30
       ? 'bg-accent/15 text-accent border-accent/40'
       : seconds > 10
-        ? 'bg-yellow-400/15 text-yellow-300 border-yellow-400/40'
-        : 'bg-red-500/15 text-red-300 border-red-500/40';
+        ? 'bg-warn-bg text-warn border-warn-line'
+        : 'bg-bad-bg text-bad border-bad-line';
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-mono ${tone}`}
+      className={`inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-[11px] font-mono ${tone}`}
       title="Auto-hide countdown — the value is wiped from this tab when it hits 0"
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+      <span className="w-1.5 h-1.5 rounded-sm bg-current animate-pulse" />
       hides in {seconds}s
     </span>
   );
@@ -830,7 +830,7 @@ function GitOpsCard({
     return (
       <Card className="overflow-hidden">
         <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-          <h3 className="text-text font-semibold">GitOps observations</h3>
+          <h3 className="text-ink font-semibold">GitOps observations</h3>
           <StatusPill variant="warning" tone="outline">
             disabled
           </StatusPill>
@@ -848,7 +848,7 @@ function GitOpsCard({
   return (
     <Card className="overflow-hidden">
       <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-        <h3 className="text-text font-semibold">GitOps observations</h3>
+        <h3 className="text-ink font-semibold">GitOps observations</h3>
         <span className="text-muted text-xs ml-auto font-mono">read-only</span>
       </div>
       {rows.length === 0 ? (
@@ -886,7 +886,7 @@ function GitOpsCard({
                 {o.cluster_name ?? '—'}
               </div>
               {o.observed_state && Object.keys(o.observed_state).length > 0 && (
-                <pre className="text-[11px] text-muted mt-2 bg-bg/40 border border-border/60 rounded-lg px-3 py-2 overflow-x-auto font-mono">
+                <pre className="text-[11px] text-muted mt-2 bg-bg/40 border border-border/60 rounded-md px-3 py-2 overflow-x-auto font-mono">
                   observed_state: {JSON.stringify(o.observed_state)}
                 </pre>
               )}
@@ -917,10 +917,10 @@ function DetailsCard({
     ? r.destination_provider_label || '—'
     : r.target_provider_type || '—';
   const rows: Array<[string, React.ReactNode]> = [
-    ['Type', <span key="t" className="font-mono text-text">{r.type}</span>],
+    ['Type', <span key="t" className="font-mono text-ink">{r.type}</span>],
     [
       'Requester',
-      <span key="r" className="text-text">
+      <span key="r" className="text-ink">
         {r.requester_display ?? r.requester_id}
       </span>,
     ],
@@ -932,13 +932,13 @@ function DetailsCard({
     ],
     [
       'Provider',
-      <span key="p" className="font-mono text-text">
+      <span key="p" className="font-mono text-ink">
         {dProvider}
       </span>,
     ],
     [
       'Workflow',
-      <span key="w" className="font-mono text-text">
+      <span key="w" className="font-mono text-ink">
         {workflowName}
       </span>,
     ],
@@ -957,7 +957,7 @@ function DetailsCard({
       ? [
           [
             'Reject reason',
-            <span key="rr" className="text-red-300">
+            <span key="rr" className="text-bad">
               {r.reject_reason}
             </span>,
           ] as [string, React.ReactNode],
@@ -967,12 +967,12 @@ function DetailsCard({
   return (
     <Card className="overflow-hidden">
       <div className="px-5 py-4 border-b border-border/60">
-        <h3 className="text-text font-semibold">Details</h3>
+        <h3 className="text-ink font-semibold">Details</h3>
       </div>
       <dl className="px-5 py-4 space-y-2.5 text-sm">
         {rows.map(([k, v]) => (
           <div key={k} className="grid grid-cols-[110px_1fr] gap-3 items-baseline">
-            <dt className="text-muted text-xs uppercase tracking-wider">{k}</dt>
+            <dt className="text-muted text-xs">{k}</dt>
             <dd>{v}</dd>
           </div>
         ))}
@@ -992,14 +992,14 @@ function TimeToDecideCard({ request: _r }: { request: AccessRequest }) {
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="text-muted text-xs uppercase tracking-wider font-medium">
+        <div className="text-muted text-xs font-medium">
           Time to decide
         </div>
         <StatusPill variant="neutral" tone="outline">
           preview
         </StatusPill>
       </div>
-      <div className="text-yellow-300 text-3xl font-bold tracking-tight">
+      <div className="text-warn text-3xl font-semibold tracking-tight">
         3h 48m
       </div>
       <div className="text-muted text-xs mt-2">
@@ -1019,11 +1019,11 @@ function ApproverActionsCard({ request: r }: { request: AccessRequest }) {
 
   return (
     <Card className="p-5">
-      <div className="text-muted text-xs uppercase tracking-wider font-medium mb-3">
+      <div className="text-muted text-xs font-medium mb-3">
         Approver actions
       </div>
       <p className="text-muted text-xs mb-4">
-        You hold <span className="text-text font-mono">secret.approve</span>{' '}
+        You hold <span className="text-ink font-mono">secret.approve</span>{' '}
         for this target.
       </p>
       <div className="flex items-center gap-2">
@@ -1047,7 +1047,7 @@ function ApproverActionsCard({ request: r }: { request: AccessRequest }) {
 
       {showReason && (
         <div className="mt-4 pt-4 border-t border-border/60 space-y-2">
-          <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+          <label className="block text-xs text-muted font-medium">
             Reject reason
           </label>
           <textarea
@@ -1055,7 +1055,7 @@ function ApproverActionsCard({ request: r }: { request: AccessRequest }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. wrong target / use the read flow instead"
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
           />
           <div className="flex items-center justify-between pt-1">
             <Button
@@ -1105,7 +1105,7 @@ function CancelOwnCard({
   const [confirming, setConfirming] = useState(false);
   return (
     <Card className="p-5">
-      <div className="text-muted text-xs uppercase tracking-wider font-medium mb-3">
+      <div className="text-muted text-xs font-medium mb-3">
         Your request
       </div>
       <p className="text-muted text-xs mb-4">
@@ -1121,7 +1121,7 @@ function CancelOwnCard({
         </Button>
       ) : (
         <div className="space-y-2">
-          <p className="text-text text-sm">Cancel this request?</p>
+          <p className="text-ink text-sm">Cancel this request?</p>
           <div className="flex items-center justify-between">
             <Button
               variant="secondary"
@@ -1155,7 +1155,7 @@ function CancelOwnCard({
 function InlineApiError({ err }: { err: unknown }) {
   if (!(err instanceof ApiError)) return null;
   return (
-    <div className="mt-3 text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
+    <div className="mt-3 text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
       {describeRevealError(err)}
     </div>
   );
@@ -1244,7 +1244,7 @@ function CrossTeamVerifyCard({
   return (
     <Card>
       <div className="px-5 py-4 border-b border-border/60">
-        <h3 className="text-text font-semibold">Verify cross-team request</h3>
+        <h3 className="text-ink font-semibold">Verify cross-team request</h3>
       </div>
       <div className="px-5 py-4 space-y-3 text-sm">
         {/* Full approver context so nobody approves blind (ui#87). All
@@ -1253,19 +1253,19 @@ function CrossTeamVerifyCard({
         <div className="space-y-1 text-muted">
           <p>
             Requester:{' '}
-            <span className="text-text">
+            <span className="text-ink">
               {r.requester_display ?? r.requester_id}
             </span>
           </p>
           <p>
             Target team:{' '}
-            <span className="text-text">
+            <span className="text-ink">
               {r.target_team_name ?? teamName ?? r.target_team_id ?? '—'}
             </span>
           </p>
           <p>
             Target project · env:{' '}
-            <span className="font-mono text-text">
+            <span className="font-mono text-ink">
               {r.target_project_name ??
                 (r.target_project_id ? shortId(r.target_project_id) : '—')}
               {' · '}
@@ -1275,7 +1275,7 @@ function CrossTeamVerifyCard({
           </p>
           <p>
             Destination:{' '}
-            <span className="font-mono text-text">
+            <span className="font-mono text-ink">
               {r.destination_provider_label ??
                 (r.destination_provider_connection_id
                   ? `connection ${shortId(r.destination_provider_connection_id)}`
@@ -1285,13 +1285,13 @@ function CrossTeamVerifyCard({
           </p>
           <p>
             Keys ({(r.destination_keys ?? r.target_keys ?? []).length}):{' '}
-            <span className="font-mono text-text">
+            <span className="font-mono text-ink">
               {(r.destination_keys ?? r.target_keys ?? []).join(', ') || '—'}
             </span>
           </p>
           <p>
             Filled by:{' '}
-            <span className="text-text">
+            <span className="text-ink">
               {r.filled_by_display ?? r.filled_by_user_id ?? '—'}
             </span>
             {r.filled_at && (
@@ -1301,18 +1301,18 @@ function CrossTeamVerifyCard({
           {r.fill_comment && (
             <p>
               Filler comment:{' '}
-              <span className="text-text">{r.fill_comment}</span>
+              <span className="text-ink">{r.fill_comment}</span>
             </p>
           )}
           {r.justification && (
             <p>
               Justification:{' '}
-              <span className="text-text">{r.justification}</span>
+              <span className="text-ink">{r.justification}</span>
             </p>
           )}
           <p>
             Approval required:{' '}
-            <span className="text-text">
+            <span className="text-ink">
               {r.snap_requires_security_approval
                 ? 'Source + Security'
                 : 'Source'}
@@ -1334,7 +1334,7 @@ function CrossTeamVerifyCard({
               onChange={(e) => setComment(e.target.value)}
               placeholder="Optional comment (visible in audit + to requester)"
               rows={2}
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
             />
             {showSourceLane && (
               <div className="flex items-center justify-end gap-2">
@@ -1397,18 +1397,18 @@ function CrossTeamVerifyCard({
         )}
 
         {!showSourceLane && !showSecurityLane && sodReason && (
-          <div className="bg-bg/40 border border-border/60 rounded-lg px-3 py-2 text-muted text-xs">
+          <div className="bg-bg/40 border border-border/60 rounded-md px-3 py-2 text-muted text-xs">
             You cannot approve this request: {sodReason}
           </div>
         )}
 
         {toast && (
-          <div className="text-accent text-xs bg-accent/10 border border-accent/30 rounded-lg px-3 py-2">
+          <div className="text-accent text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2">
             {toast}
           </div>
         )}
         {error && (
-          <div className="text-red-300 text-xs bg-red-500/10 border border-red-500/40 rounded-lg px-3 py-2">
+          <div className="text-bad text-xs bg-bad-bg border border-bad-line rounded-md px-3 py-2">
             {error}
           </div>
         )}
@@ -1431,7 +1431,7 @@ function CrossTeamApprovalChainCard({ request: r }: { request: AccessRequest }) 
   return (
     <Card>
       <div className="px-5 py-4 border-b border-border/60">
-        <h3 className="text-text font-semibold">Approval chain</h3>
+        <h3 className="text-ink font-semibold">Approval chain</h3>
       </div>
       <div className="px-5 py-4 space-y-2 text-sm">
         <ChainRow label="Source approval" done={sourceVoted} />
@@ -1451,7 +1451,7 @@ function CrossTeamApprovalChainCard({ request: r }: { request: AccessRequest }) 
 function ChainRow({ label, done }: { label: string; done: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className="text-text">{label}</span>
+      <span className="text-ink">{label}</span>
       <StatusPill
         variant={done ? 'approved' : 'pending'}
         tone="outline"

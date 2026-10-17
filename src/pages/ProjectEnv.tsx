@@ -103,7 +103,7 @@ export function ProjectEnv() {
         <Card>
           <CardBody className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-text font-semibold text-sm">
+              <h3 className="text-ink font-semibold text-sm">
                 Need a value from another team?
               </h3>
               <p className="text-muted text-xs mt-0.5">
@@ -127,7 +127,7 @@ export function ProjectEnv() {
 
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold">Secrets</h3>
+          <h3 className="text-ink font-semibold">Secrets</h3>
           <span className="text-muted text-xs">
             {rows.length} {rows.length === 1 ? 'binding' : 'bindings'}
           </span>
@@ -220,10 +220,10 @@ function SecretRow({
   const busy = directReveal.isPending || submitRequest.isPending;
 
   return (
-    <div className="bg-bg/40 border border-border/60 rounded-lg px-4 py-3">
+    <div className="bg-bg/40 border border-border/60 rounded-md px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-mono text-text text-sm truncate">
+          <div className="font-mono text-ink text-sm truncate">
             {row.key_name || '(all keys)'}
           </div>
           <div className="text-muted text-xs truncate">
@@ -256,7 +256,7 @@ function SecretRow({
 
       {open && (
         <div className="mt-3 pt-3 border-t border-border/60 space-y-2">
-          <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+          <label className="block text-[11px] text-muted font-medium">
             Justification
           </label>
           <input
@@ -268,10 +268,10 @@ function SecretRow({
                 ? 'Why do you need to view this secret right now?'
                 : 'Why are you requesting access? (visible to approvers)'
             }
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
           />
           {submitError && (
-            <p className="text-red-300 text-xs">{submitError}</p>
+            <p className="text-bad text-xs">{submitError}</p>
           )}
           <div className="flex items-center justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={() => setOpen(null)} disabled={busy}>

@@ -59,8 +59,8 @@ export function Workflows() {
       />
 
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">Failed to load workflows</div>
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">Failed to load workflows</div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
         </Card>
       )}
@@ -78,7 +78,7 @@ export function Workflows() {
         <>
           <Card className="overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+              <thead className="text-left text-muted text-[11px]">
                 <tr className="border-b border-border/60">
                   <Th>Name</Th>
                   <Th>Approvers</Th>
@@ -190,7 +190,7 @@ function WorkflowRow({
         )}
       </Td>
       <Td>
-        <span className="text-text">
+        <span className="text-ink">
           min <span className="font-mono text-accent">{w.min_approvers}</span>
         </span>
       </Td>
@@ -215,7 +215,7 @@ function WorkflowRow({
         <div className="flex items-center justify-end gap-3">
           <button
             onClick={onEdit}
-            className="text-accent hover:text-accent-bright text-sm font-medium"
+            className="text-accent hover:underline text-sm font-medium"
           >
             Edit
           </button>
@@ -226,7 +226,7 @@ function WorkflowRow({
             className={
               sys
                 ? 'text-muted/50 cursor-not-allowed text-sm font-medium'
-                : 'text-red-300 hover:text-red-200 text-sm font-medium'
+                : 'text-bad hover:underline text-sm font-medium'
             }
           >
             Delete

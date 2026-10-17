@@ -92,7 +92,7 @@ export function Assignments() {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter by user_id…"
-          className="flex-1 bg-bg border border-border rounded-lg px-3.5 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+          className="flex-1 bg-surface border border-edge rounded-md px-3.5 py-2 text-ink text-sm focus:border-accent"
         />
         {filter && (
           <Button variant="secondary" size="sm" onClick={() => setFilter('')}>
@@ -102,8 +102,8 @@ export function Assignments() {
       </div>
 
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">
             Failed to load assignments
           </div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
@@ -128,7 +128,7 @@ export function Assignments() {
       {filtered.length > 0 && (
         <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+            <thead className="text-left text-muted text-[11px]">
               <tr className="border-b border-border/60">
                 <Th>User</Th>
                 <Th>Role</Th>
@@ -200,7 +200,7 @@ function AssignmentRow({
   return (
     <tr className="border-b border-border/40 last:border-0 hover:bg-bg/20 align-top">
       <Td>
-        <span className="font-mono text-text text-sm">{r.user_id}</span>
+        <span className="font-mono text-ink text-sm">{r.user_id}</span>
       </Td>
       <Td>
         <StatusPill variant="accent" tone="outline">
@@ -209,13 +209,13 @@ function AssignmentRow({
       </Td>
       <Td>
         {scopeKeys.length === 0 ? (
-          <span className="text-muted text-xs italic">global</span>
+          <span className="text-muted text-xs">global</span>
         ) : (
           <div className="flex flex-wrap gap-1">
             {scopeKeys.map(([k, v]) => (
               <span
                 key={k}
-                className="inline-flex items-center gap-1 rounded-full bg-bg/60 border border-border px-2.5 py-0.5 text-[11px] font-mono"
+                className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border px-2.5 py-0.5 text-[11px] font-mono"
               >
                 <span className="text-muted">{k}</span>
                 <span className="text-muted/50">=</span>
@@ -240,7 +240,7 @@ function AssignmentRow({
       <Td className="text-right">
         <button
           onClick={onRevoke}
-          className="text-red-300 hover:text-red-200 text-sm font-medium"
+          className="text-bad hover:underline text-sm font-medium"
         >
           Revoke
         </button>
@@ -399,12 +399,12 @@ function AssignmentForm({
           ))}
         </select>
         {roles.isError && (
-          <div className="text-xs text-red-300">failed to load roles</div>
+          <div className="text-xs text-bad">failed to load roles</div>
         )}
       </Field>
 
-      <fieldset className="border border-border/60 rounded-lg p-4 space-y-3">
-        <legend className="text-[11px] text-muted uppercase tracking-wider px-1 font-medium">
+      <fieldset className="border border-border/60 rounded-md p-4 space-y-3">
+        <legend className="text-[11px] text-muted px-1 font-medium">
           Scope — narrow the assignment. All optional; empty = global.
         </legend>
 
@@ -479,11 +479,11 @@ function AssignmentForm({
       </fieldset>
 
       {globalGateOpen && (
-        <div className="bg-yellow-400/10 border border-yellow-400/40 border-l-4 border-l-yellow-400 rounded-lg px-3 py-3 text-xs space-y-2">
-          <p className="text-yellow-200 font-semibold">
+        <div className="bg-warn-bg border border-warn-line border-l-4 border-l-warn rounded-md px-3 py-3 text-xs space-y-2">
+          <p className="text-warn font-semibold">
             value_provider with no team scope = global inbox access
           </p>
-          <p className="text-yellow-200/90">
+          <p className="text-warn">
             Without a team pick, this user becomes a value provider for{' '}
             <em>every</em> team's cross-team inbox. That's almost never
             what you want — assign a specific team in Scope, or type{' '}
@@ -494,13 +494,13 @@ function AssignmentForm({
             value={globalConfirmTyped}
             onChange={(e) => setGlobalConfirmTyped(e.target.value)}
             placeholder="type `global` to confirm"
-            className="w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
           />
         </div>
       )}
 
       {grant.error instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
+        <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
           {grant.error.status}: {grant.error.message}
         </div>
       )}
@@ -533,7 +533,7 @@ function AssignmentForm({
 // --- shared bits ----------------------------------------------------
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent ';
 
 function Field({
   label,
@@ -548,14 +548,14 @@ function Field({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+      <label className="block text-xs text-muted font-medium">
         {label}
       </label>
       {children}
       {hint && !error && (
         <div className="text-[11px] text-muted/80">{hint}</div>
       )}
-      {error && <div className="text-xs text-red-300">{error}</div>}
+      {error && <div className="text-xs text-bad">{error}</div>}
     </div>
   );
 }

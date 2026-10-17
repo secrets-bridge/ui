@@ -1,31 +1,32 @@
 /**
- * PageHeader — the title + muted subtitle + right-aligned CTA strip
- * that opens every page in the Figma frames. Reusable across all
- * admin pages so they stay visually identical.
+ * PageHeader — the page h1, a one-line fact line under it, and the page
+ * actions (filters and at most one primary button).
+ *
+ * The h1 has `id="page-title"` and tabIndex -1 so the shell can move
+ * focus to it on every route change.
  */
 
 import type { ReactNode } from 'react';
 
 interface Props {
   title: string;
-  description?: string;
+  /** Short fact line built from the same records the page lists. */
+  description?: ReactNode;
   actions?: ReactNode;
 }
 
 export function PageHeader({ title, description, actions }: Props) {
   return (
-    <div className="flex items-start justify-between gap-4 mb-6">
-      <div>
-        <h1 className="text-text font-bold tracking-tight text-3xl">
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+      <div className="min-w-0">
+        <h1 id="page-title" tabIndex={-1} className="text-console-title text-ink">
           {title}
         </h1>
         {description && (
-          <p className="text-muted text-sm mt-1.5 max-w-2xl leading-relaxed">
-            {description}
-          </p>
+          <p className="mt-[3px] max-w-3xl text-ui font-normal text-muted">{description}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2.5">{actions}</div>}
     </div>
   );
 }

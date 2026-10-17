@@ -59,7 +59,7 @@ export function TeamPoliciesPicker() {
       />
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold">Your teams</h3>
+          <h3 className="text-ink font-semibold">Your teams</h3>
         </CardHeader>
         <CardBody>
           {coveredTeams.length === 0 ? (
@@ -70,7 +70,7 @@ export function TeamPoliciesPicker() {
             <ul className="divide-y divide-border">
               {coveredTeams.map((t) => (
                 <li key={t.id} className="py-3 flex items-center justify-between">
-                  <span className="text-sm text-text">{t.name}</span>
+                  <span className="text-sm text-ink">{t.name}</span>
                   <Link
                     to={`/teams/${t.id}/policies`}
                     className="text-[12px] text-accent hover:underline"

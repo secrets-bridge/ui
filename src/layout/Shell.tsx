@@ -5,7 +5,8 @@ import { useAuth } from '../auth/AuthContext';
 import { useInboxCount } from '../api/crossTeam';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { VersionChip } from '../ui/VersionChip';
-import { LogoMark } from '../ui/LogoMark';
+import { Logo } from '../ui/Logo';
+import { ThemeToggle } from '../ui/ThemeToggle';
 
 /**
  * Shell — sidebar + top bar + main content slot, matched against the
@@ -146,10 +147,7 @@ export function Shell() {
       <aside className="row-span-2 bg-surface border-r border-border flex flex-col">
         {/* brand mark */}
         <div className="px-5 py-4 flex items-center gap-2 border-b border-border/60">
-          <LogoMark className="w-7 h-7" />
-          <span className="text-text text-base font-semibold tracking-tight">
-            SecretsBridge
-          </span>
+          <Logo size={20} />
         </div>
 
         {/* nav */}
@@ -211,7 +209,7 @@ export function Shell() {
           )}
 
           {meStatus === 'loading' && (
-            <div className="px-3 pt-4 text-[11px] text-muted/70 italic">
+            <div className="px-3 pt-4 text-[11px] text-muted/70">
               Loading permissions…
             </div>
           )}
@@ -222,12 +220,12 @@ export function Shell() {
           <div className="px-3 py-3 border-t border-border/60 space-y-1">
             <button
               onClick={() => navigate('/me')}
-              className="w-full flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-bg/40 transition-colors text-left"
+              className="w-full flex items-center gap-3 px-2 py-2 rounded-md hover:bg-bg/40 transition-colors text-left"
               title="View your profile"
             >
               <Avatar name={identity.display_name} />
               <div className="flex-1 min-w-0">
-                <div className="text-text text-sm font-medium truncate">
+                <div className="text-ink text-sm font-medium truncate">
                   {identity.display_name}
                 </div>
                 <div className="text-muted text-xs truncate">
@@ -244,10 +242,10 @@ export function Shell() {
               type="button"
               onClick={() => navigate('/me/mfa')}
               className={
-                'w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg transition-colors text-left text-[11px] ' +
+                'w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md transition-colors text-left text-[11px] ' +
                 (identity.mfa_enrolled
-                  ? 'text-muted hover:text-text hover:bg-bg/30'
-                  : 'text-accent hover:text-accent-bright hover:bg-accent/10 border border-accent/30')
+                  ? 'text-muted hover:text-ink hover:bg-bg/30'
+                  : 'text-accent hover:underline hover:bg-accent/10 border border-accent/30')
               }
               title={
                 identity.mfa_enrolled
@@ -263,7 +261,7 @@ export function Shell() {
               onClick={() => setSignOutOpen(true)}
               disabled={signingOut}
               aria-busy={signingOut}
-              className="w-full text-[11px] text-muted hover:text-text px-2 py-1.5 rounded-lg hover:bg-bg/30 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full text-[11px] text-muted hover:text-ink px-2 py-1.5 rounded-md hover:bg-bg/30 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               title="Sign out"
             >
               {signingOut ? 'Signing out…' : 'Sign out'}
@@ -283,9 +281,10 @@ export function Shell() {
         <input
           type="text"
           placeholder="Search secrets, requests, agents…"
-          className="hidden md:block w-80 bg-bg/60 border border-border rounded-full px-4 py-1.5 text-sm text-text placeholder-muted focus:outline-hidden focus:border-accent/40"
+          className="hidden md:block w-80 bg-bg/60 border border-border rounded-sm px-4 py-1.5 text-sm text-ink placeholder-muted focus:border-accent/40"
         />
         <EnvSwitcher value="Production" />
+        <ThemeToggle />
         {identity && <Avatar name={identity.display_name} />}
       </header>
 
@@ -324,7 +323,7 @@ function NavGroup({ children }: { children: React.ReactNode }) {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pt-5 pb-2 px-3 text-[11px] uppercase tracking-wider text-muted font-semibold">
+    <div className="pt-5 pb-2 px-3 text-[11px] text-muted font-semibold">
       {children}
     </div>
   );
@@ -349,10 +348,10 @@ function NavItem({
       end={end}
       className={({ isActive }) =>
         [
-          'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+          'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
           isActive
             ? 'bg-accent/15 text-accent'
-            : 'text-muted hover:text-text hover:bg-bg/30',
+            : 'text-muted hover:text-ink hover:bg-bg/30',
         ].join(' ')
       }
     >
@@ -361,7 +360,7 @@ function NavItem({
           <NavDot active={isActive} />
           <span className="flex-1">{label}</span>
           {badge !== undefined && badge > 0 && (
-            <span className="bg-accent/20 text-accent text-[11px] rounded-full px-2 py-0.5 font-medium">
+            <span className="bg-accent/20 text-accent text-[11px] rounded-sm px-2 py-0.5 font-medium">
               {badge}
             </span>
           )}
@@ -387,10 +386,10 @@ function NavDot({ active }: { active: boolean }) {
 function EnvSwitcher({ value }: { value: string }) {
   return (
     <button
-      className="hidden md:inline-flex items-center gap-2 rounded-full bg-bg/60 border border-border px-3 py-1.5 text-xs text-text hover:bg-bg"
+      className="hidden md:inline-flex items-center gap-2 rounded-sm bg-bg/60 border border-border px-3 py-1.5 text-xs text-ink hover:bg-bg"
       title="Environment context"
     >
-      <span className="w-2 h-2 rounded-full bg-success" />
+      <span className="w-2 h-2 rounded-sm bg-ok" />
       {value}
     </button>
   );
@@ -419,7 +418,7 @@ function roleLabelFor(perms: string[]): string {
 function Avatar({ name }: { name: string }) {
   const initial = (name || '?').trim().charAt(0).toUpperCase();
   return (
-    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-brand-gradient text-bg text-sm font-semibold">
+    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-accent text-bg text-sm font-semibold">
       {initial}
     </span>
   );

@@ -1,7 +1,7 @@
 /**
- * Drawer — right-anchored panel matching the Figma "Edit role" frame.
- * Header has a title + close X; body scrolls; an optional footer slot
- * pins action buttons to the bottom (Cancel + primary).
+ * Drawer — right-side panel for short forms. Full width on phones.
+ * Header has a title + close button; body scrolls; an optional footer
+ * pins the actions to the bottom right (Cancel, then submit).
  *
  * Replaces the per-page Drawer copies that the Workflows / Roles /
  * Policies / Integrations / Projects / Assignments pages each carried
@@ -31,29 +31,29 @@ export function Drawer({ title, onClose, children, footer, wide }: Props) {
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <button
-        className="absolute inset-0 bg-bg/70 backdrop-blur-xs"
+        className="absolute inset-0 bg-scrim"
         onClick={onClose}
         aria-label="Close drawer"
       />
       <div
         className={
           (wide ? 'w-[720px]' : 'w-[520px]') +
-          ' relative max-w-full bg-surface border-l border-border h-full flex flex-col shadow-2xl'
+          ' relative max-w-full bg-surface border-l border-border h-full flex flex-col shadow-overlay'
         }
       >
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
-          <div className="text-text font-semibold text-base">{title}</div>
+        <div className="px-5 py-4 border-b border-rule flex items-center justify-between gap-3 shrink-0">
+          <h2 className="text-[18px] leading-6 font-semibold text-ink">{title}</h2>
           <button
             onClick={onClose}
-            className="text-muted hover:text-text text-xl leading-none w-8 h-8 rounded-full hover:bg-bg/40 transition-colors"
+            className="text-ink text-xl leading-none w-8 h-8 shrink-0 rounded-md hover:bg-sunken"
             aria-label="Close"
           >
             ×
           </button>
         </div>
-        <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
+        <div className="px-5 py-[18px] overflow-y-auto flex-1">{children}</div>
         {footer && (
-          <div className="px-6 py-4 border-t border-border flex items-center justify-between gap-2 shrink-0">
+          <div className="px-5 py-3.5 border-t border-rule flex flex-wrap items-center justify-end gap-2.5 shrink-0">
             {footer}
           </div>
         )}

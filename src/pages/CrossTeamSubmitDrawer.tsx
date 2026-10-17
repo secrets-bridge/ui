@@ -178,13 +178,13 @@ export function CrossTeamSubmitDrawer({
   return (
     <div className="fixed inset-0 z-40 flex">
       <button
-        className="flex-1 bg-bg/80 backdrop-blur-xs"
+        className="flex-1 bg-scrim"
         onClick={onClose}
         aria-label="Close"
       />
       <aside className="w-[520px] max-w-full h-full bg-surface border-l border-border overflow-y-auto p-6 space-y-5">
         <div>
-          <h2 className="text-text text-xl font-bold tracking-tight">
+          <h2 className="text-ink text-xl font-semibold tracking-tight">
             New cross-team request
           </h2>
           <p className="text-muted text-sm mt-1">
@@ -196,18 +196,18 @@ export function CrossTeamSubmitDrawer({
           <p className="text-muted text-xs mt-2">
             Source:{' '}
             {sourceProject ? (
-              <span className="text-text">
+              <span className="text-ink">
                 {sourceProject.name}
                 {sourceEnvironmentName ? ` · ${sourceEnvironmentName}` : ''}
               </span>
             ) : (
-              <span className="text-amber-200">no project selected</span>
+              <span className="text-warn">no project selected</span>
             )}
           </p>
         </div>
 
         <section className="space-y-3">
-          <h3 className="text-text font-semibold text-sm uppercase tracking-wider">
+          <h3 className="text-ink font-semibold text-sm">
             Target
           </h3>
           <Select
@@ -254,7 +254,7 @@ export function CrossTeamSubmitDrawer({
         </section>
 
         <section className="space-y-3">
-          <h3 className="text-text font-semibold text-sm uppercase tracking-wider">
+          <h3 className="text-ink font-semibold text-sm">
             Destination
           </h3>
           <p className="text-muted text-xs">
@@ -275,15 +275,15 @@ export function CrossTeamSubmitDrawer({
             ]}
           />
           {provConns.data && provConns.data.length === 0 && (
-            <div className="rounded-lg border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted space-y-1">
-              <div className="text-text font-medium">
+            <div className="rounded-md border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted space-y-1">
+              <div className="text-ink font-medium">
                 No provider connections are bound to this project / environment.
               </div>
               {hasPermission('integration.edit') ? (
                 <div>
                   <Link
                     to="/admin/provider-connections"
-                    className="text-accent hover:text-accent-bright underline"
+                    className="text-accent hover:underline underline"
                   >
                     Manage provider connections
                   </Link>{' '}
@@ -303,7 +303,7 @@ export function CrossTeamSubmitDrawer({
               value={destSecretRef}
               onChange={(e) => setDestSecretRef(e.target.value)}
               placeholder="e.g. billing/prod/db"
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
             />
           </Field>
           <Field
@@ -315,14 +315,14 @@ export function CrossTeamSubmitDrawer({
               value={destKeysInput}
               onChange={(e) => setDestKeysInput(e.target.value)}
               placeholder="DB_PASSWORD, DB_USER"
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
             />
             {destKeys.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1.5">
                 {destKeys.map((k) => (
                   <span
                     key={k}
-                    className="bg-accent/15 text-accent text-[11px] rounded-full px-2 py-0.5 font-mono"
+                    className="bg-accent/15 text-accent text-[11px] rounded-sm px-2 py-0.5 font-mono"
                   >
                     {k}
                   </span>
@@ -342,20 +342,20 @@ export function CrossTeamSubmitDrawer({
               onChange={(e) => setJustification(e.target.value)}
               placeholder="Why does your workload need these values? (visible to approvers + value provider)"
               rows={3}
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
             />
           </Field>
         </section>
 
         {submitError && (
-          <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2 text-sm text-red-200">
+          <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2 text-sm text-bad">
             {submitError}
           </div>
         )}
 
         {!valid && (
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 space-y-1">
-            <div className="font-medium text-amber-100">
+          <div className="rounded-md border border-warn-line bg-warn-bg px-3 py-2 text-xs text-warn space-y-1">
+            <div className="font-medium text-warn">
               Complete these to submit:
             </div>
             <ul className="list-disc list-inside space-y-0.5">
@@ -408,7 +408,7 @@ function Select({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-50"
+        className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent disabled:opacity-50"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -432,7 +432,7 @@ function Field({
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+        <label className="block text-[11px] text-muted font-medium">
           {label}
         </label>
         {hint && <span className="text-[11px] text-muted">{hint}</span>}

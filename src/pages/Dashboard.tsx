@@ -209,7 +209,7 @@ function Kpi({
   const inner = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <div className="text-muted text-xs uppercase tracking-wider font-medium">
+        <div className="text-muted text-xs font-medium">
           {label}
         </div>
         {preview && (
@@ -218,7 +218,7 @@ function Kpi({
           </StatusPill>
         )}
       </div>
-      <div className="text-text text-3xl font-bold mt-2 tracking-tight">
+      <div className="text-ink text-3xl font-semibold mt-2 tracking-tight">
         {value}
       </div>
       <div className="mt-2 text-xs">{accent}</div>
@@ -245,15 +245,15 @@ function DotLabel({
 }) {
   const dot =
     tone === 'success'
-      ? 'bg-success'
+      ? 'bg-ok'
       : tone === 'warning'
-        ? 'bg-yellow-400'
+        ? 'bg-warn'
         : tone === 'error'
-          ? 'bg-red-400'
+          ? 'bg-bad'
           : 'bg-muted';
   return (
     <span className="inline-flex items-center gap-1.5 text-muted">
-      <span className={`inline-block w-1.5 h-1.5 rounded-full ${dot}`} />
+      <span className={`inline-block w-1.5 h-1.5 rounded-sm ${dot}`} />
       {children}
     </span>
   );
@@ -276,10 +276,10 @@ const APPROVAL_DEMO_ROWS: ApprovalRow[] = [
 ];
 
 const PROVIDER_DOT: Record<ApprovalRow['provider'], string> = {
-  Vault: 'bg-yellow-400',
-  AWS: 'bg-orange-400',
-  Azure: 'bg-blue-400',
-  GCP: 'bg-cyan-400',
+  Vault: 'bg-warn',
+  AWS: 'bg-info',
+  Azure: 'bg-info',
+  GCP: 'bg-info',
 };
 
 function PendingApprovalsCard() {
@@ -287,20 +287,20 @@ function PendingApprovalsCard() {
     <Card className="overflow-hidden">
       <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
         <div className="flex items-center gap-2">
-          <h3 className="text-text font-semibold">Pending Approvals</h3>
+          <h3 className="text-ink font-semibold">Pending Approvals</h3>
           <StatusPill variant="neutral" tone="outline">
             preview
           </StatusPill>
         </div>
         <a
           href="/requests"
-          className="text-accent hover:text-accent-bright text-sm font-medium"
+          className="text-accent hover:underline text-sm font-medium"
         >
           View all
         </a>
       </div>
       <table className="w-full text-sm">
-        <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+        <thead className="text-left text-muted text-[11px]">
           <tr className="border-b border-border/60">
             <Th>Secret</Th>
             <Th>Requester</Th>
@@ -322,14 +322,14 @@ function PendingApprovalsCard() {
               </Td>
               <Td className="text-muted">{r.requester}</Td>
               <Td>
-                <span className="inline-flex items-center gap-2 text-text">
+                <span className="inline-flex items-center gap-2 text-ink">
                   <span
-                    className={`inline-block w-1.5 h-1.5 rounded-full ${PROVIDER_DOT[r.provider]}`}
+                    className={`inline-block w-1.5 h-1.5 rounded-sm ${PROVIDER_DOT[r.provider]}`}
                   />
                   {r.provider}
                 </span>
               </Td>
-              <Td className="text-text font-mono">{r.ttl}</Td>
+              <Td className="text-ink font-mono">{r.ttl}</Td>
               <Td className="text-right">
                 <div className="flex items-center justify-end gap-2">
                   <Button variant="primary" size="sm" disabled>
@@ -337,7 +337,7 @@ function PendingApprovalsCard() {
                   </Button>
                   <button
                     disabled
-                    className="text-red-300/50 cursor-not-allowed text-sm font-medium"
+                    className="text-bad/50 cursor-not-allowed text-sm font-medium"
                   >
                     Deny
                   </button>
@@ -367,14 +367,14 @@ function RecentAuditCard({ scopeLabel }: { scopeLabel: string }) {
     <Card className="overflow-hidden">
       <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2 justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="text-text font-semibold">Recent activity</h3>
+          <h3 className="text-ink font-semibold">Recent activity</h3>
           <StatusPill variant="neutral" tone="outline">
             {scopeLabel}
           </StatusPill>
         </div>
         <Link
           to="/audit"
-          className="text-[11px] text-accent hover:text-accent-bright"
+          className="text-[11px] text-accent hover:underline"
         >
           full audit →
         </Link>
@@ -395,7 +395,7 @@ function RecentAuditCard({ scopeLabel }: { scopeLabel: string }) {
               <span className="font-mono text-muted text-xs w-12 shrink-0">
                 {shortTime(r.occurred_at)}
               </span>
-              <span className="font-mono text-text text-sm w-36 shrink-0 truncate">
+              <span className="font-mono text-ink text-sm w-36 shrink-0 truncate">
                 {r.actor}
               </span>
               <span className="text-muted text-xs font-mono truncate flex-1 min-w-0">
@@ -430,10 +430,10 @@ function MyRequestsRecentCard() {
   return (
     <Card className="overflow-hidden">
       <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between gap-2">
-        <h3 className="text-text font-semibold">My recent requests</h3>
+        <h3 className="text-ink font-semibold">My recent requests</h3>
         <Link
           to="/requests"
-          className="text-[11px] text-accent hover:text-accent-bright"
+          className="text-[11px] text-accent hover:underline"
         >
           see all →
         </Link>
@@ -459,14 +459,14 @@ function MyRequestsRecentCard() {
             >
               <Link
                 to={`/requests/${r.id}`}
-                className="font-mono text-accent hover:text-accent-bright text-xs w-20 shrink-0"
+                className="font-mono text-accent hover:underline text-xs w-20 shrink-0"
               >
                 {r.id.slice(0, 8)}
               </Link>
-              <span className="font-mono text-muted text-[11px] uppercase w-14 shrink-0">
+              <span className="font-mono text-muted text-[11px] w-14 shrink-0">
                 {r.type}
               </span>
-              <span className="font-mono text-text text-sm truncate flex-1 min-w-0">
+              <span className="font-mono text-ink text-sm truncate flex-1 min-w-0">
                 {r.target_secret_ref}
               </span>
               <StatusPill
@@ -524,12 +524,12 @@ function AgentsSummaryCard({ agents }: { agents: AgentsSnapshot }) {
   return (
     <Card className="p-5 space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-text font-semibold">Agents</h3>
-        <Link to="/agents" className="text-[11px] text-accent hover:text-accent-bright">
+        <h3 className="text-ink font-semibold">Agents</h3>
+        <Link to="/agents" className="text-[11px] text-accent hover:underline">
           manage →
         </Link>
       </div>
-      <div className="text-text text-3xl font-bold tracking-tight">
+      <div className="text-ink text-3xl font-semibold tracking-tight">
         {agents.loading ? '…' : `${agents.online} / ${agents.total}`}
       </div>
       <div className="text-muted text-xs">
@@ -547,7 +547,7 @@ function AgentsSummaryCard({ agents }: { agents: AgentsSnapshot }) {
         </div>
       )}
       {agents.error && (
-        <div className="text-red-300 text-[11px]">{agents.error}</div>
+        <div className="text-bad text-[11px]">{agents.error}</div>
       )}
     </Card>
   );

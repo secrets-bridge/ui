@@ -41,7 +41,7 @@ export function Me() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-4">
         {/* identity */}
         <Card className="p-5 space-y-3">
-          <h3 className="text-text font-semibold">Identity</h3>
+          <h3 className="text-ink font-semibold">Identity</h3>
           <ProfileRow label="Display name" value={identity.display_name} />
           <ProfileRow label="Email" value={identity.email} mono />
           <ProfileRow label="User ID" value={identity.id} mono />
@@ -49,7 +49,7 @@ export function Me() {
 
         {/* permissions */}
         <Card className="p-5 space-y-3">
-          <h3 className="text-text font-semibold">
+          <h3 className="text-ink font-semibold">
             Permissions <span className="text-muted text-xs font-normal">({identity.permissions.length})</span>
           </h3>
           {identity.permissions.length === 0 ? (
@@ -72,7 +72,7 @@ export function Me() {
 
         {/* teams */}
         <Card className="p-5 space-y-3">
-          <h3 className="text-text font-semibold">
+          <h3 className="text-ink font-semibold">
             Teams <span className="text-muted text-xs font-normal">({me?.teams.length ?? 0})</span>
           </h3>
           {(me?.teams ?? []).length === 0 ? (
@@ -82,7 +82,7 @@ export function Me() {
               {me!.teams.map((t) => (
                 <li key={t.id} className="py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-text font-mono text-sm truncate">{t.name}</div>
+                    <div className="text-ink font-mono text-sm truncate">{t.name}</div>
                     {t.parent_team_id && (
                       <div className="text-muted text-[11px] truncate">
                         under {t.parent_team_id}
@@ -105,7 +105,7 @@ export function Me() {
 
         {/* projects */}
         <Card className="p-5 space-y-3">
-          <h3 className="text-text font-semibold">
+          <h3 className="text-ink font-semibold">
             Accessible projects <span className="text-muted text-xs font-normal">({me?.projects.length ?? 0})</span>
           </h3>
           {(me?.projects ?? []).length === 0 ? (
@@ -115,7 +115,7 @@ export function Me() {
               {me!.projects.map((p) => (
                 <li key={p.id} className="py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-text font-mono text-sm truncate">{p.name}</div>
+                    <div className="text-ink font-mono text-sm truncate">{p.name}</div>
                     <div className="text-muted text-[11px] truncate">{p.id}</div>
                   </div>
                   {p.status === 'archived' ? (
@@ -139,8 +139,8 @@ export function Me() {
 function ProfileRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <div className="text-muted text-xs uppercase tracking-wider">{label}</div>
-      <div className={'text-text text-sm mt-0.5 break-all ' + (mono ? 'font-mono' : '')}>{value}</div>
+      <div className="text-muted text-xs">{label}</div>
+      <div className={'text-ink text-sm mt-0.5 break-all ' + (mono ? 'font-mono' : '')}>{value}</div>
     </div>
   );
 }

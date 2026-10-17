@@ -144,11 +144,11 @@ export function TeamPolicies() {
       {listForbidden && (
         <Card>
           <CardBody>
-            <div className="rounded-sm border border-yellow-400/30 bg-yellow-400/10 px-4 py-3 text-sm text-yellow-200">
+            <div className="rounded-sm border border-warn-line bg-warn-bg px-4 py-3 text-sm text-warn">
               <p className="font-medium">
                 You do not have scoped policy.author access for this team.
               </p>
-              <p className="mt-1 text-[13px] text-yellow-200/80">
+              <p className="mt-1 text-[13px] text-warn">
                 Team-anchored policy authoring requires the{' '}
                 <code>policy.author</code> permission scoped to this team.
                 {showAdminShortcut
@@ -166,7 +166,7 @@ export function TeamPolicies() {
       {(ancestorRules.length > 0 || platformInherited.length > 0) && (
         <Card>
           <CardHeader>
-            <h3 className="text-text font-semibold">
+            <h3 className="text-ink font-semibold">
               Inherited (read-only)
             </h3>
             <span className="text-muted text-xs">
@@ -194,7 +194,7 @@ export function TeamPolicies() {
 
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold">Team rules</h3>
+          <h3 className="text-ink font-semibold">Team rules</h3>
           <span className="text-muted text-xs">
             {ownRules.length} rule{ownRules.length === 1 ? '' : 's'}
           </span>
@@ -220,7 +220,7 @@ export function TeamPolicies() {
                     className="py-3 flex items-start justify-between gap-3"
                   >
                     <div>
-                      <div className="text-sm text-text">{r.name}</div>
+                      <div className="text-sm text-ink">{r.name}</div>
                       <div className="mt-1 text-[12px] text-muted">
                         priority {r.priority} · workflow{' '}
                         {r.workflow_name ?? r.workflow_id.slice(0, 8) + '…'}
@@ -245,7 +245,7 @@ export function TeamPolicies() {
                       {editCap.allowed && (
                         <button
                           onClick={() => setConfirmDelete(r)}
-                          className="text-[12px] text-red-300 hover:underline"
+                          className="text-[12px] text-bad hover:underline"
                         >
                           Delete
                         </button>
@@ -303,12 +303,12 @@ function InheritedRow({
       <div>
         <div className="flex items-center gap-2">
           <span
-            className="rounded-sm bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted"
+            className="rounded-sm bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] text-muted"
             title={badgeTooltip}
           >
             {badgeLabel}
           </span>
-          <span className="text-sm text-text">{rule.name}</span>
+          <span className="text-sm text-ink">{rule.name}</span>
         </div>
         <div className="mt-1 text-[12px] text-muted">
           priority {rule.priority} · workflow{' '}
@@ -323,7 +323,7 @@ function InheritedRow({
           )}
         </div>
       </div>
-      <div className="text-[11px] text-muted/80 italic pt-1">
+      <div className="text-[11px] text-muted/80 pt-1">
         Read-only · manage on its owning surface
       </div>
     </li>
@@ -421,13 +421,13 @@ function TeamPolicyAuthorDrawer({
         }
       >
         <div className="space-y-3">
-          <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="rounded-sm border border-bad-line bg-bad-bg px-3 py-2 text-[12px] text-bad">
             Could not load the platform-reserved priority cap.{' '}
             {listError instanceof ApiError
               ? toPolicyRuleErrorToast(listError)
               : 'Try again shortly.'}
           </div>
-          <p className="text-[12px] text-muted italic">
+          <p className="text-[12px] text-muted">
             Authoring stays disabled until the cap is readable —
             falling back to a stale value would let team rules into
             the platform-reserved band.
@@ -538,7 +538,7 @@ function TeamPolicyAuthorForm({
           <input
             type="text"
             {...register('name')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
             placeholder="non-prod-team-default"
           />
         </Field>
@@ -550,7 +550,7 @@ function TeamPolicyAuthorForm({
           <input
             type="text"
             {...register('secret_ref_prefix')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text font-mono"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink font-mono"
             placeholder="billing/"
           />
         </Field>
@@ -564,7 +564,7 @@ function TeamPolicyAuthorForm({
               server never sees provider_type="". */}
           <select
             {...register('provider_type')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
           >
             <option value="">— any provider —</option>
             {POLICY_SELECTOR_PROVIDER_TYPES.map((t) => (
@@ -584,7 +584,7 @@ function TeamPolicyAuthorForm({
               server never sees operation="". */}
           <select
             {...register('operation')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
           >
             <option value="">— any operation —</option>
             {POLICY_SELECTOR_OPERATIONS.map((o) => (
@@ -598,7 +598,7 @@ function TeamPolicyAuthorForm({
         <Field label="Use workflow" error={errors.workflow_id?.message}>
           <select
             {...register('workflow_id')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
           >
             <option value="">— pick a workflow —</option>
             {eligibleWorkflows.map((w) => (
@@ -608,7 +608,7 @@ function TeamPolicyAuthorForm({
             ))}
           </select>
           {eligibleWorkflows.length === 0 && workflows.isSuccess && (
-            <p className="text-[12px] text-muted italic">
+            <p className="text-[12px] text-muted">
               No workflows available for scoped authoring yet — admin
               enables one via /admin/workflows.
             </p>
@@ -622,7 +622,7 @@ function TeamPolicyAuthorForm({
           <input
             type="number"
             {...register('priority')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
           />
         </Field>
 
@@ -631,14 +631,14 @@ function TeamPolicyAuthorForm({
           <span>Enabled</span>
         </label>
 
-        <p className="text-[11px] text-muted/80 italic">
+        <p className="text-[11px] text-muted/80">
           Team rules always match environment_kind=non_prod and cascade
           to every descendant project. They cannot pin a specific
           project or environment.
         </p>
 
         {errorToast && (
-          <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="rounded-sm border border-bad-line bg-bad-bg px-3 py-2 text-[12px] text-bad">
             {errorToast}
           </div>
         )}
@@ -661,10 +661,10 @@ function Field({
   // <span>, where it has no effect.
   return (
     <label className="block [&>*+*]:mt-1">
-      <span className="text-text font-medium">{label}</span>
+      <span className="text-ink font-medium">{label}</span>
       {children}
       {error && (
-        <span className="block text-[12px] text-red-300">{error}</span>
+        <span className="block text-[12px] text-bad">{error}</span>
       )}
     </label>
   );

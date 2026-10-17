@@ -45,32 +45,32 @@ export function ConfirmModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
+        className="absolute inset-0 bg-scrim"
         onClick={onCancel}
         aria-label="Close"
       />
-      <div className="relative bg-surface border border-border rounded-2xl w-[440px] max-w-full p-6 space-y-4 shadow-2xl">
-        <div className="text-text font-bold text-xl tracking-tight">{title}</div>
-        <div className="text-muted text-sm leading-relaxed">{body}</div>
+      <div className="relative bg-surface border border-border rounded-md w-[520px] max-w-full px-5 py-[18px] space-y-3.5 shadow-overlay">
+        <h2 className="text-dialog-title text-ink">{title}</h2>
+        <p className="text-body text-muted">{body}</p>
 
         {error instanceof ApiError && (
-          <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-            <div className="text-red-300 font-semibold mb-0.5">
+          <div role="alert" className="border border-bad-line rounded-md px-3.5 py-3 text-ui">
+            <div className="text-bad font-semibold mb-0.5">
               {error.status} · {statusLabel(error.status)}
             </div>
-            <div className="text-red-200/90 text-xs">{error.message}</div>
+            <div className="text-ink mt-0.5">{error.message}</div>
           </div>
         )}
         {error != null && !(error instanceof ApiError) && (
-          <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-            <div className="text-red-300 font-semibold mb-0.5">Network error</div>
-            <div className="text-red-200/90 text-xs">
+          <div role="alert" className="border border-bad-line rounded-md px-3.5 py-3 text-ui">
+            <div className="text-bad font-semibold mb-0.5">Network error</div>
+            <div className="text-ink mt-0.5">
               {error instanceof Error ? error.message : String(error)}
             </div>
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-2 border-t border-border/60">
+        <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
           <Button variant="secondary" size="md" onClick={onCancel}>
             Cancel
           </Button>

@@ -90,7 +90,7 @@ export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError
 
   return (
     <form onSubmit={handleSubmit(onValid)} className="space-y-4">
-      <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
+      <div className="text-xs text-warn bg-warn-bg border border-warn-line rounded-sm px-3 py-2">
         The ArgoCD token is set <strong>once</strong>. After create, only the <code>enabled</code> flag is mutable. To rotate the token or change connection settings, delete and recreate.
       </div>
 
@@ -150,7 +150,7 @@ export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError
       </Field>
 
       {submitError instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
+        <div className="text-xs text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
           {submitError.status}: {submitError.message}
         </div>
       )}
@@ -166,7 +166,7 @@ export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError
         <button
           type="button"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border"
+          className="text-muted hover:text-ink px-3 py-2 rounded-sm border border-border"
         >
           Cancel
         </button>
@@ -176,7 +176,7 @@ export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent';
+  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent';
 
 function Field({
   label,
@@ -194,7 +194,7 @@ function Field({
       <label className="block text-xs text-muted">{label}</label>
       {children}
       {hint && !error && <div className="text-[11px] text-muted/80">{hint}</div>}
-      {error && <div className="text-xs text-red-400">{error}</div>}
+      {error && <div className="text-xs text-bad">{error}</div>}
     </div>
   );
 }

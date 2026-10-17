@@ -178,7 +178,7 @@ export function ProviderConnectionForm({
 
   return (
     <form onSubmit={submit} className="space-y-5">
-      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 text-xs text-yellow-200">
+      <div className="bg-warn-bg border border-warn-line rounded-md px-3 py-2 text-xs text-warn">
         <span className="font-semibold">Never paste tokens, access keys,
           passwords, or other credentials</span> in the scope below. The agent
         authenticates with its own workload identity. Credential-shaped keys
@@ -279,7 +279,7 @@ export function ProviderConnectionForm({
                   checked={field.value}
                   onChange={(e) => field.onChange(e.target.checked)}
                 />
-                <span className="text-text">Enabled</span>
+                <span className="text-ink">Enabled</span>
               </label>
             )}
           />
@@ -303,7 +303,7 @@ export function ProviderConnectionForm({
           {(['active', 'disabled'] as const).map((s) => (
             <label key={s} className="inline-flex items-center gap-2">
               <input type="radio" value={s} {...register('status')} />
-              <span className="text-text capitalize">{s}</span>
+              <span className="text-ink capitalize">{s}</span>
             </label>
           ))}
         </div>
@@ -314,7 +314,7 @@ export function ProviderConnectionForm({
       )}
 
       {stableErr && (
-        <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2 text-sm text-red-200">
+        <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2 text-sm text-bad">
           {stableErr}
         </div>
       )}
@@ -368,7 +368,7 @@ function DiscoverNowPanel({ connection }: { connection: ProviderConnection }) {
         {toast && (
           <span
             className={
-              toast.kind === 'ok' ? 'text-green-300 text-xs' : 'text-red-300 text-xs'
+              toast.kind === 'ok' ? 'text-ok text-xs' : 'text-bad text-xs'
             }
           >
             {toast.msg}
@@ -390,7 +390,7 @@ function Section({
 }) {
   return (
     <section className="space-y-3">
-      <h3 className="text-text font-semibold text-sm uppercase tracking-wider">
+      <h3 className="text-ink font-semibold text-sm">
         {title}
       </h3>
       {children}
@@ -410,7 +410,7 @@ function Field({
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+        <label className="block text-[11px] text-muted font-medium">
           {label}
         </label>
         {hint && <span className="text-[11px] text-muted">{hint}</span>}
@@ -422,10 +422,10 @@ function Field({
 
 function inputCls(err: unknown): string {
   const base =
-    'w-full bg-bg border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:ring-1';
+    'w-full bg-surface border rounded-md px-3 py-2 text-ink text-sm';
   return err
-    ? `${base} border-red-500/50 focus:border-red-400 focus:ring-red-400/40`
-    : `${base} border-border focus:border-accent focus:ring-accent/40`;
+    ? `${base} border-bad`
+    : `${base} border-edge focus:border-accent`;
 }
 
 function selectCls(err: unknown): string {

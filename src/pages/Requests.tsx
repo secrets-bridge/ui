@@ -94,7 +94,7 @@ export function Requests() {
 
       <Card className="overflow-hidden mb-6">
         <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-          <h3 className="text-text font-semibold">My requests</h3>
+          <h3 className="text-ink font-semibold">My requests</h3>
         </div>
         <div className="px-5 py-4 flex items-center gap-3 flex-wrap border-b border-border/60">
           <FilterPills
@@ -135,7 +135,7 @@ export function Requests() {
         )}
         {filteredMine.length > 0 && (
           <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+            <thead className="text-left text-muted text-[11px]">
               <tr className="border-b border-border/60">
                 <Th>ID</Th>
                 <Th>Target</Th>
@@ -156,7 +156,7 @@ export function Requests() {
       {canApprove && (
         <>
           <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-text text-base font-semibold">Approver queue</h2>
+            <h2 className="text-ink text-base font-semibold">Approver queue</h2>
             <StatusPill variant="accent" tone="outline">
               secret.approve
             </StatusPill>
@@ -208,18 +208,18 @@ function RequestRow({ row: r }: { row: AccessRequest }) {
       <Td>
         <Link
           to={`/requests/${r.id}`}
-          className="font-mono text-accent hover:text-accent-bright text-sm"
+          className="font-mono text-accent hover:underline text-sm"
         >
           {shortId(r.id)}
         </Link>
       </Td>
       <Td>
-        <span className="font-mono text-text text-sm break-all">
+        <span className="font-mono text-ink text-sm break-all">
           {r.target_secret_ref}
         </span>
       </Td>
       <Td>
-        <span className="font-mono text-muted text-xs uppercase">{r.type}</span>
+        <span className="font-mono text-muted text-xs">{r.type}</span>
       </Td>
       <Td>
         <RequestStatusPill status={r.status} />
@@ -244,7 +244,7 @@ function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
       <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 items-start">
         <div className="space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-text text-sm">
+            <span className="font-mono text-ink text-sm">
               {r.requester_id}
             </span>
             <span className="text-muted text-xs">requests</span>
@@ -262,7 +262,7 @@ function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
             </span>
           </div>
           {r.justification && (
-            <p className="text-muted text-xs italic">
+            <p className="text-muted text-xs">
               &ldquo;{r.justification}&rdquo;
             </p>
           )}
@@ -270,10 +270,10 @@ function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
 
         <div className="flex flex-col items-end gap-3 min-w-[200px]">
           <div className="text-right">
-            <div className="text-muted text-[11px] uppercase tracking-wider">
+            <div className="text-muted text-[11px]">
               Submitted
             </div>
-            <div className="text-text font-mono text-sm mt-0.5">
+            <div className="text-ink font-mono text-sm mt-0.5">
               {formatRelativeShort(r.created_at)}
             </div>
             <div className="text-muted text-[10px] mt-0.5">
@@ -303,7 +303,7 @@ function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
 
       {showReason && (
         <div className="mt-4 pt-4 border-t border-border/60 space-y-2">
-          <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+          <label className="block text-xs text-muted font-medium">
             Reject reason
           </label>
           <textarea
@@ -311,7 +311,7 @@ function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. wrong target / not approved by oncall / use the read flow instead"
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
           />
           <div className="flex items-center justify-between pt-1">
             <Button
@@ -384,7 +384,7 @@ function FilterPills<T extends string>({
   options: { value: T; label: string }[];
 }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-full bg-bg/60 border border-border p-0.5">
+    <div className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border p-0.5">
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -392,10 +392,10 @@ function FilterPills<T extends string>({
             key={o.value}
             onClick={() => onChange(o.value)}
             className={
-              'px-3.5 py-1 rounded-full text-xs font-medium transition-colors ' +
+              'px-3.5 py-1 rounded-sm text-xs font-medium transition-colors ' +
               (on
-                ? 'bg-accent/20 text-accent-bright'
-                : 'text-muted hover:text-text')
+                ? 'bg-accent/20 text-accent'
+                : 'text-muted hover:text-ink')
             }
           >
             {o.label}
@@ -431,7 +431,7 @@ function Td({
 function ErrorRow({ title, err }: { title: string; err: unknown }) {
   return (
     <div className="px-5 py-4 border-b border-border/60 text-sm">
-      <div className="text-red-300 font-medium">{title}</div>
+      <div className="text-bad font-medium">{title}</div>
       <div className="text-muted mt-1 text-xs">{stringifyError(err)}</div>
     </div>
   );
@@ -439,8 +439,8 @@ function ErrorRow({ title, err }: { title: string; err: unknown }) {
 
 function ErrorBanner({ title, err }: { title: string; err: unknown }) {
   return (
-    <Card className="border-red-500/40 p-5 text-sm mb-4">
-      <div className="text-red-300 font-medium">{title}</div>
+    <Card className="border-bad-line p-5 text-sm mb-4">
+      <div className="text-bad font-medium">{title}</div>
       <div className="text-muted mt-1">{stringifyError(err)}</div>
     </Card>
   );
@@ -451,7 +451,7 @@ function InlineApiError({ err, className = '' }: { err: unknown; className?: str
   return (
     <div
       className={
-        'text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2 ' +
+        'text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2 ' +
         className
       }
     >

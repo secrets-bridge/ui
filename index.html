@@ -4,21 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- Brand -->
-    <title>Secrets Bridge — The brain behind your secrets</title>
-    <meta name="description" content="Unified secrets control plane for cloud-native teams. Approvals, RBAC, audit, and least-privilege agent execution across Vault, AWS Secrets Manager, Azure Key Vault, GCP Secret Manager, and Kubernetes / GitOps." />
-    <meta name="theme-color" content="#0b1220" />
+    <title>Secrets Bridge</title>
+    <meta name="description" content="Secrets Bridge console. Ask for access to a secret, decide on requests and reveal approved values once." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#F6F5F1" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0F1013" media="(prefers-color-scheme: dark)" />
 
-    <!-- Favicons -->
+    <!-- Sets data-theme before the first paint (CSP allows no inline script). -->
+    <script src="/theme-init.js"></script>
+
+    <!-- Favicons: the Checkpoint mark. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png" />
-    <link rel="apple-touch-icon" href="/favicon-512.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
-    <!-- Fonts (Inter for UI, JetBrains Mono for code) are self-hosted:
-         src/main.tsx imports them from @fontsource, so no page loads
-         anything from a third-party font CDN (UI-N-06). -->
+    <!-- Fonts (IBM Plex Sans and Mono) are self-hosted: src/main.tsx
+         imports them from @fontsource, so no page loads anything from a
+         third-party font CDN (UI-N-06). -->
   </head>
-  <body class="bg-bg font-sans">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

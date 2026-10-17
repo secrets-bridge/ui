@@ -143,14 +143,14 @@ function StepUpModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
+        className="absolute inset-0 bg-scrim"
         onClick={onCancel}
         aria-label="Close"
       />
-      <div className="relative bg-surface border border-border rounded-2xl w-[480px] max-w-full p-6 space-y-4 shadow-2xl">
+      <div className="relative bg-surface border border-border rounded-md w-[480px] max-w-full p-6 space-y-4 shadow-overlay">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-text font-bold text-xl tracking-tight">
+            <div className="text-ink font-semibold text-xl tracking-tight">
               Confirm with MFA
             </div>
             <div className="text-muted text-xs mt-1">
@@ -207,9 +207,9 @@ function FactorPicker({
         <button
           type="button"
           onClick={() => onPick('webauthn')}
-          className="w-full text-left bg-bg/40 hover:bg-bg/60 border border-border rounded-lg px-4 py-3 transition-colors"
+          className="w-full text-left bg-bg/40 hover:bg-bg/60 border border-border rounded-md px-4 py-3 transition-colors"
         >
-          <div className="text-text font-medium text-sm">Use a security key</div>
+          <div className="text-ink font-medium text-sm">Use a security key</div>
           <div className="text-muted text-xs mt-0.5">
             Yubikey, Touch ID, Windows Hello — whichever you registered.
           </div>
@@ -219,9 +219,9 @@ function FactorPicker({
         <button
           type="button"
           onClick={() => onPick('totp', totpFactors[0])}
-          className="w-full text-left bg-bg/40 hover:bg-bg/60 border border-border rounded-lg px-4 py-3 transition-colors"
+          className="w-full text-left bg-bg/40 hover:bg-bg/60 border border-border rounded-md px-4 py-3 transition-colors"
         >
-          <div className="text-text font-medium text-sm">Use an authenticator app</div>
+          <div className="text-ink font-medium text-sm">Use an authenticator app</div>
           <div className="text-muted text-xs mt-0.5">
             {totpFactors.length === 1
               ? totpFactors[0].label
@@ -297,13 +297,13 @@ function TOTPVerify({
     <div className="space-y-4">
       {factors.length > 1 && (
         <div>
-          <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
+          <label className="block text-[11px] text-muted font-medium mb-1.5">
             Which app
           </label>
           <select
             value={factorId}
             onChange={(e) => setFactorId(e.target.value)}
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
           >
             {factors.map((f) => (
               <option key={f.id} value={f.id}>
@@ -314,7 +314,7 @@ function TOTPVerify({
         </div>
       )}
       <div>
-        <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
+        <label className="block text-[11px] text-muted font-medium mb-1.5">
           6-digit code
         </label>
         <input
@@ -326,7 +326,7 @@ function TOTPVerify({
           autoComplete="one-time-code"
           maxLength={6}
           autoFocus
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-base font-mono tracking-widest text-center focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+          className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-base font-mono tracking-widest text-center focus:border-accent"
         />
       </div>
       {(challenge.isError || verify.isError) && (
@@ -420,17 +420,17 @@ function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
 
   return (
     <div className="space-y-4">
-      <div className="bg-bg/40 border border-border rounded-lg px-4 py-3 text-sm">
-        <div className="text-text font-medium">Tap your security key</div>
+      <div className="bg-bg/40 border border-border rounded-md px-4 py-3 text-sm">
+        <div className="text-ink font-medium">Tap your security key</div>
         <div className="text-muted text-xs mt-1">
           Or use your built-in biometrics (Touch ID, Windows Hello,
           Face ID). The browser is waiting.
         </div>
       </div>
       {browserError && (
-        <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-          <div className="text-red-300 font-semibold mb-0.5">Authenticator declined</div>
-          <div className="text-red-200/90 text-xs">{browserError}</div>
+        <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-4 py-3 text-sm">
+          <div className="text-bad font-semibold mb-0.5">Authenticator declined</div>
+          <div className="text-bad text-xs">{browserError}</div>
         </div>
       )}
       <div className="flex items-center justify-between gap-2">
@@ -449,11 +449,11 @@ function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
 
 function ErrorBanner({ err }: { err: unknown }) {
   return (
-    <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-      <div className="text-red-300 font-semibold mb-0.5">
+    <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-4 py-3 text-sm">
+      <div className="text-bad font-semibold mb-0.5">
         {err instanceof ApiError ? `${err.status} · request failed` : 'Network error'}
       </div>
-      <div className="text-red-200/90 text-xs">
+      <div className="text-bad text-xs">
         {err instanceof Error ? err.message : String(err)}
       </div>
     </div>

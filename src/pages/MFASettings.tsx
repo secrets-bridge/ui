@@ -104,15 +104,15 @@ export function MFASettings() {
         <Card className="p-6 text-center text-muted text-sm">Loading factors…</Card>
       )}
       {list.isError && (
-        <Card className="border-red-500/40 p-5 mb-4">
-          <div className="text-red-300 font-medium">Failed to load factors</div>
+        <Card className="border-bad-line p-5 mb-4">
+          <div className="text-bad font-medium">Failed to load factors</div>
           <div className="text-muted text-xs mt-1">{stringifyError(list.error)}</div>
         </Card>
       )}
 
       {list.data && factors.length === 0 && (
         <Card className="p-10 text-center">
-          <div className="text-text font-semibold mb-2">No factors enrolled yet</div>
+          <div className="text-ink font-semibold mb-2">No factors enrolled yet</div>
           <div className="text-muted text-sm">
             Add a security key or authenticator app to satisfy step-up
             on Tier 2 actions.
@@ -123,7 +123,7 @@ export function MFASettings() {
       {factors.length > 0 && (
         <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+            <thead className="text-left text-muted text-[11px]">
               <tr className="border-b border-border/60">
                 <Th>Label</Th>
                 <Th>Kind</Th>
@@ -136,7 +136,7 @@ export function MFASettings() {
               {factors.map((f) => (
                 <tr key={f.id} className="border-b border-border/40 last:border-0 align-middle">
                   <Td>
-                    <div className="text-text">{f.label}</div>
+                    <div className="text-ink">{f.label}</div>
                   </Td>
                   <Td>
                     <StatusPill
@@ -271,7 +271,7 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
       {!challenge && (
         <div className="space-y-4">
           <div>
-            <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
+            <label className="block text-[11px] text-muted font-medium mb-1.5">
               Label
             </label>
             <input
@@ -280,7 +280,7 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
               onChange={(e) => setLabel(e.target.value)}
               placeholder="iPhone backup, Bitwarden, 1Password…"
               autoFocus
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
             />
             <div className="text-[11px] text-muted/80 mt-1">
               How this factor will show up in your list. Must be unique
@@ -294,11 +294,11 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
       {challenge && (
         <div className="space-y-5">
           <div>
-            <div className="text-[11px] text-muted font-medium uppercase tracking-wider mb-2">
+            <div className="text-[11px] text-muted font-medium mb-2">
               1 · Scan with your authenticator
             </div>
             <Card className="p-5 flex flex-col items-center gap-4">
-              <div className="bg-white rounded-lg p-3">
+              <div className="bg-white rounded-md p-3">
                 <QRCodeSVG
                   value={challenge.provisioning_uri}
                   size={192}
@@ -307,10 +307,10 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
                 />
               </div>
               <details className="text-xs text-muted w-full">
-                <summary className="cursor-pointer hover:text-text">
+                <summary className="cursor-pointer hover:text-ink">
                   Can't scan? Show the secret to type manually
                 </summary>
-                <div className="mt-3 font-mono text-[11px] break-all bg-bg/40 border border-border/60 rounded-md px-3 py-2 text-text">
+                <div className="mt-3 font-mono text-[11px] break-all bg-bg/40 border border-border/60 rounded-md px-3 py-2 text-ink">
                   {challenge.secret_base32}
                 </div>
                 <div className="mt-2 text-[11px] text-muted/80">
@@ -320,7 +320,7 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
             </Card>
           </div>
           <div>
-            <div className="text-[11px] text-muted font-medium uppercase tracking-wider mb-2">
+            <div className="text-[11px] text-muted font-medium mb-2">
               2 · Type the 6-digit code your app shows
             </div>
             <input
@@ -332,7 +332,7 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
               autoComplete="one-time-code"
               maxLength={6}
               autoFocus
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-base font-mono tracking-widest text-center focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-base font-mono tracking-widest text-center focus:border-accent"
             />
             <div className="text-[11px] text-muted/80 mt-1">
               If the code is wrong, the challenge resets — close this
@@ -420,7 +420,7 @@ function WebAuthnEnrollDrawer({ onClose }: { onClose: () => void }) {
     >
       <div className="space-y-4">
         <div>
-          <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
+          <label className="block text-[11px] text-muted font-medium mb-1.5">
             Label
           </label>
           <input
@@ -430,7 +430,7 @@ function WebAuthnEnrollDrawer({ onClose }: { onClose: () => void }) {
             placeholder="Yubikey 5C, iPhone Touch ID, Windows Hello…"
             autoFocus
             disabled={inFlight}
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-50"
+            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent disabled:opacity-50"
           />
           <div className="text-[11px] text-muted/80 mt-1">
             How this factor will show up in your list. Must be unique
@@ -439,7 +439,7 @@ function WebAuthnEnrollDrawer({ onClose }: { onClose: () => void }) {
         </div>
 
         <Card className="p-4 text-sm space-y-2">
-          <div className="text-text font-medium">When you click “Add factor”…</div>
+          <div className="text-ink font-medium">When you click “Add factor”…</div>
           <ol className="list-decimal list-inside text-muted text-xs space-y-1">
             <li>Your browser will prompt you to choose an authenticator.</li>
             <li>Tap your security key or use your built-in biometrics.</li>
@@ -452,9 +452,9 @@ function WebAuthnEnrollDrawer({ onClose }: { onClose: () => void }) {
         </Card>
 
         {browserError && (
-          <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-            <div className="text-red-300 font-semibold mb-0.5">Authenticator declined</div>
-            <div className="text-red-200/90 text-xs">{browserError}</div>
+          <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-4 py-3 text-sm">
+            <div className="text-bad font-semibold mb-0.5">Authenticator declined</div>
+            <div className="text-bad text-xs">{browserError}</div>
           </div>
         )}
         {start.isError && <ErrorBanner err={start.error} />}
@@ -468,11 +468,11 @@ function WebAuthnEnrollDrawer({ onClose }: { onClose: () => void }) {
 
 function ErrorBanner({ err }: { err: unknown }) {
   return (
-    <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-      <div className="text-red-300 font-semibold mb-0.5">
+    <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-4 py-3 text-sm">
+      <div className="text-bad font-semibold mb-0.5">
         {err instanceof ApiError ? `${err.status} · request failed` : 'Network error'}
       </div>
-      <div className="text-red-200/90 text-xs">
+      <div className="text-bad text-xs">
         {err instanceof Error ? err.message : String(err)}
       </div>
     </div>
