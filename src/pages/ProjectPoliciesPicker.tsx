@@ -17,6 +17,7 @@ import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { DataTable, type Column } from '../ui/DataTable';
 import { EmptyState } from '../ui/EmptyState';
+import { EntityMark } from '../ui/EntityMark';
 import { EnvTag } from '../ui/EnvTag';
 import { PageHeader } from '../ui/PageHeader';
 import { Loading } from './policies/parts';
@@ -36,9 +37,12 @@ export function ProjectPoliciesPicker() {
       key: 'name',
       header: 'Project',
       render: (p) => (
-        <Link to={to(p)} className="font-medium text-accent hover:underline">
-          {p.name}
-        </Link>
+        <span className="inline-flex items-center gap-2.5">
+          <EntityMark name={p.name} size="md" />
+          <Link to={to(p)} className="font-medium text-accent hover:underline">
+            {p.name}
+          </Link>
+        </span>
       ),
     },
     {

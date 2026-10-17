@@ -32,6 +32,7 @@ import { ConfirmModal } from '../../../ui/ConfirmModal';
 import { DataTable, type Column } from '../../../ui/DataTable';
 import { Drawer } from '../../../ui/Drawer';
 import { EmptyState } from '../../../ui/EmptyState';
+import { EntityMark } from '../../../ui/EntityMark';
 import { EnvTag } from '../../../ui/EnvTag';
 import { Field, Input, Select } from '../../../ui/Field';
 import { PageHeader } from '../../../ui/PageHeader';
@@ -148,6 +149,7 @@ function Header({ project, teams }: { project: Project; teams: Team[] }) {
     <>
       <PageHeader
         title={project.name}
+        mark={<EntityMark name={project.name} size="lg" />}
         description={facts.join(' · ')}
         actions={
           <Button variant="secondary" onClick={() => void toggle()} disabled={status.isPending} aria-busy={status.isPending}>

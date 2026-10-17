@@ -31,6 +31,7 @@ import { Button } from '../../../ui/Button';
 import { ConfirmModal } from '../../../ui/ConfirmModal';
 import { DataTable, type Column } from '../../../ui/DataTable';
 import { Drawer } from '../../../ui/Drawer';
+import { EntityMark } from '../../../ui/EntityMark';
 import { Field, Input, Select, Textarea } from '../../../ui/Field';
 import { PageHeader } from '../../../ui/PageHeader';
 import { useToast } from '../../../ui/toastContext';
@@ -163,6 +164,7 @@ function TeamView({ team, all, onOpen, onDeleted }: { team: Team; all: Team[]; o
       <div className="mt-3">
         <PageHeader
           title={team.name}
+          mark={<EntityMark name={team.name} kind="team" size="lg" />}
           description={
             <>
               {facts.join(' · ')}

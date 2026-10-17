@@ -38,8 +38,8 @@ import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { DataTable, type Column } from '../ui/DataTable';
 import { EmptyState } from '../ui/EmptyState';
-import { EnvTag } from '../ui/EnvTag';
 import { Input, Select } from '../ui/Field';
+import { ScopeLabel } from '../ui/ScopeLabel';
 import { SearchIcon } from '../ui/icons';
 import { PageHeader } from '../ui/PageHeader';
 import { Status } from '../ui/Status';
@@ -381,9 +381,7 @@ function RequestTable({
       render: (r) => {
         const d = display(r);
         return (
-          <span className="whitespace-nowrap">
-            {d.project} {d.env && <EnvTag kind={d.envKind}>{d.env}</EnvTag>}
-          </span>
+          <ScopeLabel project={d.project} env={d.env} envKind={d.envKind} />
         );
       },
     },

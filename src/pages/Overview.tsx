@@ -43,11 +43,11 @@ import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { DataTable, type Column } from '../ui/DataTable';
 import { EmptyState } from '../ui/EmptyState';
-import { EnvTag } from '../ui/EnvTag';
 import { Keys } from '../ui/Keys';
 import { NeedsYou, type NeedsYouItem } from '../ui/NeedsYou';
 import { PageHeader } from '../ui/PageHeader';
 import { Select } from '../ui/Field';
+import { ScopeLabel } from '../ui/ScopeLabel';
 import { Status } from '../ui/Status';
 import { useToast } from '../ui/toastContext';
 import { RequestAccessDrawer } from './RequestAccessDrawer';
@@ -386,9 +386,7 @@ function Section({
 
 function ScopeCell({ d }: { d: ScopeDisplay }) {
   return (
-    <span className="whitespace-nowrap">
-      {d.project} {d.env && <EnvTag kind={d.envKind}>{d.env}</EnvTag>}
-    </span>
+    <ScopeLabel project={d.project} env={d.env} envKind={d.envKind} />
   );
 }
 
@@ -614,7 +612,7 @@ function Rail({
               <ul className="m-0 list-none p-0">
                 {scopes.map((s) => (
                   <li key={s.value} className="border-b border-rule py-2.5 text-ui font-normal">
-                    {s.projectName} <EnvTag kind={s.envKind}>{s.envName}</EnvTag>
+                    <ScopeLabel project={s.projectName} env={s.envName} envKind={s.envKind} />
                   </li>
                 ))}
               </ul>

@@ -42,9 +42,9 @@ import { Banner } from '../ui/Banner';
 import { Breadcrumb } from '../ui/Breadcrumb';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
-import { EnvTag } from '../ui/EnvTag';
 import { Keys } from '../ui/Keys';
 import { Path } from '../ui/Path';
+import { ScopeLabel } from '../ui/ScopeLabel';
 import { Status } from '../ui/Status';
 import { Timeline } from '../ui/Timeline';
 import { useToast } from '../ui/toastContext';
@@ -211,9 +211,7 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
         <span aria-hidden="true" className="text-muted">
           ·
         </span>
-        <span>
-          {display.project} {display.env && <EnvTag kind={display.envKind}>{display.env}</EnvTag>}
-        </span>
+        <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 min-[1181px]:grid-cols-[minmax(0,1fr)_360px]">
@@ -613,15 +611,9 @@ function DetailsPanel({ r, display, reasonShown }: { r: AccessRequest; display: 
     ],
     [
       'Where',
-      <span key="w">
-        {display.project}
-        {display.env && (
-          <>
-            {' '}
-            <EnvTag kind={display.envKind}>{display.env}</EnvTag>
-            <span className="sr-only">{display.envKind === 'prod' ? ' (production)' : ' (non-production)'}</span>
-          </>
-        )}
+      <span key="w" className="inline-flex flex-wrap items-center gap-x-1">
+        <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} />
+        {display.env && <span className="sr-only">{display.envKind === 'prod' ? ' (production)' : ' (non-production)'}</span>}
       </span>,
     ],
     ['Provider', r.type === 'cross_team' ? (r.destination_provider_label ?? '—') : providerLabel(r.target_provider_type)],

@@ -13,9 +13,11 @@ interface Props {
   /** Short fact line built from the same records the page lists. */
   description?: ReactNode;
   actions?: ReactNode;
+  /** A project's or team's mark, shown before the title. */
+  mark?: ReactNode;
 }
 
-export function PageHeader({ title, description, actions }: Props) {
+export function PageHeader({ title, description, actions, mark }: Props) {
   // The tab title names the page, so history and tabs are readable.
   useEffect(() => {
     document.title = `${title} · Secrets Bridge`;
@@ -24,8 +26,9 @@ export function PageHeader({ title, description, actions }: Props) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
       <div className="min-w-0">
-        <h1 id="page-title" tabIndex={-1} className="text-console-title text-ink">
-          {title}
+        <h1 id="page-title" tabIndex={-1} className={'text-console-title text-ink' + (mark ? ' flex items-center gap-3' : '')}>
+          {mark}
+          {mark ? <span className="min-w-0 break-words">{title}</span> : title}
         </h1>
         {description && (
           <p className="mt-[3px] max-w-3xl text-ui font-normal text-muted">{description}</p>

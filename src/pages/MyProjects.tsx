@@ -12,6 +12,7 @@ import type { MyEnvironment, MyProject } from '../api/types';
 import { Banner } from '../ui/Banner';
 import { DataTable, type Column } from '../ui/DataTable';
 import { EmptyState } from '../ui/EmptyState';
+import { EntityMark } from '../ui/EntityMark';
 import { EnvTag } from '../ui/EnvTag';
 import { PageHeader } from '../ui/PageHeader';
 
@@ -35,10 +36,13 @@ export function MyProjects() {
       key: 'project',
       header: 'Project',
       render: (r) => (
-        <Link to={to(r)} className="font-medium text-accent hover:underline">
-          {r.project.name}
-          {r.project.status === 'archived' && <span className="ml-2 text-caption font-normal text-muted">archived</span>}
-        </Link>
+        <span className="inline-flex items-center gap-2.5">
+          <EntityMark name={r.project.name} size="md" />
+          <Link to={to(r)} className="font-medium text-accent hover:underline">
+            {r.project.name}
+          </Link>
+          {r.project.status === 'archived' && <span className="text-caption font-normal text-muted">archived</span>}
+        </span>
       ),
     },
     { key: 'env', header: 'Environment', render: (r) => <EnvTag kind={r.env.kind}>{r.env.name}</EnvTag> },
@@ -71,10 +75,11 @@ export function MyProjects() {
             minWidth={560}
             stacked={(r) => (
               <div className="flex flex-col gap-1">
-                <p>
+                <p className="flex items-center gap-2">
+                  <EntityMark name={r.project.name} />
                   <Link to={to(r)} className="font-medium text-accent hover:underline">
                     {r.project.name}
-                  </Link>{' '}
+                  </Link>
                   <EnvTag kind={r.env.kind}>{r.env.name}</EnvTag>
                 </p>
                 <p className="text-caption text-muted">
