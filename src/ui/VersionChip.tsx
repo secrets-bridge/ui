@@ -1,7 +1,6 @@
 /**
- * Version chip — small "v0.1.0 · abc1234" pill that lives in the
- * sidebar footer (and gets re-used in the Dashboard footer / Me
- * page). Reads from the vite-injected
+ * Version chip — small "v0.1.0 · abc1234" pill in the sidebar
+ * footer. Reads from the vite-injected
  * `import.meta.env.VITE_APP_VERSION` / `VITE_APP_GIT_SHA` /
  * `VITE_APP_BUILD_TIME` constants.
  *

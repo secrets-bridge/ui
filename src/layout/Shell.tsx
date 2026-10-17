@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useInboxCount } from '../api/crossTeam';
 import { useRequests } from '../api/requests';
 import { needsMyDecision } from '../lib/requestQueues';
+import { useRevealConditions } from '../requests/revealState';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import {
   AgentIcon,
@@ -180,7 +181,8 @@ function Navigation() {
   //   Admin pages     → team.edit, role.edit, user_role.edit,
   //                     workflow.edit, policy.edit, integration.edit
   const canApprove = hasPermission('secret.approve');
-  const showRequests = hasPermission('secret.request') || canApprove;
+  const canRequest = hasPermission('secret.request');
+  const showRequests = canRequest || canApprove;
   const showInbox = hasPermission('secret.value.provide');
   const showAgents = hasPermission('agent.list');
   const showSecrets = hasPermission('secret.list');
@@ -195,14 +197,25 @@ function Navigation() {
   const anyAdmin =
     showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showIntegrations;
 
-  // Requests count: for approvers, the requests waiting for their
-  // decision (the same query and rule as the Requests queue, so the
-  // two never disagree). Hidden at 0.
+  // Requests count, hidden at 0, from the same queries and rules as the
+  // pages so the numbers never disagree: for approvers, the requests
+  // waiting for their decision; for requesters, reveals that are ready.
   const pending = useRequests({ status: 'pending' }, { enabled: canApprove && !!me });
+  const mine = useRequests({ requester_id: me }, { enabled: !canApprove && canRequest && !!me });
+  const mineRows = useMemo(() => (mine.data ?? []).filter((r) => r.requester_id === me), [mine.data, me]);
+  const reveal = useRevealConditions(canApprove ? [] : mineRows, me);
   const decisionCount = useMemo(
     () => (canApprove ? needsMyDecision(pending.data ?? [], me).length : 0),
     [canApprove, pending.data, me],
   );
+  const readyCount = useMemo(
+    () => [...reveal.values()].filter((c) => c.state === 'ready').length,
+    [reveal],
+  );
+  const requestsCount = canApprove ? decisionCount : readyCount;
+  const requestsCountLabel = canApprove
+    ? `${decisionCount} waiting for your decision`
+    : `${readyCount} ready to reveal`;
 
   const inboxCount = useInboxCount({ enabled: showInbox });
   const inboxBadge = showInbox ? inboxCount.data?.total : undefined;
@@ -215,8 +228,8 @@ function Navigation() {
           to="/requests"
           label="Requests"
           icon={<RequestIcon size={16} />}
-          count={decisionCount}
-          countLabel={`${decisionCount} waiting for your decision`}
+          count={requestsCount}
+          countLabel={requestsCountLabel}
         />
       )}
       {showInbox && (

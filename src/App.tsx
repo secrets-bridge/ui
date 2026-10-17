@@ -6,14 +6,15 @@ import { AuthProvider } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import { StepUpModalProvider } from './auth/StepUpModal';
 import { Shell } from './layout/Shell';
+import { ScopeProvider } from './requests/ScopeProvider';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { ToastProvider } from './ui/Toast';
 import { Agents } from './pages/Agents';
 import { Audit } from './pages/Audit';
-import { Dashboard } from './pages/Dashboard';
 import { Inbox } from './pages/Inbox';
 import { InboxFill } from './pages/InboxFill';
 import { Login } from './pages/Login';
+import { Overview } from './pages/Overview';
 import { Me } from './pages/Me';
 import { MFASettings } from './pages/MFASettings';
 import { MyProjects } from './pages/MyProjects';
@@ -51,12 +52,14 @@ export function App() {
           element={
             <RequireAuth>
               <StepUpModalProvider>
-                <Shell />
+                <ScopeProvider>
+                  <Shell />
+                </ScopeProvider>
               </StepUpModalProvider>
             </RequireAuth>
           }
         >
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Overview />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/requests" element={<Requests />} />
           <Route path="/requests/:id" element={<RequestDetail />} />

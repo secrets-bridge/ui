@@ -1,0 +1,53 @@
+/**
+ * The short strip of items the signed-in person should act on. Shown
+ * only when it has items. Each item: ref, keys, scope, a one-line note
+ * with a tone (`ok` for a reveal deadline, `bad` for a failure) and one
+ * action.
+ */
+
+import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+
+import { EnvTag } from './EnvTag';
+
+export interface NeedsYouItem {
+  key: string;
+  ref: string;
+  to: string;
+  keys: string;
+  project: string;
+  env?: string;
+  envKind?: 'prod' | 'non_prod';
+  note: string;
+  tone: 'ok' | 'bad' | 'warn';
+  action: ReactNode;
+}
+
+const TONE = { ok: 'text-ok', bad: 'text-bad', warn: 'text-warn' };
+
+export function NeedsYou({ items }: { items: NeedsYouItem[] }) {
+  return (
+    <ul className="m-0 list-none rounded-md border border-border bg-surface p-0">
+      {items.map((it) => (
+        <li
+          key={it.key}
+          className="grid grid-cols-[88px_minmax(0,1fr)_auto_auto_auto] items-center gap-3.5 border-t border-rule px-3.5 py-2.5 first:border-t-0 max-[700px]:grid-cols-[minmax(0,1fr)_auto] max-[700px]:gap-x-3 max-[700px]:gap-y-1"
+        >
+          <Link to={it.to} className="whitespace-nowrap font-mono text-mono font-medium text-accent hover:underline max-[700px]:col-start-1">
+            {it.ref}
+          </Link>
+          <span title={it.keys} className="truncate font-mono text-mono max-[700px]:col-start-1">
+            {it.keys}
+          </span>
+          <span className="whitespace-nowrap text-ui max-[700px]:col-start-1">
+            {it.project} {it.env && <EnvTag kind={it.envKind}>{it.env}</EnvTag>}
+          </span>
+          <span className={'whitespace-nowrap text-caption max-[700px]:col-start-1 ' + TONE[it.tone]}>{it.note}</span>
+          <span className="max-[700px]:col-start-2 max-[700px]:row-span-4 max-[700px]:row-start-1 max-[700px]:self-center">
+            {it.action}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
