@@ -128,7 +128,7 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
   });
   const names = useMemo(() => voterNames(audit.data ?? []), [audit.data]);
   const timeline = useMemo(
-    () => (audit.data ? timelineFromAudit(audit.data, r, me) : timelineFromRequest(r, me)),
+    () => (audit.data?.length ? timelineFromAudit(audit.data, r, me) : timelineFromRequest(r, me)),
     [audit.data, r, me],
   );
 
@@ -256,7 +256,7 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
             aside={
               <span className="flex items-baseline gap-3">
                 <span className="font-mono text-mono-small text-muted">times in UTC</span>
-                {audit.data && (
+                {!!audit.data?.length && (
                   <Link to={`/audit?correlation_id=${r.id}`} className="text-ui font-normal text-accent hover:underline">
                     Audit log
                   </Link>
