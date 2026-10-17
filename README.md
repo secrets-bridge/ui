@@ -38,7 +38,9 @@ OIDC sign-in is auto-discovered. `useOidcAvailable()` (`src/api/oidc.ts`) probes
 
 App-MFA step-up is global (Slices H-I + K-fix-2). Tier 2 ops (approve / reject / reveal-wrap) can return `401 + WWW-Authenticate: step-up`. `routeAuthSignals` inside `src/api/client.ts::request()` routes EVERY API call (TanStack-hooked OR direct `await api.get(...)`) through the same step-up modal singleton. `requestStepUp()` returns a promise the fetch layer awaits, and on `'verified'` the original request auto-retries so the caller's `await` resolves with the success value as if MFA never happened. N concurrent 401s share ONE modal via module-scoped pending-promise dedup. The 412 `mfa_enrollment_required` and 401 `factor_compromised` shapes route to `/me/mfa` and `/login` respectively.
 
-The My Projects sidebar (Slice L5) is the dev-facing entry point. `useMe()` returns each project's environments inline; the per-env page (`/projects/:id/env/:env_id`) shows secret key names + a Reveal CTA (non_prod) or Request CTA (any env). Routes through the L4 endpoints (`/projects/:id/environments/:env_id/{secrets,request,direct-reveal}`); a 403 from direct-reveal (PROD env / policy denied / perm missing) surfaces as an inline `ApiError.message`.
+My projects (`/projects`) is the developer's entry point. `useMe()` returns each project's environments inline. The environment page (`/projects/:id/env/:env_id`) lists the secrets bound there by path and key name. It offers Reveal on non-production environments (direct reveal, through `/projects/:id/environments/:env_id/direct-reveal`) and Request access on any environment. A policy refusal shows inline with a pre-filled Request access instead.
+
+Values are revealed only on the request page (`/requests/:id`), behind the second factor, through a reveal session: each value is fetched once with an explicit click and cleared from state when it is hidden, when the session ends, or when the page unmounts. The old reveal route redirects to the request page and never starts a reveal on load.
 
 ## Hard rules
 
@@ -52,6 +54,15 @@ The My Projects sidebar (Slice L5) is the dev-facing entry point. `useMe()` retu
 | **Initial bundle ≤ 500 KB gzipped** (FR-13) | CI job `bundle-size budget` fails the PR when `dist/assets/*.{js,css}` exceeds the cap. |
 | **Fail-closed permission gate** | `useAuth().hasPermission(perm)` returns `false` until `/users/me` resolves. Nav items + gated buttons stay hidden during hydration. |
 
+## Design system
+
+The console follows the Secrets Bridge brand book: IBM Plex Sans and Mono, an ultramarine accent, light and dark themes, square corners (4px at most), tables rather than cards, and status as a small square glyph plus the exact status word.
+
+- `src/index.css` holds the tokens as CSS variables for both themes (Tailwind 4 `@theme inline`), the type scale, the focus ring and the reduced-motion rules.
+- `public/theme-init.js` sets `data-theme` before first paint (the CSP allows no inline script). `src/theme/theme.ts` and `ThemeToggle` switch it, and the choice is stored under `sb-theme`.
+- `src/ui` holds the shared components: `DataTable` (with a stacked phone layout), `Drawer`, `Dialog`, `ConfirmModal`, `Field` / `Input` / `Select` / `Textarea`, `Status` / `ToneStatus`, `EnvTag`, `Keys`, `KeyPicker`, `Banner`, `EmptyState`, `Breadcrumb`, `Tabs`, `Timeline`, `RevealPanel` and the toast. `useModalFocus` traps focus in drawers and dialogs, stacks them, and returns focus to the opener.
+- One primary button per view, button labels are verbs in sentence case, and errors show under their field with focus moved to the first one. Times are UTC and say so.
+
 ## Layout
 
 ```
@@ -59,28 +70,30 @@ src/
   api/
     client.ts            typed fetch + HTTPS guard + ApiError (with stepUp flag)
     queryClient.ts       global TanStack QueryClient + step-up interceptor
+    sensitiveMutation.ts useSensitiveMutation: mutations that carry a value, token or code
     me.ts                useMe: identity + permissions + teams + projects hydration
-    oidc.ts              useOidcAvailable: probe + redirectToStepUp helper
-    requests.ts / agents.ts / secrets.ts / audit.ts / ...   typed hooks per surface
+    requests.ts / revealSessions.ts / agents.ts / secrets.ts / audit.ts / crossTeam.ts / ...
     types.ts             CP response shapes (metadata-only; no secret values)
   auth/
     AuthContext.tsx      cookie-only AuthProvider + useAuth (no token field)
-    RequireAuth.tsx      route guard
+    StepUpModal.tsx      MFA step-up dialog for 401 + WWW-Authenticate: step-up
   layout/
-    Shell.tsx            sidebar + topbar + <Outlet/> + version chip + logout
+    Shell.tsx            sidebar + mobile menu + skip link + focus on route change
+  lib/                   time (UTC), decodeSecret / encodeSecret (UTF-8), secretClipboard, providers, ...
+  requests/              request scope, reveal state, timeline and description helpers
   pages/
-    Login.tsx            local-admin form + conditional "Sign in with SSO" button
-    Dashboard.tsx        operator landing: KPIs + recent activity
-    Requests.tsx + RequestDetail.tsx     submit / approve / reject / reveal flow
-    Agents.tsx           live status + onboarding deploy snippets
-    Secrets.tsx          catalog with label search + per-secret detail
-    Audit.tsx            append-only event log (filtered to user when not admin)
-    Me.tsx               /users/me profile
-    SubmitRequestDrawer.tsx              profile-driven request submit
-    admin/
-      Projects / Teams / Roles / Assignments / Workflows / Policies / Integrations
-  ui/
-    Button / Card / PageHeader / StatusPill / ConfirmModal / VersionChip / ErrorBoundary
+    Login.tsx            sign-in, SSO first when the api offers it
+    Overview.tsx         what needs you, your requests, activity, agents
+    Requests.tsx + RequestDetail.tsx + request/   list, detail, decisions, inline reveal
+    RequestAccessDrawer.tsx                       read and change requests
+    MyProjects.tsx + ProjectEnv.tsx + project/    environments, direct reveal, provider connections
+    Secrets.tsx          catalog with filters and a details drawer
+    Agents.tsx + agents/ agent table, details, revoke, enrollment (token shown once)
+    Audit.tsx            append-only event log in pages of 50 (own events only when not admin)
+    Inbox.tsx + InboxFill.tsx + CrossTeamSubmitDrawer.tsx   cross-team requests
+    Me.tsx + MFASettings.tsx                      profile and second factor
+    admin/               projects, teams, roles, assignments, workflows, policies, connections, settings, integrations
+  ui/                    shared components (see Design system)
 nginx/
   nginx.conf             SPA fallback + CSP + cache strategy + healthz
 Dockerfile               multi-stage: node 24 + vite → nginx 1.30 alpine (digest-pinned)
@@ -121,13 +134,16 @@ npm run dev
 | Path | Page | Gate |
 |---|---|---|
 | `/login` | Local-admin form + conditional "Sign in with SSO" | public |
-| `/` | Dashboard | authenticated |
-| `/requests` | Submit + approve queue (per-role views) | `secret.request` ∨ `secret.approve` |
-| `/requests/:id` | Detail + reveal (Tier 2, step-up gated) | depends on row ownership |
-| `/agents` | Live agent list + onboarding snippets | `agent.list` |
-| `/secrets` | Catalog with label search | `secret.list` |
-| `/audit` | Event log (scoped to caller when not admin) | `audit.read` |
-| `/me` | Profile: identity, permissions, teams, projects | authenticated |
+| `/` | Overview: what needs you, your requests, activity | authenticated |
+| `/requests` | Your requests, and the approval queue for approvers | `secret.request` ∨ `secret.approve` |
+| `/requests/:id` | Detail, decisions and the inline reveal (step-up gated) | depends on row ownership |
+| `/projects` | Your projects and environments | authenticated |
+| `/projects/:id/env/:env_id` | Secrets bound to an environment, direct reveal, request access | project access |
+| `/inbox` + `/inbox/:id` | Cross-team requests waiting for your values; fill or refuse | `secret.value.provide` |
+| `/agents` | Agents, their status and heartbeats; enrollment and revoke | `agent.list` (enroll: `agent.mint`) |
+| `/secrets` | Catalog with filters | `secret.list` |
+| `/audit` | Event log in pages of 50 (own events when not admin) | `audit.read` |
+| `/me` + `/me/mfa` | Profile, and second-factor settings | authenticated |
 | `/admin/projects` | Projects + per-project secret bindings | `team.edit` |
 | `/admin/teams` | N-level team tree CRUD + members | `team.edit` |
 | `/admin/roles` | Role catalog + permission picker | `role.edit` |

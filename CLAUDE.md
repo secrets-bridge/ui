@@ -12,9 +12,10 @@ The Secrets Bridge dashboard: a React + TypeScript + Vite single-page app served
 |---|---|
 | `src/api/*.ts` | One TanStack Query module per API area; `client.ts` sends requests with `credentials: 'include'` so the HttpOnly session cookie rides along (the SPA never sees a token) |
 | `src/auth` | `AuthContext` builds identity from `GET /users/me`; there is no token in JS, only the HttpOnly session cookie |
-| `src/pages` | Requests, request detail, reveal session, inbox and fill (cross-team), secrets catalog, agents, audit, MFA settings, project and team policies |
+| `src/pages` | Overview, requests and request detail (with the inline reveal), My projects and environment pages, inbox and fill (cross-team), secrets catalog, agents and enrollment, audit, profile and MFA settings, project and team policies |
 | `src/pages/admin` | Projects, teams, roles, assignments, workflows, policies, provider connections, integrations, platform settings |
-| `src/ui`, `src/layout` | Shared components and the app shell |
+| `src/ui`, `src/layout` | Shared components (DataTable, Drawer, Dialog, Field, Status, EnvTag, Banner, ...) and the app shell |
+| `src/index.css`, `src/theme` | Design tokens for light and dark, the type scale and the theme switch |
 | `nginx/` | nginx config with security headers |
 
 ## Build and test
@@ -34,13 +35,15 @@ For a full local stack (api, Postgres, Redis, ingress), use the platform `docker
 
 - **No tokens or secret values in browser storage**: no localStorage, sessionStorage, IndexedDB or JS-readable cookies. Auth is the api's HttpOnly session cookie, so a reload restores the session from it. When that session expires or is revoked, the next 401 clears the query cache and sends the tab to `/login`.
 - **No provider credentials and no direct provider calls.** The browser talks only to the API.
-- Reveal fetches are never cached or refetched automatically, and plaintext is cleared from state on close and unmount.
+- Reveal fetches are never cached or refetched automatically, and plaintext is cleared from state on close and unmount. A reveal always starts from an explicit click on the request page, never on page load.
+- Decode revealed values with `decodeSecret` and encode typed values that the api expects as base64 with `encodeSecret` (`src/lib/decodeSecret.ts`). Plain `atob()` / `btoa()` break non-ASCII text.
 - Value inputs use `type="password"` and are reset after submit.
 - A mutation whose variables or response carry a secret (value, password, token, TOTP seed or code) uses `useSensitiveMutation` and calls `reset()` once done; TanStack otherwise keeps it in the MutationCache.
 - Copy secrets with `copySecret` from `src/lib/secretClipboard.ts`, never `navigator.clipboard` directly.
 - No server-side rendering.
 - Mutations invalidate their query keys; do not call `refetch()` by hand.
 - Show API errors inline with their status; never use `alert()`.
+- Follow the design system: one primary button per view, verbs in sentence case, lists in `DataTable`, status as a glyph plus the exact word, times in UTC, errors under their field. Never show a value, its length or a hash outside the reveal panel.
 - Client-side validation (Zod) is for feedback only. The API is the authority.
 - Keep the initial bundle within the CI budget.
 
