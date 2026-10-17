@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { useEnvSecrets } from '../api/devSecrets';
+import { logoUrl } from '../api/logos';
 import { useMe } from '../api/me';
 import { useAuth } from '../auth/AuthContext';
 import { groupBoundSecrets, type BoundSecret } from '../lib/boundSecrets';
@@ -141,7 +142,7 @@ export function ProjectEnv() {
       <div className="mb-6 mt-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="min-w-0">
           <h1 id="page-title" tabIndex={-1} className="flex flex-wrap items-center gap-x-3 gap-y-1 break-words text-console-title text-ink">
-            <EntityMark name={project.name} size="lg" />
+            <EntityMark name={project.name} size="lg" src={logoUrl('project', project.id, project.logo_version)} />
             <span>{project.name}</span> <EnvTag kind={env.kind}>{env.name}</EnvTag>
           </h1>
           <p className="mt-[3px] max-w-3xl text-ui font-normal text-muted">

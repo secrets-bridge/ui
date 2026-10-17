@@ -126,8 +126,15 @@ const LOGIN_PATH = '/api/v1/auth/login';
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
+  /** A binary body (an image upload), sent as is with its own type. */
+  blob?: { data: Blob; type: string };
   headers?: Record<string, string>;
   signal?: AbortSignal;
+}
+
+/** The URL of an api path, for places that aren't a fetch (an <img src>). */
+export function apiUrl(path: string): string {
+  return buildTimeBase ? buildTimeBase.replace(/\/$/, '') + path : path;
 }
 
 async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0): Promise<T> {
@@ -139,12 +146,13 @@ async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0):
     Accept: 'application/json',
     ...opts.headers,
   };
-  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (opts.blob) headers['Content-Type'] = opts.blob.type;
+  else if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
 
   const resp = await fetch(url, {
     method: opts.method ?? 'GET',
     headers,
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    body: opts.blob ? opts.blob.data : opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     // Slice C: cookie carries auth. 'include' so the cookie crosses
     // origins on cross-origin dev (Vite on :5173 + api on :8080) and
     // is a safe no-op on same-origin prod where the cookie is sent
@@ -260,6 +268,8 @@ export const api = {
     request<T>(path, { ...opts, method: 'POST', body }),
   put: <T>(path: string, body?: unknown, opts?: Omit<RequestOptions, 'method' | 'body'>) =>
     request<T>(path, { ...opts, method: 'PUT', body }),
+  putBlob: <T>(path: string, data: Blob, type: string, opts?: Omit<RequestOptions, 'method' | 'body' | 'blob'>) =>
+    request<T>(path, { ...opts, method: 'PUT', blob: { data, type } }),
   delete: <T>(path: string, opts?: Omit<RequestOptions, 'method' | 'body'>) =>
     request<T>(path, { ...opts, method: 'DELETE' }),
 };

@@ -11,6 +11,7 @@
 
 import { createContext, useContext, useMemo } from 'react';
 
+import { logoUrl } from '../api/logos';
 import { useMe } from '../api/me';
 import type { AccessRequest, MyProject } from '../api/types';
 
@@ -23,6 +24,8 @@ export interface ScopeOption {
   projectName: string;
   envName: string;
   envKind: 'prod' | 'non_prod';
+  /** The project's logo URL, when it has one. */
+  logo?: string;
 }
 
 const scopeValue = (projectId: string, envName: string) => `${projectId}::${envName}`;
@@ -39,6 +42,7 @@ export function scopeOptions(projects: MyProject[] | undefined): ScopeOption[] {
         projectName: p.name,
         envName: e.name,
         envKind: e.kind,
+        logo: logoUrl('project', p.id, p.logo_version),
       });
     }
   }
@@ -65,6 +69,8 @@ export interface ScopeDisplay {
   project: string;
   env?: string;
   envKind?: 'prod' | 'non_prod';
+  /** The project's logo URL when it has one (else the initials show). */
+  logo?: string;
 }
 
 export function useScopeDisplay(): (r: AccessRequest) => ScopeDisplay {
@@ -79,6 +85,7 @@ export function useScopeDisplay(): (r: AccessRequest) => ScopeDisplay {
         project: p?.name ?? r.target_project_name ?? r.source_project_name ?? 'No project',
         env: envName,
         envKind: env?.kind,
+        logo: logoUrl('project', p?.id, p?.logo_version),
       };
     };
   }, [me.data]);

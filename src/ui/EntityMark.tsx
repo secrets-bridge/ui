@@ -7,9 +7,12 @@
  * 600. The mark is decoration; the name always sits next to it, so it is
  * hidden from screen readers.
  *
- * When the api can store real logos, pass `src` and the image replaces
- * the initials (same size, same tile).
+ * Pass `src` (from `logoUrl`) when the project or team has an uploaded
+ * logo: the image fills the same tile. If it fails to load, the initials
+ * show instead.
  */
+
+import { useState } from 'react';
 
 const SIZE = {
   sm: 'h-5 w-5 text-[9.5px] rounded-xs',
@@ -42,18 +45,26 @@ export function EntityMark({
   src?: string;
   className?: string;
 }) {
+  // A logo that fails to load (removed meanwhile, or offline) falls back
+  // to the initials rather than a broken image.
+  const [failed, setFailed] = useState<string | null>(null);
+  const showImage = !!src && failed !== src;
   return (
     <span
       aria-hidden="true"
       className={
         'inline-flex shrink-0 select-none items-center justify-center overflow-hidden border align-middle font-semibold leading-none tracking-[0.02em] ' +
         SIZE[size] +
-        (kind === 'team' ? ' border-edge bg-transparent text-muted' : ' border-border bg-sunken text-ink') +
+        (showImage ? ' border-border bg-surface' : kind === 'team' ? ' border-edge bg-transparent text-muted' : ' border-border bg-sunken text-ink') +
         ' ' +
         className
       }
     >
-      {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : initials(name)}
+      {showImage ? (
+        <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(src)} className="h-full w-full object-cover" />
+      ) : (
+        initials(name)
+      )}
     </span>
   );
 }

@@ -162,6 +162,7 @@ export function Overview() {
         project: d.project,
         env: d.env,
         envKind: d.envKind,
+        logo: d.logo,
         note: `Reveal closes ${formatShort(c.deadline, now)} UTC · ${formatRemaining(c.deadline, now)}`,
         tone: 'ok' as const,
         action: (
@@ -181,6 +182,7 @@ export function Overview() {
         project: d.project,
         env: d.env,
         envKind: d.envKind,
+        logo: d.logo,
         note: `Agent read failed ${formatShort(r.updated_at, now)}`,
         tone: 'bad' as const,
         action: (
@@ -386,7 +388,7 @@ function Section({
 
 function ScopeCell({ d }: { d: ScopeDisplay }) {
   return (
-    <ScopeLabel project={d.project} env={d.env} envKind={d.envKind} />
+    <ScopeLabel project={d.project} env={d.env} envKind={d.envKind} logo={d.logo} />
   );
 }
 
@@ -612,7 +614,7 @@ function Rail({
               <ul className="m-0 list-none p-0">
                 {scopes.map((s) => (
                   <li key={s.value} className="border-b border-rule py-2.5 text-ui font-normal">
-                    <ScopeLabel project={s.projectName} env={s.envName} envKind={s.envKind} />
+                    <ScopeLabel project={s.projectName} env={s.envName} envKind={s.envKind} logo={s.logo} />
                   </li>
                 ))}
               </ul>

@@ -11,6 +11,7 @@
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
+import { logoUrl } from '../api/logos';
 import { useMe } from '../api/me';
 import type { MyProject } from '../api/types';
 import { Banner } from '../ui/Banner';
@@ -38,7 +39,7 @@ export function ProjectPoliciesPicker() {
       header: 'Project',
       render: (p) => (
         <span className="inline-flex items-center gap-2.5">
-          <EntityMark name={p.name} size="md" />
+          <EntityMark name={p.name} size="md" src={logoUrl('project', p.id, p.logo_version)} />
           <Link to={to(p)} className="font-medium text-accent hover:underline">
             {p.name}
           </Link>

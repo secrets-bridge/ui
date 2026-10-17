@@ -211,7 +211,7 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
         <span aria-hidden="true" className="text-muted">
           ·
         </span>
-        <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} />
+        <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} logo={display.logo} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 min-[1181px]:grid-cols-[minmax(0,1fr)_360px]">
@@ -612,7 +612,7 @@ function DetailsPanel({ r, display, reasonShown }: { r: AccessRequest; display: 
     [
       'Where',
       <span key="w" className="inline-flex flex-wrap items-center gap-x-1">
-        <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} />
+        <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} logo={display.logo} />
         {display.env && <span className="sr-only">{display.envKind === 'prod' ? ' (production)' : ' (non-production)'}</span>}
       </span>,
     ],

@@ -13,6 +13,7 @@ import { useMemo } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
+import { logoUrl } from '../api/logos';
 import { useMyPolicyAuthorTeamCoverage } from '../api/myPolicyAuthorTeamCoverage';
 import { type Team, useTeams } from '../api/teams';
 import { Banner } from '../ui/Banner';
@@ -45,7 +46,7 @@ export function TeamPoliciesPicker() {
       header: 'Team',
       render: (t) => (
         <span className="inline-flex items-center gap-2.5">
-          <EntityMark name={t.name} kind="team" size="md" />
+          <EntityMark name={t.name} kind="team" size="md" src={logoUrl('team', t.id, t.logo_version)} />
           <Link to={to(t)} className="font-medium text-accent hover:underline">
             {t.name}
           </Link>

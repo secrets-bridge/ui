@@ -18,6 +18,7 @@ export interface NeedsYouItem {
   project: string;
   env?: string;
   envKind?: 'prod' | 'non_prod';
+  logo?: string;
   note: string;
   tone: 'ok' | 'bad' | 'warn';
   action: ReactNode;
@@ -42,7 +43,7 @@ export function NeedsYou({ items }: { items: NeedsYouItem[] }) {
             {it.keys}
           </span>
           <span className="text-ui max-[700px]:col-start-1">
-            <ScopeLabel project={it.project} env={it.env} envKind={it.envKind} />
+            <ScopeLabel project={it.project} env={it.env} envKind={it.envKind} logo={it.logo} />
           </span>
           <span className={'whitespace-nowrap text-caption max-[700px]:col-start-1 ' + TONE[it.tone]}>{it.note}</span>
           <span className="justify-self-end max-[700px]:col-start-2 max-[700px]:row-span-4 max-[700px]:row-start-1 max-[700px]:self-center">

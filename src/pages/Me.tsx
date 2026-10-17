@@ -7,6 +7,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+import { logoUrl } from '../api/logos';
 import { useAuth } from '../auth/AuthContext';
 import { Banner } from '../ui/Banner';
 import { EntityMark } from '../ui/EntityMark';
@@ -87,7 +88,7 @@ export function Me() {
               {projects.map((p) => (
                 <li key={p.id} className="border-t border-rule px-5 py-3 first:border-t-0">
                   <p className="flex items-center gap-2 text-body font-medium text-ink">
-                    <EntityMark name={p.name} />
+                    <EntityMark name={p.name} src={logoUrl('project', p.id, p.logo_version)} />
                     {p.name}
                     {p.status === 'archived' && <span className="text-caption font-normal text-muted">archived</span>}
                   </p>
@@ -117,7 +118,7 @@ export function Me() {
               {teams.map((t) => (
                 <li key={t.id} className="border-t border-rule px-5 py-3 first:border-t-0">
                   <p className="flex items-center gap-2 text-body font-medium text-ink">
-                    <EntityMark name={t.name} kind="team" />
+                    <EntityMark name={t.name} kind="team" src={logoUrl('team', t.id, t.logo_version)} />
                     {t.name}
                     {t.status === 'archived' && <span className="text-caption font-normal text-muted">archived</span>}
                   </p>

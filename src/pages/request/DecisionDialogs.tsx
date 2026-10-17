@@ -59,7 +59,7 @@ function Summary({ request: r, display, extra }: { request: AccessRequest; displ
       <dd className="m-0">{r.requester_display ?? 'The requester'}</dd>
       <dt className="text-muted">Where</dt>
       <dd className="m-0">
-        <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} />
+        <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} logo={display.logo} />
       </dd>
       <dt className="text-muted">Keys</dt>
       <dd className="m-0">

@@ -7,6 +7,7 @@
 
 import { useNavigate, Link } from 'react-router-dom';
 
+import { logoUrl } from '../api/logos';
 import { useMe } from '../api/me';
 import type { MyEnvironment, MyProject } from '../api/types';
 import { Banner } from '../ui/Banner';
@@ -37,7 +38,7 @@ export function MyProjects() {
       header: 'Project',
       render: (r) => (
         <span className="inline-flex items-center gap-2.5">
-          <EntityMark name={r.project.name} size="md" />
+          <EntityMark name={r.project.name} size="md" src={logoUrl('project', r.project.id, r.project.logo_version)} />
           <Link to={to(r)} className="font-medium text-accent hover:underline">
             {r.project.name}
           </Link>
@@ -76,7 +77,7 @@ export function MyProjects() {
             stacked={(r) => (
               <div className="flex flex-col gap-1">
                 <p className="flex items-center gap-2">
-                  <EntityMark name={r.project.name} />
+                  <EntityMark name={r.project.name} src={logoUrl('project', r.project.id, r.project.logo_version)} />
                   <Link to={to(r)} className="font-medium text-accent hover:underline">
                     {r.project.name}
                   </Link>

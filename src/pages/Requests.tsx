@@ -381,7 +381,7 @@ function RequestTable({
       render: (r) => {
         const d = display(r);
         return (
-          <ScopeLabel project={d.project} env={d.env} envKind={d.envKind} />
+          <ScopeLabel project={d.project} env={d.env} envKind={d.envKind} logo={d.logo} />
         );
       },
     },

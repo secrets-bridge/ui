@@ -26,6 +26,8 @@ export interface Team {
   parent_team_id: string | null;
   status: 'active' | 'archived';
   description: string;
+  /** Version of the uploaded logo, or null when there is none (the initials tile shows). */
+  logo_version?: string | null;
   created_at?: string;
   updated_at?: string;
 }

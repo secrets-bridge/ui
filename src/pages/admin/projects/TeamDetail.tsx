@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import { z } from 'zod';
 
 import { ApiError } from '../../../api/client';
+import { logoUrl } from '../../../api/logos';
 import {
   useAddTeamMember,
   useCreateTeam,
@@ -35,6 +36,7 @@ import { EntityMark } from '../../../ui/EntityMark';
 import { Field, Input, Select, Textarea } from '../../../ui/Field';
 import { PageHeader } from '../../../ui/PageHeader';
 import { useToast } from '../../../ui/toastContext';
+import { LogoDialog } from './LogoDialog';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const teamLink = (id: string) => `/admin/teams?team=${id}`;
@@ -130,6 +132,7 @@ function TeamView({ team, all, onOpen, onDeleted }: { team: Team; all: Team[]; o
   const status = useUpdateTeamStatus(team.id);
   const remove = useDeleteTeam();
   const [editing, setEditing] = useState(false);
+  const [logo, setLogo] = useState(false);
   const [addingChild, setAddingChild] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -164,7 +167,7 @@ function TeamView({ team, all, onOpen, onDeleted }: { team: Team; all: Team[]; o
       <div className="mt-3">
         <PageHeader
           title={team.name}
-          mark={<EntityMark name={team.name} kind="team" size="lg" />}
+          mark={<EntityMark name={team.name} kind="team" size="lg" src={logoUrl('team', team.id, team.logo_version)} />}
           description={
             <>
               {facts.join(' · ')}
@@ -176,6 +179,12 @@ function TeamView({ team, all, onOpen, onDeleted }: { team: Team; all: Team[]; o
               <Button variant="secondary" onClick={() => setEditing(true)}>
                 Edit team
               </Button>
+              {/* Only when this api stores logos (its bodies carry logo_version). */}
+              {'logo_version' in team && (
+                <Button variant="secondary" onClick={() => setLogo(true)}>
+                  Change logo
+                </Button>
+              )}
               <Button variant="secondary" onClick={() => setAddingChild(true)}>
                 Add sub-team
               </Button>
@@ -194,6 +203,7 @@ function TeamView({ team, all, onOpen, onDeleted }: { team: Team; all: Team[]; o
           }
         />
       </div>
+      {logo && <LogoDialog kind="team" id={team.id} name={team.name} logoVersion={team.logo_version} onClose={() => setLogo(false)} />}
       {status.isError && (
         <Banner tone="error" title={archived ? 'Not activated.' : 'Not archived.'} className="mb-4">
           {errorText(status.error)}
