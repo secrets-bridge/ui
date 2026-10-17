@@ -1,33 +1,23 @@
 /**
- * Integrations admin page (BRD §26 — read-only GitOps visibility).
+ * Integrations (`/admin/integrations`, BRD §26: read-only GitOps
+ * visibility).
  *
- * Polished in ui#15 to match the design pattern from ui#13/ui#14:
- *   - PageHeader + Card-wrapped tables + shared `src/ui/` primitives
- *   - Brand-gradient primary CTAs; font-mono cyan accent for identifiers
- *   - StatusPill for health + enabled state
+ * Two sections, semantics unchanged:
+ *   1. ArgoCD endpoints: connection details and a write-once token, an
+ *      enabled switch, delete, and "Find apps" (bulk mappings from
+ *      discovery). No edit: create, toggle and delete only, by api
+ *      design.
+ *   2. GitOps app mappings: tie an ArgoCD application to the workload
+ *      that consumes a secret. Create and delete only.
  *
- * Two stacked sections (semantics unchanged from before):
- *   1. ArgoCD endpoints — connection metadata + write-once token, with
- *      an inline `enabled` toggle and delete confirm. No edit drawer;
- *      create-only + toggle-only by api design.
- *   2. GitOps app mappings — bind an ArgoCD application to a secret
- *      consumer. Create-only + delete-only.
- *
- * The feature is opt-in server-side (`SB_GITOPS_ENABLED`). When OFF,
- * the api literally doesn't mount the routes — calls return 404. We
- * detect that via the first list query and render a "feature disabled"
- * banner instead of an empty table.
+ * The feature is opt-in server-side (`SB_GITOPS_ENABLED`). When it is
+ * off the api doesn't mount the routes and answers 404; the page then
+ * explains how to turn it on instead of showing empty tables.
  */
 
-import { useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 import { ApiError } from '../../api/client';
-import type {
-  ArgoCDEndpoint,
-  ArgoCDEndpointInput,
-  GitOpsAppMapping,
-  GitOpsAppMappingInput,
-} from '../../api/types';
 import {
   useArgoCDEndpoints,
   useCreateArgoCDEndpoint,
@@ -37,35 +27,47 @@ import {
   useGitOpsAppMappings,
   useSetArgoCDEndpointEnabled,
 } from '../../api/integrations';
+import { useProviderConnectionsAdmin } from '../../api/providerConnections';
+import type { ArgoCDEndpoint, ArgoCDEndpointInput, GitOpsAppMapping, GitOpsAppMappingInput } from '../../api/types';
+import { Banner } from '../../ui/Banner';
 import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card';
 import { ConfirmModal } from '../../ui/ConfirmModal';
+import { DataTable, type Column } from '../../ui/DataTable';
 import { Drawer } from '../../ui/Drawer';
+import { EmptyState } from '../../ui/EmptyState';
 import { PageHeader } from '../../ui/PageHeader';
-import { StatusPill } from '../../ui/StatusPill';
+import { ToneStatus } from '../../ui/Status';
+import { useToast } from '../../ui/toastContext';
 import { ArgoCDEndpointForm } from './ArgoCDEndpointForm';
 import { DiscoverAppsPanel } from './DiscoverAppsPanel';
 import { GitOpsAppMappingForm } from './GitOpsAppMappingForm';
+
+const DESCRIPTION = 'ArgoCD sync status on the request page, read-only.';
+
+function isNotFound(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 404;
+}
+
+function errorText(e: unknown): string {
+  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
+  return e instanceof Error ? e.message : String(e);
+}
 
 export function Integrations() {
   const endpoints = useArgoCDEndpoints();
   const mappings = useGitOpsAppMappings();
 
-  const featureDisabled =
-    isNotFound(endpoints.error) || isNotFound(mappings.error);
+  if (isNotFound(endpoints.error) || isNotFound(mappings.error)) return <FeatureOff />;
 
-  if (featureDisabled) {
-    return <FeatureDisabledBanner />;
-  }
+  const facts =
+    endpoints.data && mappings.data
+      ? `${endpoints.data.length} ArgoCD ${endpoints.data.length === 1 ? 'endpoint' : 'endpoints'} · ${mappings.data.length} app ${mappings.data.length === 1 ? 'mapping' : 'mappings'}. `
+      : '';
 
   return (
     <div>
-      <PageHeader
-        title="Integrations"
-        description="ArgoCD endpoints and GitOps application mappings powering the read-only sync-status panel (BRD §26)."
-      />
-
-      <div className="space-y-8">
+      <PageHeader title="Integrations" description={`${facts}${DESCRIPTION}`} />
+      <div className="flex flex-col gap-10">
         <EndpointsSection />
         <MappingsSection />
       </div>
@@ -73,16 +75,32 @@ export function Integrations() {
   );
 }
 
-// --- endpoints section ----------------------------------------------
+function SectionHeader({ id, title, count, description, action }: { id: string; title: string; count?: number; description: string; action: ReactNode }) {
+  return (
+    <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h2 id={id} className="text-block-heading text-ink">
+          {title}
+          {count !== undefined && <span className="ml-2 font-mono text-mono-small font-normal text-muted">{count}</span>}
+        </h2>
+        <p className="mt-0.5 max-w-2xl text-caption text-muted">{description}</p>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+// --- endpoints ------------------------------------------------------
 
 function EndpointsSection() {
   const list = useArgoCDEndpoints();
   const create = useCreateArgoCDEndpoint();
   const del = useDeleteArgoCDEndpoint();
-
+  const toast = useToast();
+  const formId = useId();
   const [creating, setCreating] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<ArgoCDEndpoint | null>(null);
-  const [discovering, setDiscovering] = useState<ArgoCDEndpoint | null>(null);
+  const [deleting, setDeleting] = useState<ArgoCDEndpoint | null>(null);
+  const [finding, setFinding] = useState<ArgoCDEndpoint | null>(null);
 
   // `create` outlives the drawer (this section stays mounted), and its
   // variables carry token_b64. Reset it whenever the drawer closes,
@@ -93,415 +111,364 @@ function EndpointsSection() {
     setCreating(false);
   };
 
+  const rows = list.data ?? [];
+  const actions = (e: ArgoCDEndpoint) => (
+    <span className="inline-flex gap-2">
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => setFinding(e)}
+        disabled={!e.enabled}
+        title={e.enabled ? undefined : 'Turn the endpoint on first.'}
+        aria-label={`Find apps in ${e.name}`}
+      >
+        Find apps
+      </Button>
+      <Button variant="danger" size="sm" onClick={() => setDeleting(e)} aria-label={`Delete ${e.name}…`}>
+        Delete…
+      </Button>
+    </span>
+  );
+  const columns: Column<ArgoCDEndpoint>[] = [
+    { key: 'name', header: 'Name', render: (e) => <span className="font-medium text-ink">{e.name}</span> },
+    {
+      key: 'url',
+      header: 'Base URL',
+      render: (e) => (
+        <span className="block max-w-[320px] break-all font-mono text-mono">
+          {e.base_url}
+          {e.kms_key_id && <span className="block text-caption text-muted" title="KMS key that encrypts the token">key {e.kms_key_id}</span>}
+        </span>
+      ),
+    },
+    { key: 'health', header: 'Health', render: (e) => <Health endpoint={e} /> },
+    { key: 'enabled', header: 'On', render: (e) => <EnabledSwitch endpoint={e} /> },
+    { key: 'actions', header: 'Actions', hiddenHeader: true, align: 'right', className: 'whitespace-nowrap', render: actions },
+  ];
+
   return (
-    <section>
+    <section aria-labelledby="argo-heading">
       <SectionHeader
+        id="argo-heading"
         title="ArgoCD endpoints"
-        description="Write-once token; toggle or delete after create."
+        count={list.data ? rows.length : undefined}
+        description="The token is set once. After that you can turn an endpoint on or off, or delete it."
         action={
-          <Button variant="primary" size="md" onClick={() => setCreating(true)}>
-            + New endpoint
+          <Button variant="secondary" onClick={() => setCreating(true)}>
+            Add endpoint
           </Button>
         }
       />
-
+      {list.isLoading && <p className="text-muted">Loading endpoints…</p>}
       {list.isError && !isNotFound(list.error) && (
-        <ErrorBanner title="Failed to load endpoints" err={list.error} />
+        <Banner
+          tone="error"
+          title="Couldn't load the ArgoCD endpoints."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void list.refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          {errorText(list.error)}
+        </Banner>
       )}
-      {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
-
-      {list.data && list.data.length === 0 && (
-        <Card className="p-10 text-center text-muted text-sm">
-          No endpoints registered yet.
-        </Card>
-      )}
-
-      {list.data && list.data.length > 0 && (
-        <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px]">
-              <tr className="border-b border-border/60">
-                <Th>Name</Th>
-                <Th>Base URL</Th>
-                <Th>KMS key</Th>
-                <Th>Health</Th>
-                <Th>Enabled</Th>
-                <Th className="text-right">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.data.map((e) => (
-                <EndpointRow
-                  key={e.id}
-                  endpoint={e}
-                  onDelete={() => setConfirmDelete(e)}
-                  onDiscover={() => setDiscovering(e)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      {list.data &&
+        (rows.length === 0 ? (
+          <EmptyState title="No ArgoCD endpoints yet.">Add one with a read-only token to show sync status on requests.</EmptyState>
+        ) : (
+          <DataTable
+            label="ArgoCD endpoints"
+            columns={columns}
+            rows={rows}
+            rowKey={(e) => e.id}
+            minWidth={760}
+            stacked={(e) => (
+              <div className="flex flex-col gap-1.5">
+                <p className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-ink">{e.name}</span>
+                  <Health endpoint={e} />
+                </p>
+                <p className="break-all font-mono text-mono-small text-muted">{e.base_url}</p>
+                <EnabledSwitch endpoint={e} withLabel />
+                <div className="mt-1">{actions(e)}</div>
+              </div>
+            )}
+          />
+        ))}
 
       {creating && (
-        <Drawer title="New ArgoCD endpoint" onClose={closeCreate}>
+        <Drawer
+          title="Add an ArgoCD endpoint"
+          onClose={closeCreate}
+          footer={
+            <>
+              <Button variant="secondary" onClick={closeCreate} disabled={create.isPending}>
+                Cancel
+              </Button>
+              <Button type="submit" form={formId} variant="primary" disabled={create.isPending} aria-busy={create.isPending}>
+                {create.isPending ? 'Adding…' : 'Add endpoint'}
+              </Button>
+            </>
+          }
+        >
           <ArgoCDEndpointForm
+            formId={formId}
+            submitError={create.error}
             onSubmit={async (body: ArgoCDEndpointInput) => {
               await create.mutateAsync(body);
+              toast(`Added ${body.name}.`);
               closeCreate();
             }}
-            onCancel={closeCreate}
-            submitting={create.isPending}
-            submitError={create.error}
           />
         </Drawer>
       )}
 
-      {confirmDelete && (
+      {deleting && (
         <ConfirmModal
-          title={`Delete endpoint "${confirmDelete.name}"?`}
-          body="Existing mappings on this endpoint will continue to reference it but observations will stop succeeding. To rotate the token, delete + recreate."
-          confirmText="Delete"
+          title={`Delete ${deleting.name}?`}
+          body="Mappings on this endpoint stay, but their sync status stops updating. To rotate the token, delete the endpoint and add it again."
+          confirmText="Delete endpoint"
           danger
-          onCancel={() => setConfirmDelete(null)}
-          onConfirm={async () => {
-            await del.mutateAsync(confirmDelete.id);
-            setConfirmDelete(null);
-          }}
           loading={del.isPending}
-          error={del.error}
+          error={del.error ?? undefined}
+          onCancel={() => {
+            del.reset();
+            setDeleting(null);
+          }}
+          onConfirm={async () => {
+            try {
+              await del.mutateAsync(deleting.id);
+              toast(`Deleted ${deleting.name}.`);
+              setDeleting(null);
+            } catch {
+              // Shown in the dialog.
+            }
+          }}
         />
       )}
 
-      {discovering && (
-        <Drawer
-          wide
-          title={`Discover apps in "${discovering.name}"`}
-          onClose={() => setDiscovering(null)}
-        >
-          <DiscoverAppsPanel
-            endpoint={discovering}
-            onClose={() => setDiscovering(null)}
-            onDone={() => setDiscovering(null)}
-          />
-        </Drawer>
-      )}
+      {finding && <DiscoverAppsPanel endpoint={finding} onClose={() => setFinding(null)} onDone={() => setFinding(null)} />}
     </section>
   );
 }
 
-function EndpointRow({
-  endpoint,
-  onDelete,
-  onDiscover,
-}: {
-  endpoint: ArgoCDEndpoint;
-  onDelete: () => void;
-  onDiscover: () => void;
-}) {
-  const setEnabled = useSetArgoCDEndpointEnabled(endpoint.id);
+function Health({ endpoint: e }: { endpoint: ArgoCDEndpoint }) {
+  if (e.health_error) {
+    return (
+      <span title={e.health_error}>
+        <ToneStatus tone="bad">Error</ToneStatus>
+      </span>
+    );
+  }
+  if (e.last_health_at) return <ToneStatus tone="ok">Healthy</ToneStatus>;
+  return <ToneStatus tone="neutral">Unknown</ToneStatus>;
+}
 
+function EnabledSwitch({ endpoint, withLabel }: { endpoint: ArgoCDEndpoint; withLabel?: boolean }) {
+  const setEnabled = useSetArgoCDEndpointEnabled(endpoint.id);
+  const toast = useToast();
   return (
-    <tr className="border-b border-border/40 last:border-0 hover:bg-bg/20 align-top">
-      <Td>
-        <span className="font-mono text-accent text-sm">{endpoint.name}</span>
-      </Td>
-      <Td>
-        <code className="text-xs font-mono text-muted break-all">
-          {endpoint.base_url}
-        </code>
-      </Td>
-      <Td>
-        <span className="font-mono text-muted text-[11px]">
-          {endpoint.kms_key_id || '—'}
-        </span>
-      </Td>
-      <Td>
-        {endpoint.health_error ? (
-          <StatusPill
-            variant="error"
-            tone="outline"
-            title={endpoint.health_error}
-          >
-            error
-          </StatusPill>
-        ) : endpoint.last_health_at ? (
-          <StatusPill variant="success" tone="outline">
-            healthy
-          </StatusPill>
-        ) : (
-          <StatusPill variant="neutral" tone="outline">
-            unknown
-          </StatusPill>
-        )}
-      </Td>
-      <Td>
-        <label className="inline-flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={endpoint.enabled}
-            disabled={setEnabled.isPending}
-            onChange={(e) =>
-              setEnabled.mutateAsync(e.target.checked).catch(() => {})
-            }
-            className="h-4 w-4 accent-accent"
-          />
-        </label>
-      </Td>
-      <Td className="text-right">
-        <div className="flex items-center justify-end gap-3">
-          <button
-            onClick={onDiscover}
-            disabled={!endpoint.enabled}
-            title={
-              endpoint.enabled
-                ? 'Discover ArgoCD apps + bulk-create mappings'
-                : 'Enable the endpoint first'
-            }
-            className={
-              endpoint.enabled
-                ? 'text-accent hover:underline text-sm font-medium'
-                : 'text-muted/50 cursor-not-allowed text-sm font-medium'
-            }
-          >
-            Discover
-          </button>
-          <button
-            onClick={onDelete}
-            className="text-bad hover:underline text-sm font-medium"
-          >
-            Delete
-          </button>
-        </div>
-      </Td>
-    </tr>
+    <label className="inline-flex cursor-pointer items-center gap-2 text-ui font-normal">
+      <input
+        type="checkbox"
+        checked={endpoint.enabled}
+        disabled={setEnabled.isPending}
+        onChange={async (ev) => {
+          const on = ev.target.checked;
+          try {
+            await setEnabled.mutateAsync(on);
+            toast(`${endpoint.name} turned ${on ? 'on' : 'off'}.`);
+          } catch (err) {
+            toast(`Couldn't turn ${endpoint.name} ${on ? 'on' : 'off'}: ${errorText(err)}`);
+          }
+        }}
+        className="h-4 w-4 accent-accent"
+        aria-label={withLabel ? undefined : `${endpoint.name} on`}
+      />
+      {withLabel && 'On'}
+    </label>
   );
 }
 
-// --- mappings section -----------------------------------------------
+// --- mappings -------------------------------------------------------
 
 function MappingsSection() {
   const list = useGitOpsAppMappings();
   const endpoints = useArgoCDEndpoints();
+  const connections = useProviderConnectionsAdmin();
   const create = useCreateGitOpsAppMapping();
   const del = useDeleteGitOpsAppMapping();
-
+  const toast = useToast();
+  const formId = useId();
   const [creating, setCreating] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<GitOpsAppMapping | null>(
-    null,
-  );
+  const [deleting, setDeleting] = useState<GitOpsAppMapping | null>(null);
 
-  const endpointName = (id: string) =>
-    endpoints.data?.find((e) => e.id === id)?.name ?? id.slice(0, 8) + '…';
+  const endpointName = (id: string) => endpoints.data?.find((e) => e.id === id)?.name ?? 'Unknown endpoint';
+  const binding = (m: GitOpsAppMapping) => {
+    if (m.provider_connection_id) {
+      return connections.data?.find((c) => c.id === m.provider_connection_id)?.name ?? 'A provider connection';
+    }
+    return m.secret_mapping_id ? (
+      <span>
+        Legacy secret mapping <span className="font-mono text-mono-small text-muted">{m.secret_mapping_id.slice(0, 8)}</span>
+      </span>
+    ) : (
+      '—'
+    );
+  };
+  const closeCreate = () => {
+    create.reset();
+    setCreating(false);
+  };
+
+  const rows = list.data ?? [];
+  const dash = <span className="text-muted">—</span>;
+  const columns: Column<GitOpsAppMapping>[] = [
+    { key: 'app', header: 'Application', render: (m) => <span className="font-mono text-mono text-ink">{m.application_name}</span> },
+    { key: 'endpoint', header: 'Endpoint', render: (m) => endpointName(m.argocd_endpoint_id) },
+    { key: 'ns', header: 'Namespace', render: (m) => (m.application_namespace ? <span className="font-mono text-mono">{m.application_namespace}</span> : dash) },
+    { key: 'project', header: 'ArgoCD project', render: (m) => (m.project_name ? <span className="font-mono text-mono">{m.project_name}</span> : dash) },
+    { key: 'cluster', header: 'Cluster', render: (m) => (m.cluster_name ? <span className="font-mono text-mono">{m.cluster_name}</span> : dash) },
+    { key: 'binding', header: 'Bound to', render: binding },
+    {
+      key: 'actions',
+      header: 'Actions',
+      hiddenHeader: true,
+      align: 'right',
+      render: (m) => (
+        <Button variant="danger" size="sm" onClick={() => setDeleting(m)} aria-label={`Delete mapping for ${m.application_name}…`}>
+          Delete…
+        </Button>
+      ),
+    },
+  ];
 
   return (
-    <section>
+    <section aria-labelledby="map-heading">
       <SectionHeader
+        id="map-heading"
         title="GitOps app mappings"
-        description="Bind an ArgoCD application to the workload that consumes a secret. Read-only; sync state appears in the request detail page after observation lands."
+        count={list.data ? rows.length : undefined}
+        description="Ties an ArgoCD application to the workload that uses a secret. Its sync status appears on the request page once observed."
         action={
-          <Button variant="primary" size="md" onClick={() => setCreating(true)}>
-            + New mapping
+          <Button variant="secondary" onClick={() => setCreating(true)}>
+            Add mapping
           </Button>
         }
       />
-
+      {list.isLoading && <p className="text-muted">Loading mappings…</p>}
       {list.isError && !isNotFound(list.error) && (
-        <ErrorBanner title="Failed to load mappings" err={list.error} />
+        <Banner
+          tone="error"
+          title="Couldn't load the mappings."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void list.refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          {errorText(list.error)}
+        </Banner>
       )}
-      {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
-
-      {list.data && list.data.length === 0 && (
-        <Card className="p-10 text-center text-muted text-sm">
-          No mappings yet.
-        </Card>
-      )}
-
-      {list.data && list.data.length > 0 && (
-        <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px]">
-              <tr className="border-b border-border/60">
-                <Th>Endpoint</Th>
-                <Th>App</Th>
-                <Th>Namespace</Th>
-                <Th>Project</Th>
-                <Th>Cluster</Th>
-                <Th className="text-right">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.data.map((m) => (
-                <tr
-                  key={m.id}
-                  className="border-b border-border/40 last:border-0 hover:bg-bg/20 align-top"
-                >
-                  <Td>
-                    <span className="font-mono text-accent text-sm">
-                      {endpointName(m.argocd_endpoint_id)}
-                    </span>
-                  </Td>
-                  <Td>
-                    <span className="font-mono text-ink text-sm">
-                      {m.application_name}
-                    </span>
-                  </Td>
-                  <Td className="text-muted">
-                    {m.application_namespace || (
-                      <span className="text-muted/50">—</span>
-                    )}
-                  </Td>
-                  <Td className="text-muted">
-                    {m.project_name || (
-                      <span className="text-muted/50">—</span>
-                    )}
-                  </Td>
-                  <Td className="text-muted">
-                    {m.cluster_name || (
-                      <span className="text-muted/50">—</span>
-                    )}
-                  </Td>
-                  <Td className="text-right">
-                    <button
-                      onClick={() => setConfirmDelete(m)}
-                      className="text-bad hover:underline text-sm font-medium"
-                    >
-                      Delete
-                    </button>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      {list.data &&
+        (rows.length === 0 ? (
+          <EmptyState title="No app mappings yet.">Add one by hand, or use Find apps on an endpoint to add several at once.</EmptyState>
+        ) : (
+          <DataTable
+            label="GitOps app mappings"
+            columns={columns}
+            rows={rows}
+            rowKey={(m) => m.id}
+            minWidth={860}
+            stacked={(m) => (
+              <div className="flex flex-col gap-1">
+                <p className="font-mono text-mono text-ink">{m.application_name}</p>
+                <p className="text-caption text-muted">
+                  {endpointName(m.argocd_endpoint_id)}
+                  {m.application_namespace ? ` · ${m.application_namespace}` : ''}
+                  {m.cluster_name ? ` · ${m.cluster_name}` : ''}
+                </p>
+                <p className="text-caption">Bound to {binding(m)}</p>
+                <div className="mt-1">
+                  <Button variant="danger" size="sm" onClick={() => setDeleting(m)} aria-label={`Delete mapping for ${m.application_name}…`}>
+                    Delete…
+                  </Button>
+                </div>
+              </div>
+            )}
+          />
+        ))}
 
       {creating && (
-        <Drawer title="New GitOps mapping" onClose={() => setCreating(false)}>
+        <Drawer
+          title="Add a GitOps app mapping"
+          onClose={closeCreate}
+          footer={
+            <>
+              <Button variant="secondary" onClick={closeCreate} disabled={create.isPending}>
+                Cancel
+              </Button>
+              <Button type="submit" form={formId} variant="primary" disabled={create.isPending} aria-busy={create.isPending}>
+                {create.isPending ? 'Adding…' : 'Add mapping'}
+              </Button>
+            </>
+          }
+        >
           <GitOpsAppMappingForm
+            formId={formId}
+            submitError={create.error}
             onSubmit={async (body: GitOpsAppMappingInput) => {
               await create.mutateAsync(body);
-              setCreating(false);
+              toast(`Added a mapping for ${body.application_name}.`);
+              closeCreate();
             }}
-            onCancel={() => setCreating(false)}
-            submitting={create.isPending}
-            submitError={create.error}
           />
         </Drawer>
       )}
 
-      {confirmDelete && (
+      {deleting && (
         <ConfirmModal
-          title="Delete mapping?"
-          body={`Application "${confirmDelete.application_name}" will stop receiving observation polls.`}
-          confirmText="Delete"
+          title={`Delete the mapping for ${deleting.application_name}?`}
+          body="Its sync status stops updating on requests. You can add it again later."
+          confirmText="Delete mapping"
           danger
-          onCancel={() => setConfirmDelete(null)}
-          onConfirm={async () => {
-            await del.mutateAsync(confirmDelete.id);
-            setConfirmDelete(null);
-          }}
           loading={del.isPending}
-          error={del.error}
+          error={del.error ?? undefined}
+          onCancel={() => {
+            del.reset();
+            setDeleting(null);
+          }}
+          onConfirm={async () => {
+            try {
+              await del.mutateAsync(deleting.id);
+              toast(`Deleted the mapping for ${deleting.application_name}.`);
+              setDeleting(null);
+            } catch {
+              // Shown in the dialog.
+            }
+          }}
         />
       )}
     </section>
   );
 }
 
-// --- shared bits ----------------------------------------------------
-
-function SectionHeader({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description: string;
-  action: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4 mb-3">
-      <div>
-        <h2 className="text-ink text-base font-semibold">{title}</h2>
-        <p className="text-muted text-sm mt-1 max-w-2xl">{description}</p>
-      </div>
-      <div className="shrink-0">{action}</div>
-    </div>
-  );
-}
-
-function FeatureDisabledBanner() {
+function FeatureOff() {
   return (
     <div>
-      <PageHeader
-        title="Integrations"
-        description="ArgoCD endpoints and GitOps application mappings powering the read-only sync-status panel (BRD §26)."
-      />
-      <Card className="p-6 text-sm space-y-3">
-        <div className="flex items-center gap-2">
-          <StatusPill variant="warning" tone="outline">
-            disabled
-          </StatusPill>
-          <span className="text-warn font-medium">
-            GitOps observation integration is off on this api.
-          </span>
-        </div>
-        <p className="text-muted">
-          The api process responded with <code className="font-mono">404</code>{' '}
-          on the ArgoCD endpoints route, which means the BRD §26 integration is
-          not mounted. Enable it by setting:
-        </p>
-        <ul className="text-muted text-xs list-disc ml-5 space-y-1 font-mono">
-          <li>
-            <code>SB_GITOPS_ENABLED=true</code> on the api process
-          </li>
-          <li>
-            <code>SB_WORKER_GITOPS_ENABLED=true</code> on the worker process
-            (so observations actually poll)
-          </li>
-        </ul>
-        <p className="text-muted">Then restart both services and reload this page.</p>
-      </Card>
+      <PageHeader title="Integrations" description={DESCRIPTION} />
+      <EmptyState
+        title="GitOps observation is turned off on this control plane."
+        action={
+          <ul className="m-0 list-disc pl-5 font-mono text-mono">
+            <li>SB_GITOPS_ENABLED=true on the api</li>
+            <li>SB_WORKER_GITOPS_ENABLED=true on the worker, so sync status is polled</li>
+          </ul>
+        }
+      >
+        The api doesn't serve the ArgoCD routes. To turn it on, set both of these and restart the services:
+      </EmptyState>
     </div>
   );
-}
-
-function isNotFound(e: unknown): boolean {
-  return e instanceof ApiError && e.status === 404;
-}
-
-function ErrorBanner({ title, err }: { title: string; err: unknown }) {
-  return (
-    <Card className="border-bad-line p-5 text-sm mb-4">
-      <div className="text-bad font-medium">{title}</div>
-      <div className="text-muted mt-1">{stringifyError(err)}</div>
-    </Card>
-  );
-}
-
-function Th({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
-}
-
-function Td({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <td className={`px-5 py-3.5 align-top ${className}`}>{children}</td>;
-}
-
-function stringifyError(e: unknown): string {
-  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
-  if (e instanceof Error) return e.message;
-  return String(e);
 }

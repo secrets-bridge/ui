@@ -1,55 +1,39 @@
 /**
- * Create / Edit drawer for a Provider Connection. EPIC P §5 lock:
+ * Create / edit form for a provider connection (EPIC P §5).
  *
- *   - type IMMUTABLE post-create; the edit form disables the select.
- *   - name editable.
- *   - per-type scope block re-renders on type change; "Never paste
- *     tokens or credentials here" notice is ALWAYS visible above.
- *   - discovery panel: enable toggle, interval (60–86400), discover-now
- *     CTA (only when status=active + cluster_name set).
- *   - status: active / disabled radio.
+ *   - The provider type can't change after create; the edit form
+ *     disables the select.
+ *   - The scope block follows the type; the "never paste credentials"
+ *     note is always visible above it.
+ *   - Discovery: enable switch and interval (60 to 86400 seconds).
+ *   - Status: active or disabled.
  *
- * 19 stable error codes from §6.A are mapped via
- * `providerConnectionErrorMessage`. Inline red banner; never alert().
+ * The form renders no buttons: the drawer footer holds them and submits
+ * through `form={formId}`. Stable api error codes map through
+ * `providerConnectionErrorMessage` into an inline banner; never alert().
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { useEffect } from 'react';
+import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { ApiError } from '../../api/client';
-import {
-  authMethodLabel,
-  authMethodsFor,
-  defaultAuthMethodFor,
-} from '../../api/providerAuthMethods';
-import {
-  extractProviderConnectionErrorCode,
-  providerConnectionErrorMessage,
-  useDiscoverNow,
-} from '../../api/providerConnections';
-import type {
-  ProviderConnection,
-  ProviderConnectionInput,
-} from '../../api/types';
-import { Button } from '../../ui/Button';
+import { authMethodLabel, authMethodsFor, defaultAuthMethodFor } from '../../api/providerAuthMethods';
+import { extractProviderConnectionErrorCode, providerConnectionErrorMessage } from '../../api/providerConnections';
+import type { ProviderConnection, ProviderConnectionInput } from '../../api/types';
+import { providerLabel } from '../../lib/providers';
+import { Banner } from '../../ui/Banner';
+import { Field, Input, Select, Textarea } from '../../ui/Field';
 
-/** Known provider type → human label + scope key shape (advisory only). */
-const PROVIDER_TYPES = [
-  { value: 'vault', label: 'HashiCorp Vault' },
-  { value: 'aws-sm', label: 'AWS Secrets Manager' },
-  { value: 'azure-kv', label: 'Azure Key Vault' },
-  { value: 'gcp-sm', label: 'GCP Secret Manager' },
-  { value: 'kubernetes', label: 'Kubernetes Secret' },
-] as const;
+const PROVIDER_TYPES = ['vault', 'aws-sm', 'azure-kv', 'gcp-sm', 'kubernetes'] as const;
 
 /**
  * Advisory scope-key hints. These MIRROR `scopeShapes` in the api's
- * internal/services/provider_connections.go — required keys first,
- * then optional. The backend rejects unknown keys outright, so a hint
- * that drifts from the validator sends operators straight into a 400.
- * Keys are case-sensitive server-side (projectID, tenantID).
+ * internal/services/provider_connections.go: required keys first, then
+ * optional. The backend rejects unknown keys outright, so a hint that
+ * drifts from the validator sends operators straight into a 400. Keys
+ * are case-sensitive server-side (projectID, tenantID).
  */
 const SCOPE_HINTS: Record<string, string[]> = {
   vault: ['address', 'mount', 'namespace (optional)', 'kvPrefix (optional)'],
@@ -59,64 +43,59 @@ const SCOPE_HINTS: Record<string, string[]> = {
   kubernetes: ['context', 'namespace (optional)'],
 };
 
-const inputSchema = z.object({
-  name: z.string().min(1, 'Required').max(120, 'Too long'),
-  type: z.string().min(1, 'Required'),
-  cluster_name: z.string().max(120).optional().or(z.literal('')),
-  description: z.string().max(500, 'Max 500 characters').optional().or(z.literal('')),
-  status: z.enum(['active', 'disabled']),
-  scope_json: z
-    .string()
-    .min(1, 'Required')
-    .refine((s) => {
-      try {
-        const v = JSON.parse(s);
-        return v && typeof v === 'object' && !Array.isArray(v);
-      } catch {
-        return false;
-      }
-    }, 'Must be a JSON object'),
-  auth_method: z.string().min(1, 'Required'),
-  discover_enabled: z.boolean(),
-  discover_interval_seconds: z
-    .number({ error: 'Must be a number' })
-    .int()
-    .min(60, 'Min 60 seconds')
-    .max(86400, 'Max 86400 seconds'),
-}).superRefine((v, ctx) => {
-  // Mirror of the backend's validateAuthMethod. Catches the case
-  // where the type changed but a stale auth_method survived.
-  const allowed = authMethodsFor(v.type);
-  if (allowed.length > 0 && !allowed.includes(v.auth_method)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['auth_method'],
-      message: `Not valid for ${v.type}. Allowed: ${allowed.join(', ')}`,
-    });
-  }
-});
+const inputSchema = z
+  .object({
+    name: z.string().trim().min(1, 'Enter a name.').max(120, 'Use at most 120 characters.'),
+    type: z.string().min(1, 'Choose a provider.'),
+    cluster_name: z.string().max(120, 'Use at most 120 characters.').optional().or(z.literal('')),
+    description: z.string().max(500, 'Use at most 500 characters.').optional().or(z.literal('')),
+    status: z.enum(['active', 'disabled']),
+    scope_json: z
+      .string()
+      .min(1, 'Enter the scope as a JSON object, for example {}.')
+      .refine((s) => {
+        try {
+          const v = JSON.parse(s);
+          return v && typeof v === 'object' && !Array.isArray(v);
+        } catch {
+          return false;
+        }
+      }, 'This isn\'t a JSON object. Use {"key": "value"} form.'),
+    auth_method: z.string().min(1, 'Choose how the agent authenticates.'),
+    discover_enabled: z.boolean(),
+    discover_interval_seconds: z
+      .number({ error: 'Enter a number of seconds.' })
+      .int('Use whole seconds.')
+      .min(60, 'Use at least 60 seconds.')
+      .max(86400, 'Use at most 86400 seconds (24 hours).'),
+  })
+  .superRefine((v, ctx) => {
+    // Mirror of the backend's validateAuthMethod. Catches the case
+    // where the type changed but a stale auth_method survived.
+    const allowed = authMethodsFor(v.type);
+    if (allowed.length > 0 && !allowed.includes(v.auth_method)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['auth_method'],
+        message: `Not valid for ${providerLabel(v.type)}. Choose one of: ${allowed.join(', ')}.`,
+      });
+    }
+  });
 
 type FormShape = z.infer<typeof inputSchema>;
 
 interface Props {
+  /** Id of the <form>, for the submit button in the drawer footer. */
+  formId: string;
   initial?: ProviderConnection;
-  submitting: boolean;
   submitError: unknown;
   onSubmit: (input: ProviderConnectionInput) => Promise<void>;
-  onCancel: () => void;
 }
 
-export function ProviderConnectionForm({
-  initial,
-  submitting,
-  submitError,
-  onSubmit,
-  onCancel,
-}: Props) {
+export function ProviderConnectionForm({ formId, initial, submitError, onSubmit }: Props) {
   const editing = !!initial;
   const {
     register,
-    control,
     handleSubmit,
     watch,
     setValue,
@@ -150,9 +129,8 @@ export function ProviderConnectionForm({
 
   const stableErr =
     submitError instanceof ApiError
-      ? providerConnectionErrorMessage(
-          extractProviderConnectionErrorCode(submitError),
-        ) ?? `${submitError.status} · ${submitError.message}`
+      ? (providerConnectionErrorMessage(extractProviderConnectionErrorCode(submitError)) ??
+        `${submitError.status}: ${submitError.message}`)
       : submitError instanceof Error
         ? submitError.message
         : undefined;
@@ -177,257 +155,113 @@ export function ProviderConnectionForm({
   });
 
   return (
-    <form onSubmit={submit} className="space-y-5">
-      <div className="bg-warn-bg border border-warn-line rounded-md px-3 py-2 text-xs text-warn">
-        <span className="font-semibold">Never paste tokens, access keys,
-          passwords, or other credentials</span> in the scope below. The agent
-        authenticates with its own workload identity. Credential-shaped keys
-        and secret-shaped values are refused server-side.
-      </div>
+    <form
+      id={formId}
+      noValidate
+      onSubmit={(e) => {
+        // A failed save is shown through `submitError`; don't leave an
+        // unhandled rejection behind.
+        submit(e).catch(() => {});
+      }}
+      className="flex flex-col gap-[18px]"
+    >
+      <fieldset className="flex min-w-0 flex-col gap-3.5">
+        <legend className="mb-1 text-body font-semibold text-ink">Connection</legend>
+        <Field id="pc-name" label="Name" error={errors.name?.message}>
+          {(p) => <Input {...p} {...register('name')} placeholder="vault-prod-eu" autoComplete="off" data-autofocus />}
+        </Field>
+        <Field
+          id="pc-type"
+          label="Provider"
+          hint={editing ? "The provider can't change after the connection is created." : undefined}
+          error={errors.type?.message}
+        >
+          {(p) => (
+            <Select {...p} {...register('type')} disabled={editing}>
+              {PROVIDER_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t === 'kubernetes' ? 'Kubernetes Secret' : providerLabel(t)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field id="pc-cluster" label="Cluster name" hint="Needed for discovery. Agents for this connection report the same name." error={errors.cluster_name?.message}>
+          {(p) => <Input {...p} {...register('cluster_name')} placeholder="prod-eu" className="font-mono" autoComplete="off" spellCheck={false} />}
+        </Field>
+        <Field id="pc-description" label="Description (optional)" error={errors.description?.message}>
+          {(p) => <Textarea {...p} {...register('description')} rows={2} maxLength={500} />}
+        </Field>
+      </fieldset>
 
-      <Section title="Connection">
-        <Field label="Name" hint={errors.name?.message}>
-          <input
-            type="text"
-            {...register('name')}
-            placeholder="vault-prod-eu"
-            className={inputCls(errors.name)}
-          />
-        </Field>
-        <Field label="Type" hint={errors.type?.message}>
-          <select
-            {...register('type')}
-            disabled={editing}
-            title={editing ? 'Type is immutable after creation.' : undefined}
-            className={selectCls(errors.type) + (editing ? ' opacity-60 cursor-not-allowed' : '')}
-          >
-            {PROVIDER_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Cluster name" hint={errors.cluster_name?.message ?? 'Required when discovery is enabled.'}>
-          <input
-            type="text"
-            {...register('cluster_name')}
-            placeholder="prod-eu"
-            className={inputCls(errors.cluster_name)}
-          />
-        </Field>
-        <Field label="Description" hint={errors.description?.message ?? 'Max 500 characters.'}>
-          <textarea
-            rows={2}
-            {...register('description')}
-            className={inputCls(errors.description)}
-          />
-        </Field>
-      </Section>
-
-      <Section title="Scope (metadata only)">
-        <p className="text-muted text-xs">
-          {SCOPE_HINTS[type]
-            ? `Expected keys for ${type}: ${SCOPE_HINTS[type].join(', ')}`
-            : 'JSON object. Provider-specific connection metadata.'}
-        </p>
-        <Field label="Scope JSON" hint={errors.scope_json?.message}>
-          <textarea
-            rows={8}
-            {...register('scope_json')}
-            className={inputCls(errors.scope_json) + ' font-mono text-xs'}
-            spellCheck={false}
-          />
+      <fieldset className="flex min-w-0 flex-col gap-3.5">
+        <legend className="mb-1 text-body font-semibold text-ink">Scope</legend>
+        <Banner title="Never paste tokens, access keys, passwords or other credentials here.">
+          The agent signs in with its own workload identity. The api refuses keys and values that look like credentials.
+        </Banner>
+        <Field
+          id="pc-scope"
+          label="Scope (JSON)"
+          hint={SCOPE_HINTS[type] ? `Keys for ${providerLabel(type)}: ${SCOPE_HINTS[type].join(', ')}.` : 'A JSON object of connection details for this provider.'}
+          error={errors.scope_json?.message}
+        >
+          {(p) => <Textarea {...p} {...register('scope_json')} rows={7} className="font-mono text-mono" spellCheck={false} />}
         </Field>
         {/*
           auth_method is REQUIRED and the allowed values are fixed per
-          provider type — see `authMethodsByType` in the api. This was
-          previously a free-text box labelled "Optional"; leaving it
-          blank produced a 400 reading "auth_method is not allowed for
-          this provider type", which is doubly misleading because the
-          field is required, not disallowed.
+          provider type (`authMethodsByType` in the api). A blank value
+          used to produce "auth_method is not allowed for this provider
+          type", which misled: the field is required, not disallowed.
         */}
-        <Field
-          label="Auth method"
-          hint={
-            errors.auth_method?.message ??
-            `Required. Allowed for ${type}: ${authMethodsFor(type).join(', ') || '—'}`
-          }
-        >
-          <select
-            {...register('auth_method')}
-            className={selectCls(errors.auth_method)}
-          >
-            {authMethodsFor(type).map((m) => (
-              <option key={m} value={m}>
-                {authMethodLabel(m)}
-              </option>
-            ))}
-          </select>
+        <Field id="pc-auth" label="How the agent authenticates" error={errors.auth_method?.message}>
+          {(p) => (
+            <Select {...p} {...register('auth_method')}>
+              {authMethodsFor(type).map((m) => (
+                <option key={m} value={m}>
+                  {authMethodLabel(m)}
+                </option>
+              ))}
+            </Select>
+          )}
         </Field>
-      </Section>
+      </fieldset>
 
-      <Section title="Discovery">
-        <Field label="Enable discovery" hint="Periodic discover jobs are scheduled when enabled + cluster name is set.">
-          <Controller
-            name="discover_enabled"
-            control={control}
-            render={({ field }) => (
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={field.value}
-                  onChange={(e) => field.onChange(e.target.checked)}
-                />
-                <span className="text-ink">Enabled</span>
-              </label>
-            )}
-          />
-        </Field>
+      <fieldset className="flex min-w-0 flex-col gap-3.5">
+        <legend className="mb-1 text-body font-semibold text-ink">Discovery</legend>
+        <label className="flex items-center gap-2.5 text-ui font-normal">
+          <input type="checkbox" {...register('discover_enabled')} className="h-4 w-4 accent-accent" />
+          Discover secrets on a schedule
+        </label>
         <Field
-          label="Interval (seconds)"
-          hint={errors.discover_interval_seconds?.message ?? 'Between 60 and 86400.'}
+          id="pc-interval"
+          label="Every (seconds)"
+          hint="Between 60 and 86400. Scheduled discovery runs only when the connection is active and has a cluster name."
+          error={errors.discover_interval_seconds?.message}
         >
-          <input
-            type="number"
-            min={60}
-            max={86400}
-            {...register('discover_interval_seconds', { valueAsNumber: true })}
-            className={inputCls(errors.discover_interval_seconds)}
-          />
+          {(p) => <Input {...p} type="number" min={60} max={86400} {...register('discover_interval_seconds', { valueAsNumber: true })} className="w-40" />}
         </Field>
-      </Section>
+      </fieldset>
 
-      <Section title="Status">
-        <div className="flex items-center gap-4 text-sm">
-          {(['active', 'disabled'] as const).map((s) => (
-            <label key={s} className="inline-flex items-center gap-2">
-              <input type="radio" value={s} {...register('status')} />
-              <span className="text-ink capitalize">{s}</span>
-            </label>
-          ))}
+      <fieldset className="flex min-w-0 flex-col gap-1.5">
+        <legend className="mb-1.5 text-body font-semibold text-ink">Status</legend>
+        <div className="flex flex-wrap gap-4 text-ui font-normal">
+          <label className="flex items-center gap-2">
+            <input type="radio" value="active" {...register('status')} className="accent-accent" />
+            Active
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" value="disabled" {...register('status')} className="accent-accent" />
+            Disabled
+          </label>
         </div>
-      </Section>
-
-      {initial && initial.status === 'active' && initial.cluster_name && (
-        <DiscoverNowPanel connection={initial} />
-      )}
+        <p className="text-caption text-muted">A disabled connection stops scheduled discovery and refuses new agent enrollments.</p>
+      </fieldset>
 
       {stableErr && (
-        <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2 text-sm text-bad">
+        <Banner tone="error" title="Not saved.">
           {stableErr}
-        </div>
+        </Banner>
       )}
-
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
-        <Button variant="secondary" size="md" onClick={onCancel} type="button">
-          Cancel
-        </Button>
-        <Button variant="primary" size="md" type="submit" disabled={submitting}>
-          {submitting ? 'Saving…' : editing ? 'Save changes' : 'Create connection'}
-        </Button>
-      </div>
     </form>
   );
-}
-
-function DiscoverNowPanel({ connection }: { connection: ProviderConnection }) {
-  const discover = useDiscoverNow(connection.id);
-  const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(
-    null,
-  );
-  const onClick = async () => {
-    setToast(null);
-    try {
-      await discover.mutateAsync();
-      setToast({ kind: 'ok', msg: 'Discover job enqueued.' });
-    } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? providerConnectionErrorMessage(
-              extractProviderConnectionErrorCode(err),
-            ) ?? `${err.status} · ${err.message}`
-          : err instanceof Error
-            ? err.message
-            : String(err);
-      setToast({ kind: 'err', msg });
-    }
-  };
-  return (
-    <Section title="Run discovery">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Button
-          variant="secondary"
-          size="md"
-          type="button"
-          onClick={() => void onClick()}
-          disabled={discover.isPending}
-        >
-          {discover.isPending ? 'Enqueuing…' : 'Discover now'}
-        </Button>
-        {toast && (
-          <span
-            className={
-              toast.kind === 'ok' ? 'text-ok text-xs' : 'text-bad text-xs'
-            }
-          >
-            {toast.msg}
-          </span>
-        )}
-      </div>
-    </Section>
-  );
-}
-
-// --- input helpers -------------------------------------------------
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-3">
-      <h3 className="text-ink font-semibold text-sm">
-        {title}
-      </h3>
-      {children}
-    </section>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div className="flex items-baseline justify-between">
-        <label className="block text-[11px] text-muted font-medium">
-          {label}
-        </label>
-        {hint && <span className="text-[11px] text-muted">{hint}</span>}
-      </div>
-      <div className="mt-1">{children}</div>
-    </div>
-  );
-}
-
-function inputCls(err: unknown): string {
-  const base =
-    'w-full bg-surface border rounded-md px-3 py-2 text-ink text-sm';
-  return err
-    ? `${base} border-bad`
-    : `${base} border-edge focus:border-accent`;
-}
-
-function selectCls(err: unknown): string {
-  return inputCls(err);
 }

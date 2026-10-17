@@ -1,46 +1,46 @@
 /**
  * Create form for an ArgoCD endpoint.
  *
- * Create-only by design: the api exposes no `PUT /argocd-endpoints/:id`
- * for the connection / token fields. The only post-create mutation is
- * `PUT /argocd-endpoints/:id/enabled` (toggle on the list row) and
- * `DELETE`. To change the base URL, token, or TLS settings, delete +
- * recreate. This keeps the write-once token posture honest.
+ * Create-only by design: the api has no `PUT /argocd-endpoints/:id`
+ * for the connection or token fields. After create, only the enabled
+ * flag changes (`PUT .../enabled`), or the endpoint is deleted. To
+ * change the URL, token or TLS settings, delete and recreate. This
+ * keeps the write-once token honest.
  *
- * Token handling: the operator types the plaintext ArgoCD token; the
- * form base64-encodes it client-side before POSTing as `token_b64`.
- * The api envelope-encrypts before persisting. The token field uses
- * `type=password` so on-screen capture is masked, and the value is
- * cleared from form state immediately after successful submission.
+ * Token handling: the operator types the plaintext token; the form
+ * encodes it as UTF-8 base64 (`token_b64`) just before the POST, and
+ * the api envelope-encrypts it. The field is a password input, the
+ * form is reset after a successful create, the encoded copy is blanked
+ * in place, and the create mutation is a sensitive one (UI-N-02).
+ *
+ * The form renders no buttons; the drawer footer submits it through
+ * `form={formId}`.
  */
 
-import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm, type SubmitHandler } from 'react-hook-form';
 import { z } from 'zod';
 
-import type { ArgoCDEndpointInput } from '../../api/types';
 import { ApiError } from '../../api/client';
+import type { ArgoCDEndpointInput } from '../../api/types';
+import { encodeSecret } from '../../lib/decodeSecret';
+import { Banner } from '../../ui/Banner';
+import { Field, Input, Textarea } from '../../ui/Field';
 
 const schema = z.object({
-  name: z.string().min(1, 'name is required').max(120),
-  base_url: z
-    .url('base_url must be a full URL (https://argocd.example.com)')
-    .max(500),
-  token: z.string().min(1, 'token is required'),
+  name: z.string().trim().min(1, 'Enter a name.').max(120, 'Use at most 120 characters.'),
+  base_url: z.url('Enter the full URL, for example https://argocd.example.com.').max(500, 'Use at most 500 characters.'),
+  token: z.string().min(1, 'Paste the ArgoCD account token.'),
   tls_ca_pem: z.string().optional(),
-  tls_server_name: z.string().max(255).optional(),
-  environment_id: z
-    .guid('environment_id must be a UUID if set')
-    .optional()
-    .or(z.literal('')),
+  tls_server_name: z.string().max(255, 'Use at most 255 characters.').optional(),
+  environment_id: z.guid('An environment id is a UUID. Leave it empty for every environment.').optional().or(z.literal('')),
 });
 
 type FormShape = z.infer<typeof schema>;
 
 interface Props {
+  formId: string;
   onSubmit: (body: ArgoCDEndpointInput) => Promise<unknown>;
-  onCancel: () => void;
-  submitting: boolean;
   submitError?: unknown;
 }
 
@@ -53,33 +53,27 @@ const defaults: FormShape = {
   environment_id: '',
 };
 
-export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError }: Props) {
+export function ArgoCDEndpointForm({ formId, onSubmit, submitError }: Props) {
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<FormShape>({
-    resolver: zodResolver(schema),
-    defaultValues: defaults,
-  });
+  } = useForm<FormShape>({ resolver: zodResolver(schema), defaultValues: defaults });
 
   const onValid: SubmitHandler<FormShape> = async (data) => {
     const body: ArgoCDEndpointInput = {
-      name: data.name,
+      name: data.name.trim(),
       base_url: data.base_url,
-      token_b64: btoa(data.token),
+      token_b64: encodeSecret(data.token),
       tls_ca_pem: data.tls_ca_pem || undefined,
       tls_server_name: data.tls_server_name || undefined,
       environment_id: data.environment_id || undefined,
     };
     try {
       await onSubmit(body);
-      // Best-effort plaintext hygiene: clear the form (including the
-      // token field) after a successful submit. Memory still has
-      // ephemeral copies until GC, but the form-state shape no longer
-      // holds it. On failure the typed token stays so the user can
-      // retry.
+      // Clear the form, token included, after a successful create. On a
+      // failure the typed token stays so the operator can retry.
       reset(defaults);
     } finally {
       // `body` is the object the mutation held as its variables; blank
@@ -89,112 +83,64 @@ export function ArgoCDEndpointForm({ onSubmit, onCancel, submitting, submitError
   };
 
   return (
-    <form onSubmit={handleSubmit(onValid)} className="space-y-4">
-      <div className="text-xs text-warn bg-warn-bg border border-warn-line rounded-sm px-3 py-2">
-        The ArgoCD token is set <strong>once</strong>. After create, only the <code>enabled</code> flag is mutable. To rotate the token or change connection settings, delete and recreate.
-      </div>
+    <form
+      id={formId}
+      noValidate
+      onSubmit={(e) => {
+        // A failed create shows through `submitError`.
+        handleSubmit(onValid)(e).catch(() => {});
+      }}
+      className="flex flex-col gap-[18px]"
+    >
+      <Banner title="The token is set once.">
+        After you create the endpoint you can only turn it on or off, or delete it. To rotate the token or change the address,
+        delete it and add it again.
+      </Banner>
 
-      <Field label="Name" error={errors.name?.message}>
-        <input
-          type="text"
-          {...register('name')}
-          className={inputCls}
-          placeholder="prod-eu"
-        />
+      <Field id="argo-name" label="Name" error={errors.name?.message}>
+        {(p) => <Input {...p} {...register('name')} placeholder="prod-eu" autoComplete="off" data-autofocus />}
       </Field>
-
-      <Field label="Base URL" error={errors.base_url?.message}>
-        <input
-          type="url"
-          {...register('base_url')}
-          className={inputCls}
-          placeholder="https://argocd.example.com"
-        />
+      <Field id="argo-url" label="Base URL" error={errors.base_url?.message}>
+        {(p) => <Input {...p} type="url" {...register('base_url')} placeholder="https://argocd.example.com" className="font-mono" autoComplete="off" spellCheck={false} />}
       </Field>
-
       <Field
+        id="argo-token"
         label="ArgoCD account token"
+        hint="Read-only access to applications is enough. Encrypted by the api before it is stored, and never shown again."
         error={errors.token?.message}
-        hint="Plaintext token; base64-encoded before POST. Envelope-encrypted at the api before storage."
       >
-        <input
-          type="password"
-          autoComplete="new-password"
-          {...register('token')}
-          className={inputCls}
-        />
+        {(p) => <Input {...p} type="password" autoComplete="new-password" spellCheck={false} {...register('token')} className="font-mono" />}
       </Field>
-
       <Field
-        label="TLS CA bundle (PEM)"
+        id="argo-ca"
+        label="TLS CA bundle (optional)"
+        hint="Paste the PEM block when ArgoCD uses a private certificate authority."
         error={errors.tls_ca_pem?.message}
-        hint="Optional. Paste the PEM block when the ArgoCD instance uses a private CA."
       >
-        <textarea {...register('tls_ca_pem')} rows={4} className={inputCls + ' font-mono'} placeholder="-----BEGIN CERTIFICATE-----" />
+        {(p) => <Textarea {...p} {...register('tls_ca_pem')} rows={4} className="font-mono text-mono" placeholder="-----BEGIN CERTIFICATE-----" spellCheck={false} />}
       </Field>
-
       <Field
-        label="TLS server name (SNI override)"
+        id="argo-sni"
+        label="TLS server name (optional)"
+        hint="Only when the certificate's name doesn't match the host in the base URL."
         error={errors.tls_server_name?.message}
-        hint="Optional. Only needed if the cert's CN/SAN doesn't match the host in base_url."
       >
-        <input type="text" {...register('tls_server_name')} className={inputCls} />
+        {(p) => <Input {...p} {...register('tls_server_name')} className="font-mono" autoComplete="off" spellCheck={false} />}
       </Field>
-
       <Field
-        label="Environment ID"
+        id="argo-env"
+        label="Environment id (optional)"
+        hint="Limits this endpoint to one environment. Leave empty for every environment."
         error={errors.environment_id?.message}
-        hint="Optional UUID — narrows this endpoint to a single environment row when set."
       >
-        <input type="text" {...register('environment_id')} className={inputCls} placeholder="(empty = all environments)" />
+        {(p) => <Input {...p} {...register('environment_id')} className="font-mono" autoComplete="off" spellCheck={false} />}
       </Field>
 
-      {submitError instanceof ApiError && (
-        <div className="text-xs text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
-          {submitError.status}: {submitError.message}
-        </div>
+      {submitError != null && (
+        <Banner tone="error" title="Not created.">
+          {submitError instanceof ApiError ? `${submitError.status}: ${submitError.message}` : submitError instanceof Error ? submitError.message : String(submitError)}
+        </Banner>
       )}
-
-      <div className="flex gap-2 pt-2 border-t border-border">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded-sm hover:opacity-90 disabled:opacity-50"
-        >
-          {submitting ? 'Saving…' : 'Create endpoint'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-muted hover:text-ink px-3 py-2 rounded-sm border border-border"
-        >
-          Cancel
-        </button>
-      </div>
     </form>
-  );
-}
-
-const inputCls =
-  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent';
-
-function Field({
-  label,
-  error,
-  hint,
-  children,
-}: {
-  label: string;
-  error?: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-xs text-muted">{label}</label>
-      {children}
-      {hint && !error && <div className="text-[11px] text-muted/80">{hint}</div>}
-      {error && <div className="text-xs text-bad">{error}</div>}
-    </div>
   );
 }
