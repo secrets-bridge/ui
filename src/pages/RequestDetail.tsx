@@ -20,7 +20,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import type { AuditEvent } from '../api/audit';
 import { api, ApiError } from '../api/client';
@@ -251,7 +251,19 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
 
           {crossVerify && <CrossTeamVerifyCard request={r} actorId={me} />}
 
-          <Panel title="Timeline" aside={<span className="font-mono text-mono-small text-muted">times in UTC</span>}>
+          <Panel
+            title="Timeline"
+            aside={
+              <span className="flex items-baseline gap-3">
+                <span className="font-mono text-mono-small text-muted">times in UTC</span>
+                {audit.data && (
+                  <Link to={`/audit?correlation_id=${r.id}`} className="text-ui font-normal text-accent hover:underline">
+                    Audit log
+                  </Link>
+                )}
+              </span>
+            }
+          >
             <Timeline entries={timeline} />
           </Panel>
 

@@ -1,582 +1,394 @@
 /**
- * Audit log page (`/audit`).
+ * Audit log (`/audit`, audit.read): the append-only `audit_events`
+ * table, newest first. Rows can't be edited or deleted (schema
+ * triggers, and the repository has no such methods), and metadata is
+ * stripped of values before it is written, so everything here is safe
+ * to show.
  *
- * Read-only view over the platform's append-only `audit_events` table
- * (NFR-07). The schema's triggers reject UPDATE / DELETE and the api's
- * repository interface deliberately omits those methods, so what shows
- * here is a faithful history — nothing can be silently rewritten.
+ * - Filters (actor, action, resource, correlation, period) apply as you
+ *   type and live in the URL, so `/audit?correlation_id=<id>` is a
+ *   shareable link to one request's trail.
+ * - 50 events per page; "Load older events" fetches the next page
+ *   (see `useAuditPages` for how pages are cut without a cursor).
+ * - A row opens the event: who, what, which resource, the outcome, the
+ *   correlation chain and the metadata.
  *
- * Two-pane layout:
- *
- *   ┌── filter strip ──────────────────────────────────────────────────┐
- *   │ actor · action · resource · correlation_id · since · until · ⨯  │
- *   ├── LEFT (table)            ┬── RIGHT (selected event details) ────┤
- *   │  occurred · actor · action │  full row + metadata JSON           │
- *   │  · resource · status      │  + a 'related events' link that      │
- *   │                            │  drills into the row's correlation  │
- *   └────────────────────────────┴──────────────────────────────────────┘
- *
- * Correlation drill-in: clicking a row's correlation_id chip filters
- * the entire page to that chain, so an operator triaging a request
- * can see every event (submit → policy → approve → enqueue → claim →
- * complete → transition → wrap.retrieve) in chronological order.
- *
- * Wire shape: `metadata` is opaque jsonb pre-stripped of any
- * value-bearing field by the api's service layer — safe to render.
- *
- * Actor column: api#62 enriches each row with `actor_display` — the
- * user's email (or display name), the agent's name, or a fixed
- * "System (…)" label. The raw `actor` string (`user:<uuid>`,
- * `agent:<uuid>`, `system:<kind>`) stays available as a forensic
- * anchor and is rendered underneath the display label + exposed as a
- * `title` tooltip on hover.
+ * People without an administrative permission see only their own
+ * events: the actor filter is fixed to them. The api still decides
+ * what audit.read covers.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
+import { type AuditEvent, flattenAuditPages, useAuditPages } from '../api/audit';
 import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import {
-  type AuditEvent,
-  type AuditFilter,
-  useAuditEvents,
-} from '../api/audit';
+import { requestRef } from '../lib/requestRef';
+import { formatExact, formatShort } from '../lib/time';
+import { useNow } from '../lib/useNow';
+import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
+import { DataTable, type Column } from '../ui/DataTable';
+import { Drawer } from '../ui/Drawer';
+import { EmptyState } from '../ui/EmptyState';
+import { Input, Select } from '../ui/Field';
 import { PageHeader } from '../ui/PageHeader';
-import { StatusPill } from '../ui/StatusPill';
+import { ToneStatus, type Tone } from '../ui/Status';
+
+const PAGE = 50;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PERIODS: { value: string; label: string; ms?: number }[] = [
+  { value: '', label: 'Any time' },
+  { value: '1h', label: 'Last hour', ms: 3_600_000 },
+  { value: '24h', label: 'Last 24 hours', ms: 86_400_000 },
+  { value: '7d', label: 'Last 7 days', ms: 7 * 86_400_000 },
+  { value: '30d', label: 'Last 30 days', ms: 30 * 86_400_000 },
+];
+const TONE: Record<AuditEvent['status'], Tone> = { success: 'ok', denied: 'warn', failure: 'bad' };
+const WORD: Record<AuditEvent['status'], string> = { success: 'Success', denied: 'Denied', failure: 'Failure' };
+
+/** The value of `text` once it has stopped changing for `ms`. */
+function useDebounced(text: string, ms = 350): string {
+  const [value, setValue] = useState(text);
+  useEffect(() => {
+    const t = window.setTimeout(() => setValue(text), ms);
+    return () => window.clearTimeout(t);
+  }, [text, ms]);
+  return value;
+}
 
 export function Audit() {
   const { identity, hasPermission } = useAuth();
   const myActor = identity ? `user:${identity.id}` : '';
-  // "Privileged" callers can see every event in the audit log:
-  // admins (team.edit / role.edit / user_role.edit) and auditors who
-  // hold audit.read at a global scope. For everyone else we default
-  // the actor filter to their own user: prefix so they only see what
-  // THEY did, and we disable the Actor input so they can't widen it.
-  const isPrivileged = useMemo(
-    () =>
-      hasPermission('role.edit') ||
-      hasPermission('user_role.edit') ||
-      hasPermission('team.edit'),
-    [hasPermission],
-  );
+  // Administrators can read every event; everyone else sees only what
+  // they did, and can't widen the actor.
+  const privileged = hasPermission('role.edit') || hasPermission('user_role.edit') || hasPermission('team.edit');
+  const [params, setParams] = useSearchParams();
+  const now = useNow(60_000);
 
-  const initial: AuditFilter = useMemo(
-    () => (isPrivileged ? { limit: 200 } : { limit: 200, actor: myActor }),
-    [isPrivileged, myActor],
-  );
-  const [filter, setFilter] = useState<AuditFilter>(initial);
-  const [draft, setDraft] = useState<AuditFilter>(initial);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Typed text lives here; the URL gets it once typing pauses.
+  const [typed, setTyped] = useState(() => ({
+    actor: params.get('actor') ?? '',
+    action: params.get('action') ?? '',
+    resource: params.get('resource') ?? '',
+    correlation_id: params.get('correlation_id') ?? '',
+  }));
+  const period = params.get('period') ?? '';
+  const debounced = {
+    actor: useDebounced(typed.actor),
+    action: useDebounced(typed.action),
+    resource: useDebounced(typed.resource),
+    correlation_id: useDebounced(typed.correlation_id),
+  };
+  const corrValid = !debounced.correlation_id.trim() || UUID.test(debounced.correlation_id.trim());
 
-  const list = useAuditEvents(filter);
-  const rows = list.data ?? [];
-  const selected = rows.find((r) => r.id === selectedId) ?? null;
+  useEffect(() => {
+    const next = new URLSearchParams();
+    for (const [k, v] of Object.entries(debounced)) if (v.trim()) next.set(k, v.trim());
+    if (period) next.set('period', period);
+    if (next.toString() !== params.toString()) setParams(next, { replace: true });
+    // Only typing and the period move the URL; reading it back is above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounced.actor, debounced.action, debounced.resource, debounced.correlation_id, period]);
 
-  const apply = () => {
-    setFilter({
-      ...draft,
-      // Drop empty strings so URLSearchParams stays tidy.
-      actor: draft.actor?.trim() || undefined,
-      action: draft.action?.trim() || undefined,
-      resource: draft.resource?.trim() || undefined,
-      correlation_id: draft.correlation_id?.trim() || undefined,
-      limit: draft.limit ?? 200,
-    });
-    setSelectedId(null);
+  // The period counts back from when it was picked (or the page opened),
+  // so the query, and the pages already loaded, stay put as time passes.
+  const [anchor, setAnchor] = useState(() => Date.now());
+  const periodMs = PERIODS.find((p) => p.value === period)?.ms;
+  const since = periodMs ? new Date(anchor - periodMs).toISOString() : undefined;
+  const filter = {
+    actor: privileged ? params.get('actor') || undefined : myActor || undefined,
+    action: params.get('action') || undefined,
+    resource: params.get('resource') || undefined,
+    correlation_id: corrValid ? params.get('correlation_id') || undefined : undefined,
+    since,
+  };
+  const pages = useAuditPages(filter, PAGE);
+  const rows = flattenAuditPages(pages.data?.pages);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = rows.find((e) => e.id === openId) ?? null;
+
+  // Anything in the URL counts, even an id still being typed, so Reset is always there to clear it.
+  const filtered = [...params.keys()].some((k) => k !== 'actor' || privileged);
+  const reset = () => {
+    setTyped({ actor: '', action: '', resource: '', correlation_id: '' });
+    setParams({}, { replace: true });
+  };
+  const followChain = (id: string) => {
+    setTyped((t) => ({ ...t, correlation_id: id }));
+    const next = new URLSearchParams(params);
+    next.set('correlation_id', id);
+    setParams(next, { replace: true });
+    setOpenId(null);
   };
 
-  const clear = () => {
-    // Non-privileged users CAN'T widen the actor — clearing preserves
-    // the "user:<me>" lock so a developer never sees other users'
-    // events via this page.
-    const fresh: AuditFilter = isPrivileged
-      ? { limit: 200 }
-      : { limit: 200, actor: myActor };
-    setFilter(fresh);
-    setDraft(fresh);
-    setSelectedId(null);
-  };
+  const columns: Column<AuditEvent>[] = [
+    {
+      key: 'when',
+      header: 'When (UTC)',
+      render: (e) => (
+        <time dateTime={e.occurred_at} title={formatExact(e.occurred_at, true)} className="whitespace-nowrap font-mono text-mono">
+          {formatShort(e.occurred_at, now)}
+        </time>
+      ),
+    },
+    {
+      key: 'actor',
+      header: 'Actor',
+      render: (e) => (
+        <span title={e.actor} className="block max-w-[220px] truncate">
+          {e.actor_display || e.actor}
+        </span>
+      ),
+    },
+    {
+      key: 'action',
+      header: 'Action',
+      render: (e) => (
+        <button type="button" onClick={() => setOpenId(e.id)} className="text-left font-mono text-mono text-accent hover:underline">
+          {e.action}
+        </button>
+      ),
+    },
+    {
+      key: 'resource',
+      header: 'Resource',
+      render: (e) => (
+        <span title={e.resource} className="block max-w-[280px] truncate font-mono text-mono">
+          {e.resource || '—'}
+        </span>
+      ),
+    },
+    { key: 'status', header: 'Outcome', render: (e) => <ToneStatus tone={TONE[e.status] ?? 'neutral'}>{WORD[e.status] ?? e.status}</ToneStatus> },
+  ];
 
-  const drillCorrelation = (id: string) => {
-    const next = { ...filter, correlation_id: id };
-    setFilter(next);
-    setDraft(next);
-    // Don't clear the selection — let the user keep reading the row
-    // they clicked into while the table reshapes around it.
-  };
-
-  const hasFilter =
-    !!filter.actor ||
-    !!filter.action ||
-    !!filter.resource ||
-    !!filter.correlation_id ||
-    !!filter.since ||
-    !!filter.until;
+  const fact = privileged
+    ? 'Every action the control plane recorded. Append-only: nothing here can be changed or deleted.'
+    : 'The actions you took. Append-only: nothing here can be changed or deleted.';
 
   return (
     <div>
-      <PageHeader
-        title="Audit log"
-        description={
-          isPrivileged
-            ? 'Immutable record of who did what to which resource. Append-only at the schema layer (NFR-07).'
-            : 'Your audit events — every action you took or that happened to you. Append-only at the schema layer (NFR-07).'
-        }
-        actions={
-          hasFilter ? (
-            <Button variant="secondary" onClick={clear}>
-              Clear filters
+      <PageHeader title="Audit log" description={fact} />
+
+      <div className="mb-4 grid grid-cols-1 gap-2.5 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-[repeat(4,minmax(0,1fr))_minmax(150px,auto)]">
+        <FilterInput
+          label="Actor"
+          value={privileged ? typed.actor : 'Only you'}
+          onChange={(v) => setTyped((t) => ({ ...t, actor: v }))}
+          placeholder="user:<id> or agent:<id>"
+          disabled={!privileged}
+        />
+        <FilterInput label="Action" value={typed.action} onChange={(v) => setTyped((t) => ({ ...t, action: v }))} placeholder="request.approve" />
+        <FilterInput label="Resource" value={typed.resource} onChange={(v) => setTyped((t) => ({ ...t, resource: v }))} placeholder="request:<id>" />
+        <FilterInput
+          label="Correlation id"
+          value={typed.correlation_id}
+          onChange={(v) => setTyped((t) => ({ ...t, correlation_id: v }))}
+          placeholder="Request id or other chain id"
+          invalid={!corrValid}
+        />
+        <label>
+          <span className="sr-only">Period</span>
+          <Select
+            value={period}
+            onChange={(e) => {
+              const next = new URLSearchParams(params);
+              setAnchor(Date.now());
+              if (e.target.value) next.set('period', e.target.value);
+              else next.delete('period');
+              setParams(next, { replace: true });
+            }}
+            className="w-full"
+          >
+            {PERIODS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </Select>
+        </label>
+      </div>
+      <div className="mb-3 flex min-h-[28px] flex-wrap items-center gap-x-4 gap-y-1 text-ui font-normal text-muted">
+        <span aria-live="polite">
+          {pages.data ? `${rows.length} ${rows.length === 1 ? 'event' : 'events'}${pages.hasNextPage ? ' loaded' : ''}` : ''}
+          {!corrValid && <span className="ml-2 text-bad">A correlation id is a UUID; this filter is ignored until it is one.</span>}
+          {!privileged && <span className="ml-2">Only your own events are shown.</span>}
+        </span>
+        {filtered && (
+          <Button variant="quiet" size="sm" onClick={reset}>
+            Reset filters
+          </Button>
+        )}
+      </div>
+
+      {pages.isLoading && <p className="text-muted">Loading events…</p>}
+      {pages.isError && (
+        <Banner
+          tone="error"
+          title="Couldn't load the audit log."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void pages.refetch()}>
+              Try again
             </Button>
-          ) : undefined
-        }
-      />
-
-      {/* Filter strip */}
-      <Card className="p-4 mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          <FilterField
-            label="Actor"
-            value={draft.actor ?? ''}
-            onChange={(v) => setDraft({ ...draft, actor: v })}
-            placeholder="user:alice / admin / agent:<id>"
-            disabled={!isPrivileged}
-            disabledHint="Locked to your own events. Ask an admin if you need to investigate someone else's actions."
-          />
-          <FilterField
-            label="Action"
-            value={draft.action ?? ''}
-            onChange={(v) => setDraft({ ...draft, action: v })}
-            placeholder="request.approve / wrap.retrieve"
-          />
-          <FilterField
-            label="Resource"
-            value={draft.resource ?? ''}
-            onChange={(v) => setDraft({ ...draft, resource: v })}
-            placeholder="request:<id> / agent:<id>"
-          />
-          <FilterField
-            label="Correlation ID"
-            value={draft.correlation_id ?? ''}
-            onChange={(v) => setDraft({ ...draft, correlation_id: v })}
-            placeholder="uuid (paste from a request)"
-            mono
-          />
-        </div>
-        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-border/60">
-          <Button variant="secondary" size="sm" onClick={() => setDraft(filter)}>
-            Reset
-          </Button>
-          <Button variant="primary" size="sm" onClick={apply}>
-            Apply
-          </Button>
-        </div>
-      </Card>
-
-      {/* Active filter pills */}
-      {hasFilter && (
-        <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
-          <span className="text-muted">filtering by:</span>
-          {filter.actor && (
-            <ActivePill label="actor" value={filter.actor} onClear={() => apply2(filter, setFilter, setDraft, 'actor')} />
-          )}
-          {filter.action && (
-            <ActivePill label="action" value={filter.action} onClear={() => apply2(filter, setFilter, setDraft, 'action')} />
-          )}
-          {filter.resource && (
-            <ActivePill label="resource" value={filter.resource} onClear={() => apply2(filter, setFilter, setDraft, 'resource')} />
-          )}
-          {filter.correlation_id && (
-            <ActivePill label="correlation" value={shortenUuid(filter.correlation_id)} onClear={() => apply2(filter, setFilter, setDraft, 'correlation_id')} />
-          )}
-        </div>
+          }
+        >
+          {pages.error instanceof ApiError ? `${pages.error.status}: ${pages.error.message}` : 'Network error.'}
+        </Banner>
       )}
-
-      {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
-      {list.isError && (
-        <Card className="border-bad-line p-5 text-sm mb-4">
-          <div className="text-bad font-medium">Failed to load audit events</div>
-          <div className="text-muted mt-1">{stringifyError(list.error)}</div>
-        </Card>
-      )}
-
-      {list.data && rows.length === 0 && (
-        <Card className="p-10 text-center text-muted text-sm">
-          No audit events match. Adjust filters above or wait for activity.
-        </Card>
-      )}
-
-      {rows.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
-          <Card className="overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="text-left text-muted text-[11px]">
-                <tr className="border-b border-border/60">
-                  <Th>When</Th>
-                  <Th>Actor</Th>
-                  <Th>Action</Th>
-                  <Th>Resource</Th>
-                  <Th>Status</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((e) => (
-                  <AuditRow
-                    key={e.id}
-                    row={e}
-                    selected={e.id === selectedId}
-                    onSelect={() => setSelectedId(e.id)}
-                    onDrillCorrelation={() => drillCorrelation(e.correlation_id)}
-                  />
-                ))}
-              </tbody>
-            </table>
-            <div className="px-5 py-3 border-t border-border/60 text-xs text-muted">
-              Showing {rows.length} event{rows.length === 1 ? '' : 's'}
-              {filter.limit ? ` (limit ${filter.limit})` : ''}
+      {pages.data &&
+        (rows.length === 0 ? (
+          <EmptyState title={filtered ? 'No events match these filters.' : 'No events yet.'}>
+            {filtered ? 'Widen the period or clear a filter.' : 'Events appear here as people and agents use the control plane.'}
+          </EmptyState>
+        ) : (
+          <>
+            <DataTable
+              label="Audit events"
+              columns={columns}
+              rows={rows}
+              rowKey={(e) => e.id}
+              onRowClick={(e) => setOpenId(e.id)}
+              minWidth={760}
+              stacked={(e) => (
+                <div className="flex flex-col gap-1">
+                  <p className="flex items-center justify-between gap-3">
+                    <button type="button" onClick={() => setOpenId(e.id)} className="text-left font-mono text-mono text-accent hover:underline">
+                      {e.action}
+                    </button>
+                    <ToneStatus tone={TONE[e.status] ?? 'neutral'}>{WORD[e.status] ?? e.status}</ToneStatus>
+                  </p>
+                  <p className="text-caption text-muted">
+                    {formatShort(e.occurred_at, now)} UTC · {e.actor_display || e.actor}
+                  </p>
+                  {e.resource && <p className="truncate font-mono text-mono-small text-muted">{e.resource}</p>}
+                </div>
+              )}
+            />
+            <div className="mt-3 flex items-center gap-3">
+              {pages.hasNextPage ? (
+                <Button variant="secondary" onClick={() => void pages.fetchNextPage()} disabled={pages.isFetchingNextPage} aria-busy={pages.isFetchingNextPage}>
+                  {pages.isFetchingNextPage ? 'Loading…' : 'Load older events'}
+                </Button>
+              ) : (
+                <p className="text-caption text-muted">That's the oldest event{filtered ? ' that matches' : ''}.</p>
+              )}
+              {pages.isFetchNextPageError && <p className="text-caption text-bad">Couldn't load older events. Try again.</p>}
             </div>
-          </Card>
+          </>
+        ))}
 
-          <DetailsPane
-            event={selected}
-            onDrillCorrelation={() =>
-              selected && drillCorrelation(selected.correlation_id)
-            }
-          />
-        </div>
-      )}
+      {open && <EventDrawer event={open} onClose={() => setOpenId(null)} onFollow={followChain} following={filter.correlation_id === open.correlation_id} />}
     </div>
   );
 }
 
-// --- row ------------------------------------------------------------
-
-function AuditRow({
-  row: e,
-  selected,
-  onSelect,
-  onDrillCorrelation,
-}: {
-  row: AuditEvent;
-  selected: boolean;
-  onSelect: () => void;
-  onDrillCorrelation: () => void;
-}) {
-  const statusVariant: React.ComponentProps<typeof StatusPill>['variant'] =
-    e.status === 'success'
-      ? 'success'
-      : e.status === 'denied'
-        ? 'warning'
-        : 'error';
-  return (
-    <tr
-      onClick={onSelect}
-      className={
-        'border-b border-border/40 last:border-0 align-top cursor-pointer ' +
-        (selected ? 'bg-accent/10' : 'hover:bg-bg/20')
-      }
-    >
-      <Td className="text-muted text-xs whitespace-nowrap">
-        <div className="font-mono">{formatTime(e.occurred_at)}</div>
-        <div className="text-muted/70 mt-0.5">{formatDate(e.occurred_at)}</div>
-      </Td>
-      <Td>
-        <ActorCell display={e.actor_display} raw={e.actor} />
-      </Td>
-      <Td>
-        <span className="font-mono text-accent text-sm break-all">
-          {e.action}
-        </span>
-      </Td>
-      <Td>
-        {/* v3 space-y semantics (margin-top on later siblings): v4's
-            space-y puts margin-bottom on the inline <span>, where it
-            has no effect. */}
-        <div className="[&>*+*]:mt-1">
-          <span className="font-mono text-ink text-xs break-all">
-            {e.resource}
-          </span>
-          <button
-            onClick={(ev) => {
-              ev.stopPropagation();
-              onDrillCorrelation();
-            }}
-            className="block text-[11px] font-mono text-muted hover:text-accent transition-colors"
-            title="Drill into this event's correlation chain"
-          >
-            corr {shortenUuid(e.correlation_id)}
-          </button>
-        </div>
-      </Td>
-      <Td>
-        <StatusPill variant={statusVariant} tone="outline">
-          {e.status}
-        </StatusPill>
-      </Td>
-    </tr>
-  );
-}
-
-// --- details pane ---------------------------------------------------
-
-function DetailsPane({
-  event,
-  onDrillCorrelation,
-}: {
-  event: AuditEvent | null;
-  onDrillCorrelation: () => void;
-}) {
-  if (!event) {
-    return (
-      <Card className="p-6 text-center text-muted text-sm">
-        Pick a row to inspect the full event + metadata.
-      </Card>
-    );
-  }
-  return (
-    <Card className="overflow-hidden sticky top-4">
-      <div className="px-5 py-4 border-b border-border/60">
-        <div className="text-ink font-semibold">Event details</div>
-        <div className="text-muted text-xs mt-1 font-mono">{event.id}</div>
-      </div>
-      <dl className="px-5 py-4 space-y-2.5 text-sm">
-        <Row k="When" v={`${formatDate(event.occurred_at)} ${formatTime(event.occurred_at)}`} />
-        <Row
-          k="Actor"
-          v={
-            <div className="space-y-0.5">
-              <div className="text-ink text-sm break-all">
-                {event.actor_display || event.actor}
-              </div>
-              <div className="text-muted/70 text-[11px] font-mono break-all">
-                {event.actor}
-              </div>
-            </div>
-          }
-        />
-        <Row k="Action" mono v={<span className="text-accent">{event.action}</span>} />
-        <Row k="Resource" mono v={event.resource} />
-        <Row
-          k="Status"
-          v={
-            <StatusPill
-              variant={
-                event.status === 'success'
-                  ? 'success'
-                  : event.status === 'denied'
-                    ? 'warning'
-                    : 'error'
-              }
-              tone="outline"
-            >
-              {event.status}
-            </StatusPill>
-          }
-        />
-        <Row
-          k="Correlation"
-          v={
-            <button
-              onClick={onDrillCorrelation}
-              className="font-mono text-accent hover:underline text-xs underline-offset-2 hover:underline"
-              title="Filter the page to this correlation chain"
-            >
-              {event.correlation_id}
-            </button>
-          }
-        />
-      </dl>
-      {event.metadata && Object.keys(event.metadata).length > 0 && (
-        <div className="px-5 py-4 border-t border-border/60">
-          <div className="text-muted text-[11px] font-medium mb-2">
-            Metadata
-          </div>
-          <pre className="text-[11px] text-muted bg-bg/40 border border-border/60 rounded-md px-3 py-2 overflow-x-auto font-mono">
-            {JSON.stringify(event.metadata, null, 2)}
-          </pre>
-        </div>
-      )}
-    </Card>
-  );
-}
-
-// --- shared bits ----------------------------------------------------
-
-function FilterField({
+function FilterInput({
   label,
   value,
   onChange,
   placeholder,
-  mono,
   disabled,
-  disabledHint,
+  invalid,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
-  placeholder?: string;
-  mono?: boolean;
+  placeholder: string;
   disabled?: boolean;
-  disabledHint?: string;
+  invalid?: boolean;
 }) {
   return (
-    <div className="space-y-1">
-      <label className="block text-[11px] text-muted font-medium">
-        {label}
-      </label>
-      <input
-        type="text"
+    <label className="flex min-w-0 flex-col gap-1">
+      <span className="text-caption font-medium text-muted">{label}</span>
+      <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        title={disabled ? disabledHint : undefined}
-        className={
-          'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent ' +
-          (mono ? 'font-mono ' : '') +
-          (disabled ? 'opacity-60 cursor-not-allowed' : '')
-        }
+        aria-invalid={invalid || undefined}
+        className="font-mono"
         autoComplete="off"
         spellCheck={false}
       />
-      {disabled && disabledHint && (
-        <div className="text-[11px] text-muted/80">{disabledHint}</div>
+    </label>
+  );
+}
+
+function EventDrawer({
+  event: e,
+  onClose,
+  onFollow,
+  following,
+}: {
+  event: AuditEvent;
+  onClose: () => void;
+  onFollow: (correlationId: string) => void;
+  following: boolean;
+}) {
+  const requestId = /^request:([0-9a-f-]{36})$/i.exec(e.resource)?.[1];
+  const meta = e.metadata && Object.keys(e.metadata).length > 0 ? e.metadata : null;
+  const rows: [string, ReactNode][] = [
+    ['When', formatExact(e.occurred_at, true)],
+    [
+      'Actor',
+      <span key="a">
+        {e.actor_display || e.actor}
+        {e.actor_display && e.actor_display !== e.actor && <span className="block break-all font-mono text-mono-small text-muted">{e.actor}</span>}
+      </span>,
+    ],
+    ['Action', <span key="ac" className="font-mono text-mono">{e.action}</span>],
+    [
+      'Resource',
+      <span key="r" className="break-all font-mono text-mono">
+        {e.resource || '—'}
+        {requestId && (
+          <Link to={`/requests/${requestId}`} className="mt-1 block font-sans text-ui font-medium text-accent hover:underline">
+            Open request {requestRef(requestId)}
+          </Link>
+        )}
+      </span>,
+    ],
+    ['Outcome', <ToneStatus key="o" tone={TONE[e.status] ?? 'neutral'}>{WORD[e.status] ?? e.status}</ToneStatus>],
+    ['Correlation', <span key="c" className="break-all font-mono text-mono">{e.correlation_id}</span>],
+    ['Event id', <span key="i" className="break-all font-mono text-mono">{e.id}</span>],
+  ];
+
+  return (
+    <Drawer
+      title="Audit event"
+      subtitle={e.action}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+          {!following && (
+            <Button variant="primary" onClick={() => onFollow(e.correlation_id)}>
+              Show the whole chain
+            </Button>
+          )}
+        </>
+      }
+    >
+      <dl className="m-0">
+        {rows.map(([k, v]) => (
+          <div key={k} className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 border-b border-rule py-2.5 text-ui font-normal last:border-0">
+            <dt className="text-muted">{k}</dt>
+            <dd className="m-0 min-w-0 text-ink">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <h3 className="mb-2 mt-5 text-body font-semibold text-ink">Metadata</h3>
+      {meta ? (
+        <pre className="overflow-x-auto rounded-md border border-border bg-sunken px-3 py-2.5 font-mono text-mono-small leading-relaxed text-ink">
+          {JSON.stringify(meta, null, 2)}
+        </pre>
+      ) : (
+        <p className="text-muted">None recorded.</p>
       )}
-    </div>
+      <p className="mt-2 text-caption text-muted">Metadata never holds secret values, tokens or wrap bodies.</p>
+    </Drawer>
   );
-}
-
-function ActivePill({
-  label,
-  value,
-  onClear,
-}: {
-  label: string;
-  value: string;
-  onClear: () => void;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border px-2.5 py-0.5 text-[11px] font-mono">
-      <span className="text-muted">{label}</span>
-      <span className="text-muted/50">=</span>
-      <span className="text-accent">{value}</span>
-      <button
-        onClick={onClear}
-        className="ml-1 text-muted hover:text-ink"
-        title="Clear"
-      >
-        ×
-      </button>
-    </span>
-  );
-}
-
-// Renders the table cell for an audit row's actor: human label on top,
-// raw `user:<uuid>` / `agent:<uuid>` / `system:<kind>` underneath in a
-// dimmer font for forensic anchoring + copy-paste into the actor
-// filter. The raw string is also exposed via `title` so hovering shows
-// the full UUID even when truncated.
-function ActorCell({ display, raw }: { display: string; raw: string }) {
-  // api#62 always populates `actor_display`, but old records or test
-  // fixtures might not — fall back to the raw string for the top line
-  // so the column never goes blank.
-  const top = display || raw;
-  // Skip the second line when display IS the raw string (unknown
-  // actor shape: e.g. `admin`, legacy seeded values), otherwise we'd
-  // render the same text twice.
-  const showRaw = display && display !== raw;
-  return (
-    <div className="space-y-0.5" title={raw}>
-      <div className="text-ink text-sm break-all">{top}</div>
-      {showRaw && (
-        <div className="text-muted/70 text-[11px] font-mono break-all">
-          {raw}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Row({
-  k,
-  v,
-  mono,
-}: {
-  k: string;
-  v: React.ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <div className="grid grid-cols-[110px_1fr] gap-3 items-baseline">
-      <dt className="text-muted text-xs">{k}</dt>
-      <dd
-        className={
-          'text-sm break-all ' + (mono ? 'font-mono text-ink' : 'text-ink')
-        }
-      >
-        {v}
-      </dd>
-    </div>
-  );
-}
-
-function Th({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
-}
-
-function Td({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <td className={`px-5 py-3.5 align-top ${className}`}>{children}</td>;
-}
-
-function formatTime(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '—';
-  const d = new Date(t);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
-}
-
-function formatDate(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '—';
-  const d = new Date(t);
-  return d.toISOString().slice(0, 10);
-}
-
-function shortenUuid(id: string): string {
-  if (!id || id.length < 8) return id;
-  return `${id.slice(0, 8)}…`;
-}
-
-function apply2(
-  current: AuditFilter,
-  setFilter: (f: AuditFilter) => void,
-  setDraft: (f: AuditFilter) => void,
-  key: keyof AuditFilter,
-) {
-  const next = { ...current };
-  delete next[key];
-  setFilter(next);
-  setDraft(next);
-}
-
-function stringifyError(e: unknown): string {
-  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
-  if (e instanceof Error) return e.message;
-  return String(e);
 }

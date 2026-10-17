@@ -13,7 +13,7 @@
  * render any field that comes back here.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { api } from './client';
 
@@ -52,7 +52,7 @@ export const auditKey = {
   list: (filter: AuditFilter) => ['audit-events', 'list', filter] as const,
 };
 
-export function useAuditEvents(filter: AuditFilter = {}) {
+function auditQuery(filter: AuditFilter): string {
   const qs = new URLSearchParams();
   if (filter.actor) qs.set('actor', filter.actor);
   if (filter.action) qs.set('action', filter.action);
@@ -61,9 +61,54 @@ export function useAuditEvents(filter: AuditFilter = {}) {
   if (filter.since) qs.set('since', filter.since);
   if (filter.until) qs.set('until', filter.until);
   if (filter.limit) qs.set('limit', String(filter.limit));
-  const suffix = qs.toString() ? `?${qs}` : '';
+  return qs.toString() ? `?${qs}` : '';
+}
+
+export function useAuditEvents(filter: AuditFilter = {}) {
   return useQuery({
     queryKey: auditKey.list(filter),
-    queryFn: () => api.get<AuditEvent[]>(`/api/v1/audit-events${suffix}`),
+    queryFn: () => api.get<AuditEvent[]>(`/api/v1/audit-events${auditQuery(filter)}`),
   });
+}
+
+/**
+ * The audit log one page at a time, newest first. The api has no
+ * cursor, but `until` is exclusive and rows come back newest first, so
+ * the next page asks for rows before the oldest one seen.
+ *
+ * Rows written in one transaction share a timestamp, so a page boundary
+ * can fall inside such a group. The next page therefore starts one
+ * millisecond after the oldest row and drops rows already shown. Pass
+ * the same `filter` (without `until`) for the life of the list.
+ */
+export function useAuditPages(filter: Omit<AuditFilter, 'until' | 'limit'>, pageSize = 50) {
+  return useInfiniteQuery({
+    queryKey: ['audit-events', 'pages', filter, pageSize] as const,
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) =>
+      api.get<AuditEvent[]>(`/api/v1/audit-events${auditQuery({ ...filter, until: pageParam, limit: pageSize })}`),
+    getNextPageParam: (last, pages) => {
+      if (last.length < pageSize) return undefined;
+      const seen = new Set(pages.slice(0, -1).flatMap((p) => p.map((e) => e.id)));
+      // Only rows we already had: more rows than a page share one
+      // millisecond. Step past them rather than loop.
+      if (last.every((e) => seen.has(e.id))) return last[last.length - 1].occurred_at;
+      const oldest = Date.parse(last[last.length - 1].occurred_at);
+      return new Date(oldest + 1).toISOString();
+    },
+  });
+}
+
+/** Every row of the pages once, newest first. */
+export function flattenAuditPages(pages: AuditEvent[][] | undefined): AuditEvent[] {
+  const seen = new Set<string>();
+  const out: AuditEvent[] = [];
+  for (const page of pages ?? []) {
+    for (const e of page) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      out.push(e);
+    }
+  }
+  return out;
 }
