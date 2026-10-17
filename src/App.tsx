@@ -7,6 +7,7 @@ import { RequireAuth } from './auth/RequireAuth';
 import { StepUpModalProvider } from './auth/StepUpModal';
 import { Shell } from './layout/Shell';
 import { ErrorBoundary } from './ui/ErrorBoundary';
+import { ToastProvider } from './ui/Toast';
 import { Agents } from './pages/Agents';
 import { Audit } from './pages/Audit';
 import { Dashboard } from './pages/Dashboard';
@@ -43,6 +44,7 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <ErrorBoundary>
+        <ToastProvider>
         <Routes>
         <Route path="/login" element={<Login />} />
         <Route
@@ -91,6 +93,7 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
         </Routes>
+        </ToastProvider>
         </ErrorBoundary>
       </AuthProvider>
     </QueryClientProvider>

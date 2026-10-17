@@ -40,6 +40,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { PageHeader } from '../ui/PageHeader';
+import { Status } from '../ui/Status';
 import { StatusPill } from '../ui/StatusPill';
 import { SubmitRequestDrawer } from './SubmitRequestDrawer';
 
@@ -348,28 +349,14 @@ function ApproverQueueCard({ row: r }: { row: AccessRequest }) {
   );
 }
 
-// --- status pill mapping -------------------------------------------
+// --- status --------------------------------------------------------
 
 export function RequestStatusPill({
   status,
 }: {
   status: AccessRequest['status'];
 }) {
-  const variant: React.ComponentProps<typeof StatusPill>['variant'] =
-    status === 'pending'
-      ? 'pending'
-      : status === 'approved'
-        ? 'approved'
-        : status === 'executed'
-          ? 'executed'
-          : status === 'rejected' || status === 'failed' || status === 'expired'
-            ? 'rejected'
-            : 'cancelled';
-  return (
-    <StatusPill variant={variant} tone="filled">
-      {status}
-    </StatusPill>
-  );
+  return <Status status={status} />;
 }
 
 // --- filter pills ---------------------------------------------------
