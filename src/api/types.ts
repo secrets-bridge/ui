@@ -385,6 +385,7 @@ export interface AccessRequest {
   fill_comment?: string;
   refused_by_user_id?: string;
   refused_at?: string;
+  refuse_reason?: string;
   /** Resolved display name/email for requester_id (best-effort, api#172). */
   requester_display?: string;
 }
