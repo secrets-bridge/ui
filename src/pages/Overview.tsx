@@ -163,7 +163,9 @@ export function Overview() {
         env: d.env,
         envKind: d.envKind,
         logo: d.logo,
-        note: `Reveal closes ${formatShort(c.deadline, now)} UTC · ${formatRemaining(c.deadline, now)}`,
+        // Short, so the keys keep their room; the exact deadline is on hover.
+        note: `Reveal within ${formatRemaining(c.deadline, now).replace(/ left$/, '')}`,
+        noteTitle: `The reveal window closes ${formatExact(c.deadline)}`,
         tone: 'ok' as const,
         action: (
           <Button variant="secondary" size="sm" onClick={() => navigate(`/requests/${r.id}`)}>
