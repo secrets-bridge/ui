@@ -79,7 +79,10 @@ export function RequestDetail() {
       </Banner>
     );
   }
-  return <RequestView r={req.data} refetch={() => void req.refetch()} refetching={req.isFetching} />;
+  // Keyed by id: a different request gets a fresh view, so a reveal that
+  // is open on one request unmounts (expiring its session and dropping its
+  // values) instead of carrying over to the next request's page.
+  return <RequestView key={req.data.id} r={req.data} refetch={() => void req.refetch()} refetching={req.isFetching} />;
 }
 
 function NoAccess() {
@@ -165,6 +168,9 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
   // Once a reveal ends on this page, don't offer it again while the
   // summaries catch up: the values are gone.
   const [revealDone, setRevealDone] = useState(false);
+  // Why the reveal ended, when that needs saying (e.g. 410: nothing left).
+  // Kept here because <Reveal> unmounts once the reveal is done.
+  const [revealNotice, setRevealNotice] = useState<{ title: string; text: string } | null>(null);
   const showReveal = r.type === 'read' && isMine && (revealing || (!!revealDeadline && !revealDone));
   const gitops = useRequestGitOps(r.id, isMine);
 
@@ -182,9 +188,10 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
     return () => window.clearInterval(t);
   }, [r.status, refetch]);
 
-  const revealFinished = () => {
+  const revealFinished = (notice?: { title: string; text: string }) => {
     setRevealing(false);
     setRevealDone(true);
+    setRevealNotice(notice ?? null);
     focusStateOnUpdate.current = true;
     void qc.invalidateQueries({ queryKey: requestsKey.one(r.id) });
     void qc.invalidateQueries({ queryKey: ['audit-events'] });
@@ -250,6 +257,10 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
                     onActiveChange={setRevealing}
                     onFinished={revealFinished}
                   />
+                ) : revealNotice ? (
+                  <Banner tone="error" title={revealNotice.title}>
+                    {revealNotice.text}
+                  </Banner>
                 ) : undefined
               }
               onApprove={() => setDialog('approve')}

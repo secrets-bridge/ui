@@ -50,7 +50,7 @@ interface Props {
   /** True from the moment values may be on screen until they are gone. */
   onActiveChange: (active: boolean) => void;
   /** The reveal ended (hidden, timed out or refused as already used). */
-  onFinished: () => void;
+  onFinished: (notice?: { title: string; text: string }) => void;
 }
 
 export function Reveal({ request: r, deadline, now, onActiveChange, onFinished }: Props) {
@@ -143,7 +143,7 @@ export function Reveal({ request: r, deadline, now, onActiveChange, onFinished }
       setError(e);
       setPhase('idle');
       onActiveChange(false);
-      if (err instanceof ApiError && err.status === 410) onFinished();
+      if (err instanceof ApiError && err.status === 410) onFinished(e);
       return;
     }
     if (!mounted.current) {
