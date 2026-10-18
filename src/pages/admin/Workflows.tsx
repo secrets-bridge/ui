@@ -17,9 +17,11 @@ import { policiesKey, usePolicies } from '../../api/policies';
 import { useRoles } from '../../api/roles';
 import type { Workflow, WorkflowInput } from '../../api/types';
 import { useCreateWorkflow, useDeleteWorkflow, useUpdateWorkflow, useWorkflows } from '../../api/workflows';
+import { useAuth } from '../../auth/AuthContext';
 import { Banner } from '../../ui/Banner';
 import { Button } from '../../ui/Button';
 import { ConfirmModal } from '../../ui/ConfirmModal';
+import { Dialog } from '../../ui/Dialog';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { EmptyState } from '../../ui/EmptyState';
 import { PageHeader } from '../../ui/PageHeader';
@@ -197,21 +199,48 @@ export function Workflows() {
 
 // Deleting a workflow also deletes every policy that points to it, and
 // the api refuses it while any request references the workflow. The
-// dialog says both and counts the policies first. Confirming sends
-// delete_policy_rules=true, because the dialog has told the admin the
-// policies go too; without it the api answers 409 workflow_in_use.
+// dialog says both and counts the policies first. Deleting the policies
+// is a policy change, so the api also needs policy.edit for it
+// (delete_policy_rules=true). Without policy.edit the dialog sends a
+// plain delete, and when policies point to the workflow it says who can
+// delete or repoint them instead of offering a delete the api refuses.
 function DeleteWorkflow({ workflow, onClose, onDeleted }: { workflow: Workflow; onClose: () => void; onDeleted: () => void }) {
   const del = useDeleteWorkflow();
   const policies = usePolicies();
   const qc = useQueryClient();
+  const { hasPermission } = useAuth();
+  const canDeletePolicies = hasPermission('policy.edit');
   const n = (policies.data ?? []).filter((p) => p.workflow_id === workflow.id).length;
+  const counted = !policies.isLoading && !policies.isError;
+  const pointLine = `${n} ${n === 1 ? 'policy points' : 'policies point'} to it`;
+
+  if (counted && n > 0 && !canDeletePolicies) {
+    return (
+      <Dialog
+        title={`Workflow ${workflow.name} is in use`}
+        onClose={onClose}
+        actions={
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        }
+      >
+        <p className="text-muted">
+          {`${pointLine}. Deleting a workflow together with its policies needs policy access, so ask a policy admin to delete those policies or point them to another workflow first.`}
+        </p>
+      </Dialog>
+    );
+  }
+
   const policyLine = policies.isLoading
     ? 'Checking which policies use it…'
     : policies.isError
-      ? "Couldn't check which policies use it. Any policy that points to it is deleted too."
+      ? canDeletePolicies
+        ? "Couldn't check which policies use it. Any policy that points to it is deleted too."
+        : "Couldn't check which policies use it. If any do, the delete is refused."
       : n === 0
         ? 'No policy points to it.'
-        : `${n} ${n === 1 ? 'policy points' : 'policies point'} to it and will be deleted too.`;
+        : `${pointLine} and will be deleted too.`;
   return (
     <ConfirmModal
       title={`Delete workflow ${workflow.name}?`}
@@ -221,7 +250,7 @@ function DeleteWorkflow({ workflow, onClose, onDeleted }: { workflow: Workflow; 
       onCancel={onClose}
       onConfirm={async () => {
         try {
-          await del.mutateAsync({ id: workflow.id, deletePolicyRules: true });
+          await del.mutateAsync({ id: workflow.id, deletePolicyRules: canDeletePolicies });
           void qc.invalidateQueries({ queryKey: policiesKey.all });
           onDeleted();
         } catch {
