@@ -153,7 +153,7 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
   return (
     <form onSubmit={handleSubmit(onValid)} className="space-y-4">
       {initial?.is_system && (
-        <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
+        <div className="text-xs text-warn bg-warn-bg border border-warn-line rounded-sm px-3 py-2">
           This is a <strong>system seed</strong> workflow — editable but cannot be deleted.
         </div>
       )}
@@ -202,7 +202,7 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
           apart from the TTL + Enabled cluster above. */}
       <div className="pt-4 border-t border-border space-y-2">
         <div>
-          <div className="text-xs uppercase tracking-wide text-muted/80 font-semibold">
+          <div className="text-xs text-muted/80 font-semibold">
             Scoped author access
           </div>
         </div>
@@ -212,15 +212,15 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
         />
         <p className="text-[11px] text-muted leading-relaxed">
           When checked, this workflow appears in the dropdown on{' '}
-          <span className="font-mono text-text/80">/projects/:id/policies</span>{' '}
-          for users with <span className="font-mono text-text/80">policy.author</span>.
+          <span className="font-mono text-ink/80">/projects/:id/policies</span>{' '}
+          for users with <span className="font-mono text-ink/80">policy.author</span>.
           When unchecked, it stays admin-only and visible only on{' '}
-          <span className="font-mono text-text/80">/admin/policies</span>. Default off.
+          <span className="font-mono text-ink/80">/admin/policies</span>. Default off.
         </p>
       </div>
 
       {submitError instanceof ApiError && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
+        <div className="text-xs text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
           {submitError.status}: {submitError.message}
         </div>
       )}
@@ -236,7 +236,7 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
         <button
           type="button"
           onClick={onCancel}
-          className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border"
+          className="text-muted hover:text-ink px-3 py-2 rounded-sm border border-border"
         >
           Cancel
         </button>
@@ -246,7 +246,7 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent';
+  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent';
 
 function Field({
   label,
@@ -261,7 +261,7 @@ function Field({
     <div className="space-y-1">
       <label className="block text-xs text-muted">{label}</label>
       {children}
-      {error && <div className="text-xs text-red-400">{error}</div>}
+      {error && <div className="text-xs text-bad">{error}</div>}
     </div>
   );
 }
@@ -279,7 +279,7 @@ type ToggleProps = {
 };
 const Toggle = forwardRef<HTMLInputElement, ToggleProps>(function Toggle({ label, ...rest }, ref) {
   return (
-    <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
+    <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
       <input type="checkbox" ref={ref} {...rest} className="h-4 w-4 accent-accent" />
       {label}
     </label>

@@ -43,7 +43,7 @@ function InboxView() {
       />
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold">Pending</h3>
+          <h3 className="text-ink font-semibold">Pending</h3>
           <span className="text-muted text-xs">
             {rows.length} {rows.length === 1 ? 'request' : 'requests'}
           </span>
@@ -71,12 +71,12 @@ function InboxRow({ req }: { req: AccessRequest }) {
   return (
     <Link
       to={`/inbox/${req.id}`}
-      className="block bg-bg/40 border border-border/60 hover:border-accent/40 rounded-lg px-4 py-3"
+      className="block bg-bg/40 border border-border/60 hover:border-accent/40 rounded-md px-4 py-3"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <span className="text-text font-medium text-sm truncate">
+            <span className="text-ink font-medium text-sm truncate">
               {req.target_team_name ?? req.target_team_id ?? 'your team'}
             </span>
             <span className="text-muted text-xs">·</span>

@@ -47,7 +47,7 @@ export function ProjectPoliciesPicker() {
       />
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold">Your projects</h3>
+          <h3 className="text-ink font-semibold">Your projects</h3>
         </CardHeader>
         <CardBody>
           {projects.length === 0 ? (
@@ -58,7 +58,7 @@ export function ProjectPoliciesPicker() {
             <ul className="divide-y divide-border">
               {projects.map((p) => (
                 <li key={p.id} className="py-3 flex items-center justify-between">
-                  <span className="text-sm text-text">{p.name}</span>
+                  <span className="text-sm text-ink">{p.name}</span>
                   <Link
                     to={`/projects/${p.id}/policies`}
                     className="text-[12px] text-accent hover:underline"

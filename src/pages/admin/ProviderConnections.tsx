@@ -96,12 +96,12 @@ export function ProviderConnections() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name…"
-          className="bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 w-56"
+          className="bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent w-56"
         />
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm"
+          className="bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm"
         >
           <option value="">All types</option>
           {knownTypes.map((t) => (
@@ -113,7 +113,7 @@ export function ProviderConnections() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm"
+          className="bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm"
         >
           <option value="">All statuses</option>
           <option value="active">Active</option>
@@ -122,8 +122,8 @@ export function ProviderConnections() {
       </div>
 
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">
             Failed to load provider connections
           </div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
@@ -142,7 +142,7 @@ export function ProviderConnections() {
       {rows.length > 0 && (
         <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+            <thead className="text-left text-muted text-[11px]">
               <tr className="border-b border-border/60">
                 <Th>Name</Th>
                 <Th>Type</Th>
@@ -215,7 +215,7 @@ function ConnectionRow({
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={onEdit}
-            className="font-mono text-accent hover:text-accent-bright text-sm text-left"
+            className="font-mono text-accent hover:underline text-sm text-left"
           >
             {c.name}
           </button>
@@ -244,13 +244,13 @@ function ConnectionRow({
         <div className="flex items-center justify-end gap-3">
           <button
             onClick={onEdit}
-            className="text-accent hover:text-accent-bright text-sm font-medium"
+            className="text-accent hover:underline text-sm font-medium"
           >
             Edit
           </button>
           <button
             onClick={onDelete}
-            className="text-red-300 hover:text-red-200 text-sm font-medium"
+            className="text-bad hover:underline text-sm font-medium"
           >
             Delete
           </button>
@@ -419,7 +419,7 @@ function BindingsPanel({ connectionID }: { connectionID: string }) {
 
   return (
     <section className="space-y-3 border-t border-border/60 pt-5">
-      <h3 className="text-text font-semibold text-sm uppercase tracking-wider">
+      <h3 className="text-ink font-semibold text-sm">
         Bindings
       </h3>
       <p className="text-muted text-xs">
@@ -438,20 +438,20 @@ function BindingsPanel({ connectionID }: { connectionID: string }) {
           {bindings.data.map((b) => (
             <li
               key={b.id}
-              className="flex items-center justify-between text-xs border border-border/40 rounded-lg px-3 py-1.5"
+              className="flex items-center justify-between text-xs border border-border/40 rounded-md px-3 py-1.5"
             >
               <div>
                 <span className="font-mono text-accent">
                   {b.project_name ?? b.project_id}
                 </span>
                 <span className="text-muted mx-1">/</span>
-                <span className="font-mono text-text">
+                <span className="font-mono text-ink">
                   {b.environment_name ?? (b.environment_id ?? 'all envs')}
                 </span>
               </div>
               <button
                 onClick={() => void del.mutateAsync(b.id)}
-                className="text-red-300 hover:text-red-200"
+                className="text-bad hover:underline"
                 disabled={del.isPending}
               >
                 Unbind
@@ -463,7 +463,7 @@ function BindingsPanel({ connectionID }: { connectionID: string }) {
 
       <div className="flex items-end gap-2">
         <div className="flex-1">
-          <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+          <label className="block text-[11px] text-muted font-medium">
             Project
           </label>
           <select
@@ -472,7 +472,7 @@ function BindingsPanel({ connectionID }: { connectionID: string }) {
               setProjectID(e.target.value);
               setEnvID('');
             }}
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm"
+            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm"
           >
             <option value="">Pick a project…</option>
             {(projects.data ?? []).map((p) => (
@@ -483,14 +483,14 @@ function BindingsPanel({ connectionID }: { connectionID: string }) {
           </select>
         </div>
         <div className="flex-1">
-          <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+          <label className="block text-[11px] text-muted font-medium">
             Environment
           </label>
           <select
             value={envID}
             onChange={(e) => setEnvID(e.target.value)}
             disabled={!projectID}
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm disabled:opacity-50"
+            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm disabled:opacity-50"
           >
             <option value="">All envs in project</option>
             {(envs.data ?? []).map((e) => (
@@ -512,7 +512,7 @@ function BindingsPanel({ connectionID }: { connectionID: string }) {
       </div>
 
       {bindError && (
-        <div className="text-red-300 text-xs">{bindError}</div>
+        <div className="text-bad text-xs">{bindError}</div>
       )}
     </section>
   );
@@ -565,9 +565,9 @@ function DeleteConfirmModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/80 backdrop-blur-xs">
-      <div className="bg-surface border border-border rounded-xl p-6 max-w-md w-full space-y-4">
-        <h3 className="text-text text-lg font-bold">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim">
+      <div className="bg-surface border border-border rounded-md p-6 max-w-md w-full space-y-4">
+        <h3 className="text-ink text-lg font-semibold">
           Delete provider connection &ldquo;{connection.name}&rdquo;?
         </h3>
         <p className="text-muted text-sm">
@@ -575,7 +575,7 @@ function DeleteConfirmModal({
           delete; the api refuses with a count.
         </p>
         {counts && (
-          <div className="text-xs text-yellow-200 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2">
+          <div className="text-xs text-warn bg-warn-bg border border-warn-line rounded-md px-3 py-2">
             In use: <span className="font-mono">{counts.b}</span> binding{counts.b === 1 ? '' : 's'},
             {' '}
             <span className="font-mono">{counts.r}</span> open request{counts.r === 1 ? '' : 's'}.
@@ -583,7 +583,7 @@ function DeleteConfirmModal({
           </div>
         )}
         {err && !counts && (
-          <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+          <div className="text-xs text-bad bg-bad-bg border border-bad-line rounded-md px-3 py-2">
             {err}
           </div>
         )}

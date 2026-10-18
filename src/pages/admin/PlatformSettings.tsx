@@ -75,8 +75,8 @@ export function PlatformSettings() {
       />
 
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">
             Failed to load platform settings
           </div>
           <div className="text-muted mt-1">
@@ -167,7 +167,7 @@ function ReservedPriorityCard({
       <Card className="p-5 space-y-3">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-text font-semibold tracking-tight">
+            <div className="text-ink font-semibold tracking-tight">
               Scoped policy reserved priority
             </div>
             <div className="text-muted text-xs mt-1">
@@ -192,14 +192,14 @@ function ReservedPriorityCard({
         </div>
 
         {!editing && (
-          <div className="text-2xl font-bold tracking-tight tabular-nums">
+          <div className="text-2xl font-semibold tracking-tight tabular-nums">
             {current.toLocaleString()}
           </div>
         )}
 
         {editing && (
           <div className="space-y-2">
-            <label className="block text-xs uppercase tracking-wider text-muted">
+            <label className="block text-xs text-muted">
               New value (between {PRIORITY_MIN.toLocaleString()} and{' '}
               {PRIORITY_MAX.toLocaleString()})
             </label>
@@ -207,7 +207,7 @@ function ReservedPriorityCard({
               type="text"
               inputMode="numeric"
               autoFocus
-              className="w-48 bg-bg border border-border rounded-md px-3 py-2 text-text font-mono text-sm focus:outline-hidden focus:border-accent"
+              className="w-48 bg-surface border border-edge rounded-md px-3 py-2 text-ink font-mono text-sm focus:border-accent"
               value={draft}
               onChange={(e) => {
                 setDraft(e.target.value);
@@ -215,7 +215,7 @@ function ReservedPriorityCard({
               }}
             />
             {validationError && (
-              <div className="text-red-400 text-xs">{validationError}</div>
+              <div className="text-bad text-xs">{validationError}</div>
             )}
             <div className="flex items-center gap-2 pt-1">
               <Button
@@ -310,32 +310,32 @@ function ChangeReservedPriorityModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
+        className="absolute inset-0 bg-scrim"
         onClick={() => !isPending && onCancel()}
         aria-label="Close"
       />
-      <div className="relative bg-surface border border-border rounded-2xl w-[560px] max-w-full p-6 space-y-4 shadow-2xl">
-        <div className="text-text font-bold text-xl tracking-tight">
+      <div className="relative bg-surface border border-border rounded-md w-[560px] max-w-full p-6 space-y-4 shadow-overlay">
+        <div className="text-ink font-semibold text-xl tracking-tight">
           Change scoped policy reserved priority?
         </div>
         <div className="text-muted text-sm leading-relaxed">
-          From <strong className="text-text">{currentValue.toLocaleString()}</strong>{' '}
-          to <strong className="text-text">{nextValue.toLocaleString()}</strong>.
+          From <strong className="text-ink">{currentValue.toLocaleString()}</strong>{' '}
+          to <strong className="text-ink">{nextValue.toLocaleString()}</strong>.
         </div>
 
         {lowering && (
-          <div className="bg-amber-500/10 border border-amber-500/40 border-l-4 border-l-amber-500 rounded-lg px-4 py-3 text-sm space-y-2">
-            <div className="text-amber-300 font-semibold">
+          <div className="bg-warn-bg border border-warn-line border-l-4 border-l-warn rounded-md px-4 py-3 text-sm space-y-2">
+            <div className="text-warn font-semibold">
               Lowering the cap is grandfathered
             </div>
-            <div className="text-amber-200/90 text-xs leading-relaxed">
+            <div className="text-warn text-xs leading-relaxed">
               Scoped rules already at or above {nextValue.toLocaleString()}{' '}
               keep working as-is — they are NOT auto-deleted. New scoped
               rules created from now on must use priorities strictly
               below {nextValue.toLocaleString()}, and any scoped Update
               that bumps priority into the band will be rejected.
             </div>
-            <details className="text-amber-200/90 text-xs">
+            <details className="text-warn text-xs">
               <summary className="cursor-pointer select-none">
                 Triage SQL — list scoped rules in the grandfathered band
               </summary>
@@ -351,11 +351,11 @@ function ChangeReservedPriorityModal({
         )}
 
         {error != null && (
-          <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-            <div className="text-red-300 font-semibold mb-0.5">
+          <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-4 py-3 text-sm">
+            <div className="text-bad font-semibold mb-0.5">
               {modalErrorTitle(error)}
             </div>
-            <div className="text-red-200/90 text-xs">
+            <div className="text-bad text-xs">
               {modalErrorBody(error)}
             </div>
           </div>

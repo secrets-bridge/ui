@@ -195,8 +195,8 @@ export function Audit() {
 
       {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">Failed to load audit events</div>
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">Failed to load audit events</div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
         </Card>
       )}
@@ -211,7 +211,7 @@ export function Audit() {
         <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
           <Card className="overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+              <thead className="text-left text-muted text-[11px]">
                 <tr className="border-b border-border/60">
                   <Th>When</Th>
                   <Th>Actor</Th>
@@ -294,7 +294,7 @@ function AuditRow({
             space-y puts margin-bottom on the inline <span>, where it
             has no effect. */}
         <div className="[&>*+*]:mt-1">
-          <span className="font-mono text-text text-xs break-all">
+          <span className="font-mono text-ink text-xs break-all">
             {e.resource}
           </span>
           <button
@@ -337,7 +337,7 @@ function DetailsPane({
   return (
     <Card className="overflow-hidden sticky top-4">
       <div className="px-5 py-4 border-b border-border/60">
-        <div className="text-text font-semibold">Event details</div>
+        <div className="text-ink font-semibold">Event details</div>
         <div className="text-muted text-xs mt-1 font-mono">{event.id}</div>
       </div>
       <dl className="px-5 py-4 space-y-2.5 text-sm">
@@ -346,7 +346,7 @@ function DetailsPane({
           k="Actor"
           v={
             <div className="space-y-0.5">
-              <div className="text-text text-sm break-all">
+              <div className="text-ink text-sm break-all">
                 {event.actor_display || event.actor}
               </div>
               <div className="text-muted/70 text-[11px] font-mono break-all">
@@ -379,7 +379,7 @@ function DetailsPane({
           v={
             <button
               onClick={onDrillCorrelation}
-              className="font-mono text-accent hover:text-accent-bright text-xs underline-offset-2 hover:underline"
+              className="font-mono text-accent hover:underline text-xs underline-offset-2 hover:underline"
               title="Filter the page to this correlation chain"
             >
               {event.correlation_id}
@@ -389,10 +389,10 @@ function DetailsPane({
       </dl>
       {event.metadata && Object.keys(event.metadata).length > 0 && (
         <div className="px-5 py-4 border-t border-border/60">
-          <div className="text-muted text-[11px] uppercase tracking-wider font-medium mb-2">
+          <div className="text-muted text-[11px] font-medium mb-2">
             Metadata
           </div>
-          <pre className="text-[11px] text-muted bg-bg/40 border border-border/60 rounded-lg px-3 py-2 overflow-x-auto font-mono">
+          <pre className="text-[11px] text-muted bg-bg/40 border border-border/60 rounded-md px-3 py-2 overflow-x-auto font-mono">
             {JSON.stringify(event.metadata, null, 2)}
           </pre>
         </div>
@@ -422,7 +422,7 @@ function FilterField({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+      <label className="block text-[11px] text-muted font-medium">
         {label}
       </label>
       <input
@@ -433,7 +433,7 @@ function FilterField({
         disabled={disabled}
         title={disabled ? disabledHint : undefined}
         className={
-          'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 ' +
+          'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent ' +
           (mono ? 'font-mono ' : '') +
           (disabled ? 'opacity-60 cursor-not-allowed' : '')
         }
@@ -441,7 +441,7 @@ function FilterField({
         spellCheck={false}
       />
       {disabled && disabledHint && (
-        <div className="text-[11px] text-muted/80 italic">{disabledHint}</div>
+        <div className="text-[11px] text-muted/80">{disabledHint}</div>
       )}
     </div>
   );
@@ -457,13 +457,13 @@ function ActivePill({
   onClear: () => void;
 }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-bg/60 border border-border px-2.5 py-0.5 text-[11px] font-mono">
+    <span className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border px-2.5 py-0.5 text-[11px] font-mono">
       <span className="text-muted">{label}</span>
       <span className="text-muted/50">=</span>
       <span className="text-accent">{value}</span>
       <button
         onClick={onClear}
-        className="ml-1 text-muted hover:text-text"
+        className="ml-1 text-muted hover:text-ink"
         title="Clear"
       >
         ×
@@ -488,7 +488,7 @@ function ActorCell({ display, raw }: { display: string; raw: string }) {
   const showRaw = display && display !== raw;
   return (
     <div className="space-y-0.5" title={raw}>
-      <div className="text-text text-sm break-all">{top}</div>
+      <div className="text-ink text-sm break-all">{top}</div>
       {showRaw && (
         <div className="text-muted/70 text-[11px] font-mono break-all">
           {raw}
@@ -509,10 +509,10 @@ function Row({
 }) {
   return (
     <div className="grid grid-cols-[110px_1fr] gap-3 items-baseline">
-      <dt className="text-muted text-xs uppercase tracking-wider">{k}</dt>
+      <dt className="text-muted text-xs">{k}</dt>
       <dd
         className={
-          'text-sm break-all ' + (mono ? 'font-mono text-text' : 'text-text')
+          'text-sm break-all ' + (mono ? 'font-mono text-ink' : 'text-ink')
         }
       >
         {v}

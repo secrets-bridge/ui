@@ -112,7 +112,7 @@ export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
     return (
       <Drawer title="Discovery queued" onClose={onClose}>
         <div className="space-y-3 text-sm">
-          <p className="text-text">
+          <p className="text-ink">
             Job{' '}
             <span className="font-mono text-accent text-xs">{enqueuedId}</span>{' '}
             queued. An agent claims within about 5 seconds, calls the
@@ -217,7 +217,7 @@ export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
         </Field>
 
         {errors.root?.message && (
-          <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-sm px-3 py-2">
+          <div className="text-sm text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
             {errors.root.message}
           </div>
         )}
@@ -254,12 +254,12 @@ function Field({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+      <label className="block text-[11px] text-muted font-medium">
         {label}
       </label>
       {hint && <p className="text-xs text-muted mb-1">{hint}</p>}
       {children}
-      {error && <p className="text-xs text-red-300 mt-1">{error}</p>}
+      {error && <p className="text-xs text-bad mt-1">{error}</p>}
     </div>
   );
 }

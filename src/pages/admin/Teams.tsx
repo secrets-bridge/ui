@@ -78,8 +78,8 @@ export function Teams() {
       />
 
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">Failed to load teams</div>
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">Failed to load teams</div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
         </Card>
       )}
@@ -146,7 +146,7 @@ function TeamTree({
   const total = countAll(nodes);
   return (
     <Card className="overflow-hidden">
-      <div className="px-5 py-3 border-b border-border/60 text-[11px] uppercase tracking-wider text-muted">
+      <div className="px-5 py-3 border-b border-border/60 text-[11px] text-muted">
         {total} team{total === 1 ? '' : 's'}
       </div>
       <ul className="max-h-[640px] overflow-auto">
@@ -190,7 +190,7 @@ function TreeRow({
           {hasKids ? (
             <button
               onClick={() => setOpen((v) => !v)}
-              className="w-4 h-4 flex items-center justify-center text-muted hover:text-text"
+              className="w-4 h-4 flex items-center justify-center text-muted hover:text-ink"
               title={open ? 'Collapse' : 'Expand'}
             >
               {open ? '▾' : '▸'}
@@ -205,7 +205,7 @@ function TreeRow({
             <span
               className={
                 'font-mono text-sm ' +
-                (archived ? 'text-muted line-through' : isOn ? 'text-accent-bright' : 'text-text')
+                (archived ? 'text-muted line-through' : isOn ? 'text-accent' : 'text-ink')
               }
             >
               {node.team.name}
@@ -273,7 +273,7 @@ function TeamDetail({ team, allTeams }: { team: Team; allTeams: Team[] }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-text font-mono font-semibold truncate">{team.name}</h3>
+              <h3 className="text-ink font-mono font-semibold truncate">{team.name}</h3>
               {team.status === 'archived' && (
                 <StatusPill variant="warning" tone="outline">archived</StatusPill>
               )}
@@ -308,7 +308,7 @@ function TeamDetail({ team, allTeams }: { team: Team; allTeams: Team[] }) {
         </div>
 
         {serverError && (
-          <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2 mt-3">
+          <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2 mt-3">
             {serverError}
           </div>
         )}
@@ -429,7 +429,7 @@ function TeamForm({
       <FormField label="Name" error={errors.name?.message}>
         <input
           {...register('name')}
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent"
+          className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
           placeholder="e.g. platform-east"
         />
       </FormField>
@@ -438,7 +438,7 @@ function TeamForm({
         <textarea
           {...register('description')}
           rows={2}
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent"
+          className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
           placeholder="One-line purpose"
         />
       </FormField>
@@ -446,7 +446,7 @@ function TeamForm({
       <FormField label="Parent team (optional — empty = root)" error={errors.parent_team_id?.message}>
         <select
           {...register('parent_team_id')}
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent"
+          className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
         >
           <option value="">(root)</option>
           {parentChoices.map((t) => (
@@ -458,7 +458,7 @@ function TeamForm({
       </FormField>
 
       {serverError && (
-        <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
+        <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
           {serverError}
         </div>
       )}
@@ -520,7 +520,7 @@ function MembersPanel({ team }: { team: Team }) {
     <Card className="p-5 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-text font-semibold">
+          <h3 className="text-ink font-semibold">
             Members <span className="text-muted text-xs font-normal">({members.data?.length ?? 0})</span>
           </h3>
           <p className="text-muted text-xs mt-1">
@@ -536,7 +536,7 @@ function MembersPanel({ team }: { team: Team }) {
           value={userIDInput}
           onChange={(e) => setUserIDInput(e.target.value)}
           placeholder="paste user id (UUID)"
-          className="flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent"
+          className="flex-1 bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
         />
         <Button onClick={onAdd} variant="secondary" disabled={!userIDInput.trim() || add.isPending}>
           Add
@@ -544,7 +544,7 @@ function MembersPanel({ team }: { team: Team }) {
       </div>
 
       {serverError && (
-        <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
+        <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
           {serverError}
         </div>
       )}
@@ -557,11 +557,11 @@ function MembersPanel({ team }: { team: Team }) {
         <ul className="divide-y divide-border/40">
           {members.data.map((m) => (
             <li key={m.user_id} className="py-2 flex items-center justify-between gap-3">
-              <div className="min-w-0 font-mono text-sm text-text truncate">{m.user_id}</div>
+              <div className="min-w-0 font-mono text-sm text-ink truncate">{m.user_id}</div>
               <button
                 onClick={() => onRemove(m.user_id)}
                 disabled={remove.isPending}
-                className="text-[11px] text-muted hover:text-red-300 transition-colors"
+                className="text-[11px] text-muted hover:text-bad transition-colors"
               >
                 Remove
               </button>
@@ -586,11 +586,11 @@ function FormField({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+      <label className="block text-xs text-muted font-medium">
         {label}
       </label>
       {children}
-      {error && <div className="text-xs text-red-300">{error}</div>}
+      {error && <div className="text-xs text-bad">{error}</div>}
     </div>
   );
 }

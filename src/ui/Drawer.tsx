@@ -1,63 +1,71 @@
 /**
- * Drawer — right-anchored panel matching the Figma "Edit role" frame.
- * Header has a title + close X; body scrolls; an optional footer slot
- * pins action buttons to the bottom (Cancel + primary).
+ * Drawer — right-side dialog for short forms (Request access, admin
+ * edits). Full width on phones. The body scrolls; an optional footer
+ * pins the actions to the bottom right (Cancel, then submit; link the
+ * submit button to the form with `form=`).
  *
- * Replaces the per-page Drawer copies that the Workflows / Roles /
- * Policies / Integrations / Projects / Assignments pages each carried
- * locally.
+ * Same focus rules as Dialog: focus moves inside, Tab is trapped,
+ * Escape closes the top layer and focus returns to the trigger.
  */
 
-import { useEffect } from 'react';
-import type { ReactNode } from 'react';
+import { useId, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+
+import { CloseIcon } from './icons';
+import { useModalFocus } from './useModalFocus';
 
 interface Props {
   title: string;
+  subtitle?: ReactNode;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
 }
 
-export function Drawer({ title, onClose, children, footer, wide }: Props) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+export function Drawer({ title, subtitle, onClose, children, footer, wide }: Props) {
+  const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  useModalFocus(ref, onClose);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-40 flex justify-end">
-      <button
-        className="absolute inset-0 bg-bg/70 backdrop-blur-xs"
-        onClick={onClose}
-        aria-label="Close drawer"
-      />
+      <div className="absolute inset-0 bg-scrim" onClick={onClose} aria-hidden="true" />
       <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className={
           (wide ? 'w-[720px]' : 'w-[520px]') +
-          ' relative max-w-full bg-surface border-l border-border h-full flex flex-col shadow-2xl'
+          ' relative flex h-full max-w-full flex-col border-l border-border bg-surface shadow-overlay'
         }
       >
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
-          <div className="text-text font-semibold text-base">{title}</div>
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-rule px-5 py-4">
+          <div className="min-w-0">
+            <h2 id={titleId} className="text-[18px] font-semibold leading-6 text-ink">
+              {title}
+            </h2>
+            {subtitle && <p className="mt-0.5 text-ui font-normal text-muted">{subtitle}</p>}
+          </div>
           <button
+            type="button"
             onClick={onClose}
-            className="text-muted hover:text-text text-xl leading-none w-8 h-8 rounded-full hover:bg-bg/40 transition-colors"
             aria-label="Close"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink hover:bg-sunken max-md:h-11 max-md:w-11"
           >
-            ×
+            <CloseIcon />
           </button>
         </div>
-        <div className="px-6 py-5 overflow-y-auto flex-1">{children}</div>
+        <div className="flex-1 overflow-y-auto px-5 py-[18px]">{children}</div>
         {footer && (
-          <div className="px-6 py-4 border-t border-border flex items-center justify-between gap-2 shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2.5 border-t border-rule px-5 py-3.5">
             {footer}
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

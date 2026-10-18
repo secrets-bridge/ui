@@ -74,8 +74,8 @@ export function Agents() {
       />
 
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">Failed to load agents</div>
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">Failed to load agents</div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
         </Card>
       )}
@@ -92,7 +92,7 @@ export function Agents() {
       {list.data && list.data.length > 0 && (
         <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+            <thead className="text-left text-muted text-[11px]">
               <tr className="border-b border-border/60">
                 <Th>Name</Th>
                 <Th>Status</Th>
@@ -162,7 +162,7 @@ function AgentRow({
           {live === 'online' && (
             <span
               aria-hidden
-              className="w-2 h-2 rounded-full bg-success animate-pulse"
+              className="w-2 h-2 rounded-sm bg-ok animate-pulse"
               title="Heartbeat received within the last 90s"
             />
           )}
@@ -184,13 +184,13 @@ function AgentRow({
       </Td>
       <Td>
         {scopeEntries.length === 0 ? (
-          <span className="text-muted text-xs italic">unscoped</span>
+          <span className="text-muted text-xs">unscoped</span>
         ) : (
           <div className="flex flex-wrap gap-1">
             {scopeEntries.map(([k, v]) => (
               <span
                 key={k}
-                className="inline-flex items-center gap-1 rounded-full bg-bg/60 border border-border px-2 py-0.5 text-[11px] font-mono"
+                className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[11px] font-mono"
               >
                 <span className="text-muted">{k}</span>
                 <span className="text-muted/50">=</span>
@@ -209,7 +209,7 @@ function AgentRow({
             </div>
           </>
         ) : (
-          <span className="italic">never</span>
+          <span className="">never</span>
         )}
       </Td>
       <Td className="text-right">
@@ -220,7 +220,7 @@ function AgentRow({
           className={
             revoked
               ? 'text-muted/50 cursor-not-allowed text-sm font-medium'
-              : 'text-red-300 hover:text-red-200 text-sm font-medium'
+              : 'text-bad hover:underline text-sm font-medium'
           }
         >
           Revoke
@@ -368,8 +368,8 @@ function MintDrawer({ onClose }: { onClose: () => void }) {
           />
         </Field>
 
-        <fieldset className="border border-border/60 rounded-lg p-4 space-y-3">
-          <legend className="text-[11px] text-muted uppercase tracking-wider px-1 font-medium">
+        <fieldset className="border border-border/60 rounded-md p-4 space-y-3">
+          <legend className="text-[11px] text-muted px-1 font-medium">
             Scope (optional)
           </legend>
           <p className="text-[11px] text-muted/80">
@@ -416,7 +416,7 @@ function MintDrawer({ onClose }: { onClose: () => void }) {
         </fieldset>
 
         {mint.error instanceof ApiError && (
-          <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
+          <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
             {mint.error.status}: {mint.error.message}
           </div>
         )}
@@ -433,8 +433,8 @@ function RevealOncePanel({ response }: { response: MintAgentResponse }) {
   const [tab, setTab] = useState<DeployTab>('helm');
   return (
     <div className="space-y-4">
-      <div className="bg-yellow-400/10 border border-yellow-400/40 border-l-4 border-l-yellow-400 rounded-lg px-4 py-3 text-sm">
-        <div className="text-yellow-300 font-semibold">
+      <div className="bg-warn-bg border border-warn-line border-l-4 border-l-warn rounded-md px-4 py-3 text-sm">
+        <div className="text-warn font-semibold">
           Shown once — copy them now.
         </div>
         <div className="text-muted text-xs mt-1">
@@ -452,7 +452,7 @@ function RevealOncePanel({ response }: { response: MintAgentResponse }) {
       <CopyField label="Agent secret" value={response.agent_secret} mono />
 
       <div>
-        <div className="text-text font-medium text-sm mb-2">
+        <div className="text-ink font-medium text-sm mb-2">
           Drop into the agent
         </div>
         <div className="flex gap-1 border-b border-border/60 mb-3">
@@ -489,7 +489,7 @@ function TabButton({
       onClick={onClick}
       className={
         'px-3 py-1.5 text-sm font-medium border-b-2 -mb-px transition-colors ' +
-        (on ? 'text-accent border-accent' : 'text-muted border-transparent hover:text-text')
+        (on ? 'text-accent border-accent' : 'text-muted border-transparent hover:text-ink')
       }
     >
       {children}
@@ -509,7 +509,7 @@ function DeploySnippet({ snippet, hint }: { snippet: string; hint: string }) {
     }
   };
   return (
-    <div className="bg-bg/40 border border-border/60 rounded-lg p-4 space-y-2">
+    <div className="bg-bg/40 border border-border/60 rounded-md p-4 space-y-2">
       <div className="flex justify-end">
         <Button variant="secondary" size="sm" onClick={doCopy}>
           {copied ? 'Copied!' : 'Copy'}
@@ -586,7 +586,7 @@ function CopyField({
   };
   return (
     <div className="space-y-1">
-      <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+      <label className="block text-xs text-muted font-medium">
         {label}
       </label>
       <div className="flex items-stretch gap-2">
@@ -595,7 +595,7 @@ function CopyField({
           value={value}
           onFocus={(e) => e.currentTarget.select()}
           className={
-            'flex-1 bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 ' +
+            'flex-1 bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent ' +
             (mono ? 'font-mono break-all' : '')
           }
         />
@@ -622,14 +622,14 @@ function Field({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+      <label className="block text-xs text-muted font-medium">
         {label}
       </label>
       {children}
       {hint && !error && (
         <div className="text-[11px] text-muted/80">{hint}</div>
       )}
-      {error && <div className="text-xs text-red-300">{error}</div>}
+      {error && <div className="text-xs text-bad">{error}</div>}
     </div>
   );
 }
@@ -655,7 +655,7 @@ function Td({
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent ';
 
 function formatRelativePast(iso: string): string {
   const t = Date.parse(iso);

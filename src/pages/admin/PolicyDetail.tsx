@@ -63,9 +63,9 @@ export function AdminPolicyDetail() {
 
       {tab === 'overview' && (
         ruleMissing ? (
-          <Card className="border-yellow-400/40">
+          <Card className="border-warn-line">
             <CardBody>
-              <p className="text-sm text-yellow-200">
+              <p className="text-sm text-warn">
                 This rule no longer exists. Switch to the History tab to view
                 its audit trail.
               </p>
@@ -98,8 +98,8 @@ function TabBar({
         onClick={() => onTab('overview')}
         className={
           tab === 'overview'
-            ? 'pb-2 border-b-2 border-accent text-text'
-            : 'pb-2 text-muted hover:text-text'
+            ? 'pb-2 border-b-2 border-accent text-ink'
+            : 'pb-2 text-muted hover:text-ink'
         }
       >
         Overview
@@ -113,8 +113,8 @@ function TabBar({
           historyDisabled
             ? 'pb-2 text-muted/50 cursor-not-allowed'
             : tab === 'history'
-              ? 'pb-2 border-b-2 border-accent text-text'
-              : 'pb-2 text-muted hover:text-text'
+              ? 'pb-2 border-b-2 border-accent text-ink'
+              : 'pb-2 text-muted hover:text-ink'
         }
       >
         History
@@ -137,7 +137,7 @@ function OverviewBlock({ rule }: { rule: { name: string; selector?: Record<strin
           {rule.is_system && (
             <StatusPill variant="system" tone="outline">system</StatusPill>
           )}
-          <span className="inline-flex items-center rounded-full bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono uppercase text-muted">
+          <span className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono text-muted">
             {anchor}
           </span>
         </div>
@@ -147,7 +147,7 @@ function OverviewBlock({ rule }: { rule: { name: string; selector?: Record<strin
             {Object.entries(rule.selector ?? {}).map(([k, v]) => (
               <span
                 key={k}
-                className="inline-flex items-center gap-1 rounded-full bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono"
+                className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono"
               >
                 <span className="text-muted">{k}</span>
                 <span className="text-muted/50">=</span>
@@ -156,7 +156,7 @@ function OverviewBlock({ rule }: { rule: { name: string; selector?: Record<strin
             ))}
           </dd>
         </dl>
-        <p className="text-[11px] text-muted italic">
+        <p className="text-[11px] text-muted">
           Edit / delete via the parent list page's drawer. Detail page is
           read-only by design (R-follow-up #5 §5 OQ5-2).
         </p>
@@ -175,9 +175,9 @@ function AdminHistoryTabBody({ ruleID }: { ruleID: string }) {
   }
   if (q.isError) {
     return (
-      <Card className="border-red-500/40">
+      <Card className="border-bad-line">
         <CardBody>
-          <p className="text-sm text-red-300">Failed to load history.</p>
+          <p className="text-sm text-bad">Failed to load history.</p>
           <button
             type="button"
             onClick={() => q.refetch()}

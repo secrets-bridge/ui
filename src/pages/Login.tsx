@@ -31,7 +31,7 @@ import { useOidcAvailable } from '../api/oidc';
 import { useAuth } from '../auth/AuthContext';
 import { loginReturnTarget } from '../auth/sessionExpiry';
 import { Button } from '../ui/Button';
-import { LogoMark } from '../ui/LogoMark';
+import { Logo } from '../ui/Logo';
 
 // We intentionally DON'T use z.email() — its regex rejects bare-host
 // addresses like `admin@localhost` which are valid for local-dev
@@ -136,24 +136,16 @@ export function Login() {
     <div className="h-full bg-bg flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Brand mark */}
-        <div className="flex items-center justify-center gap-3 mb-8">
-          <LogoMark className="w-10 h-10" />
-          <div>
-            <div className="text-text text-2xl font-bold tracking-tight">
-              SecretsBridge
-            </div>
-            <div className="text-muted text-xs uppercase tracking-wider mt-0.5">
-              Unified secrets control plane
-            </div>
-          </div>
+        <div className="flex justify-center mb-8">
+          <Logo size={24} />
         </div>
 
         <form
           onSubmit={handleSubmit(onValid)}
-          className="bg-surface border border-border rounded-2xl p-6 space-y-5 shadow-2xl"
+          className="bg-surface border border-border rounded-md p-6 space-y-5"
         >
           <div>
-            <h1 className="text-text text-lg font-semibold">Sign in</h1>
+            <h1 className="text-ink text-lg font-semibold">Sign in</h1>
             <p className="text-muted text-xs mt-1">
               {oidc.enabled
                 ? 'Use single sign-on or the local-admin form below.'
@@ -165,11 +157,11 @@ export function Login() {
             <>
               <a
                 href={`/api/v1/auth/oidc/start?return_to=${encodeURIComponent(returnTo)}`}
-                className="block w-full text-center bg-accent hover:bg-accent/90 text-bg font-semibold text-sm rounded-lg px-4 py-2.5"
+                className="block w-full text-center bg-accent hover:bg-accent/90 text-bg font-semibold text-sm rounded-md px-4 py-2.5"
               >
                 Sign in with SSO
               </a>
-              <div className="flex items-center gap-3 text-[10px] text-muted/80 uppercase tracking-wider">
+              <div className="flex items-center gap-3 text-[10px] text-muted/80">
                 <div className="flex-1 h-px bg-border" />
                 <span>or local admin</span>
                 <div className="flex-1 h-px bg-border" />
@@ -178,7 +170,7 @@ export function Login() {
           )}
 
           <div className="space-y-1">
-            <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+            <label className="block text-xs text-muted font-medium">
               Email
             </label>
             <input
@@ -187,17 +179,17 @@ export function Login() {
               autoComplete="email"
               spellCheck={false}
               autoCapitalize="off"
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
               placeholder="admin@example.com"
               disabled={login.isPending}
             />
             {errors.email && (
-              <div className="text-xs text-red-300">{errors.email.message}</div>
+              <div className="text-xs text-bad">{errors.email.message}</div>
             )}
           </div>
 
           <div className="space-y-1">
-            <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+            <label className="block text-xs text-muted font-medium">
               Password
             </label>
             <input
@@ -205,18 +197,18 @@ export function Login() {
               {...register('password')}
               autoComplete="current-password"
               spellCheck={false}
-              className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
+              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
               disabled={login.isPending}
             />
             {errors.password && (
-              <div className="text-xs text-red-300">
+              <div className="text-xs text-bad">
                 {errors.password.message}
               </div>
             )}
           </div>
 
           {serverError && (
-            <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
+            <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
               {serverError}
             </div>
           )}

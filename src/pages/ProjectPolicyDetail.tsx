@@ -46,9 +46,9 @@ export function ProjectPolicyDetail() {
   if (rule.isError || !rule.data) {
     return (
       <div className="max-w-4xl mx-auto p-6">
-        <Card className="border-red-500/40">
+        <Card className="border-bad-line">
           <CardBody>
-            <h3 className="text-red-300 font-medium text-sm">Failed to load rule</h3>
+            <h3 className="text-bad font-medium text-sm">Failed to load rule</h3>
             <p className="text-muted text-xs mt-1">
               {String(rule.error ?? 'Unknown error')}
             </p>
@@ -110,8 +110,8 @@ function TabBar({
         onClick={() => onTab('overview')}
         className={
           tab === 'overview'
-            ? 'pb-2 border-b-2 border-accent text-text'
-            : 'pb-2 text-muted hover:text-text'
+            ? 'pb-2 border-b-2 border-accent text-ink'
+            : 'pb-2 text-muted hover:text-ink'
         }
       >
         Overview
@@ -125,8 +125,8 @@ function TabBar({
           historyDisabled
             ? 'pb-2 text-muted/50 cursor-not-allowed'
             : tab === 'history'
-              ? 'pb-2 border-b-2 border-accent text-text'
-              : 'pb-2 text-muted hover:text-text'
+              ? 'pb-2 border-b-2 border-accent text-ink'
+              : 'pb-2 text-muted hover:text-ink'
         }
       >
         History
@@ -155,14 +155,14 @@ function OverviewBlock({ rule }: { rule: { name: string; selector_keys?: string[
             {(rule.selector_keys ?? Object.keys(rule.selector ?? {})).map((k) => (
               <span
                 key={k}
-                className="inline-flex items-center rounded-full bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono"
+                className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono"
               >
                 {k}
               </span>
             ))}
           </dd>
         </dl>
-        <p className="text-[11px] text-muted italic">
+        <p className="text-[11px] text-muted">
           Edit / delete via the parent list page's drawer. Detail page is
           read-only by design (R-follow-up #5 §5 OQ5-2).
         </p>
@@ -187,9 +187,9 @@ function ProjectHistoryTabBody({
   }
   if (q.isError) {
     return (
-      <Card className="border-red-500/40">
+      <Card className="border-bad-line">
         <CardBody>
-          <p className="text-sm text-red-300">Failed to load history.</p>
+          <p className="text-sm text-bad">Failed to load history.</p>
           <button
             type="button"
             onClick={() => q.refetch()}

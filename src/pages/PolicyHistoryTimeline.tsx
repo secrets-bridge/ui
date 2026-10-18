@@ -102,7 +102,7 @@ function HistoryRow({ entry, showScopeBadge }: RowProps) {
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
             <ActionPill action={entry.action} />
-            <span className="text-sm text-text">{entry.actor_display}</span>
+            <span className="text-sm text-ink">{entry.actor_display}</span>
             <span className="text-[11px] text-muted">·</span>
             <time className="text-[11px] text-muted" dateTime={entry.occurred_at}>
               {formatOccurredAt(entry.occurred_at)}
@@ -115,13 +115,13 @@ function HistoryRow({ entry, showScopeBadge }: RowProps) {
         </div>
 
         {entry.action === 'policy.delete' && (
-          <p className="text-[12px] text-muted italic">
+          <p className="text-[12px] text-muted">
             Rule deleted at this point. Snapshot below is the last-known
             state before deletion.
           </p>
         )}
         {entry.reconstructed && (
-          <p className="text-[12px] text-muted italic">
+          <p className="text-[12px] text-muted">
             Initial snapshot observed. This rule has no recorded create
             event (migration-seeded or pre-cutover); the state below is
             reconstructed from the current rule.
@@ -141,7 +141,7 @@ function HistoryRow({ entry, showScopeBadge }: RowProps) {
           onToggle={(ev) => setSnapshotOpen((ev.target as HTMLDetailsElement).open)}
           className="text-[11px]"
         >
-          <summary className="cursor-pointer text-muted hover:text-text">
+          <summary className="cursor-pointer text-muted hover:text-ink">
             Snapshot after this event
           </summary>
           <SnapshotBlock snapshot={entry.snapshot_after} />
@@ -158,13 +158,13 @@ function ActionPill({ action }: { action: PolicyRuleHistoryEntry['action'] }) {
     action === 'policy.create' ? 'created' : action === 'policy.update' ? 'updated' : 'deleted';
   const cls =
     action === 'policy.create'
-      ? 'bg-green-400/10 border-green-400/30 text-green-300'
+      ? 'bg-ok-bg border-ok-line text-ok'
       : action === 'policy.update'
-        ? 'bg-blue-400/10 border-blue-400/30 text-blue-300'
-        : 'bg-red-400/10 border-red-400/30 text-red-300';
+        ? 'bg-info-bg border-info-line text-info'
+        : 'bg-bad-bg border-bad-line text-bad';
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider ${cls}`}
+      className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-[10px] ${cls}`}
     >
       {label}
     </span>
@@ -173,7 +173,7 @@ function ActionPill({ action }: { action: PolicyRuleHistoryEntry['action'] }) {
 
 function PermissionChip({ via }: { via: 'policy.author' | 'policy.edit' }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono text-muted">
+    <span className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono text-muted">
       via {via}
     </span>
   );
@@ -181,7 +181,7 @@ function PermissionChip({ via }: { via: 'policy.author' | 'policy.edit' }) {
 
 function ScopeBadge({ scope }: { scope: 'platform' | 'project' | 'team' }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-bg/60 border border-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted">
+    <span className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] text-muted">
       {scope}
     </span>
   );
@@ -230,13 +230,13 @@ function ScalarChangeRow({
   after: unknown;
 }) {
   return (
-    <li className="flex items-center gap-2 text-text">
+    <li className="flex items-center gap-2 text-ink">
       <span className="text-muted w-24 shrink-0">{label}:</span>
-      <span className="font-mono text-red-300/80 line-through">
+      <span className="font-mono text-bad line-through">
         {String(before ?? '(unknown)')}
       </span>
       <span className="text-muted">→</span>
-      <span className="font-mono text-green-300">{String(after ?? '(unknown)')}</span>
+      <span className="font-mono text-ok">{String(after ?? '(unknown)')}</span>
     </li>
   );
 }
@@ -245,11 +245,11 @@ function WorkflowChangeRow({ change }: { change: PolicyRuleFieldChange }) {
   const before = (change.before_workflow_name as string | undefined) ?? '(deleted)';
   const after = (change.after_workflow_name as string | undefined) ?? '(deleted)';
   return (
-    <li className="flex items-center gap-2 text-text">
+    <li className="flex items-center gap-2 text-ink">
       <span className="text-muted w-24 shrink-0">Workflow:</span>
-      <span className="font-mono text-red-300/80 line-through">{before}</span>
+      <span className="font-mono text-bad line-through">{before}</span>
       <span className="text-muted">→</span>
-      <span className="font-mono text-green-300">{after}</span>
+      <span className="font-mono text-ok">{after}</span>
     </li>
   );
 }
@@ -261,13 +261,13 @@ function SelectorKeysChangeRow({ change }: { change: PolicyRuleFieldChange }) {
   const added = after.filter((k) => !before.includes(k));
   const kept = before.filter((k) => after.includes(k));
   return (
-    <li className="flex items-start gap-2 text-text">
+    <li className="flex items-start gap-2 text-ink">
       <span className="text-muted w-24 shrink-0">Selector keys:</span>
       <div className="flex flex-wrap gap-1">
         {kept.map((k) => (
           <span
             key={`k-${k}`}
-            className="inline-flex items-center rounded-full bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono text-muted"
+            className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono text-muted"
           >
             {k}
           </span>
@@ -275,7 +275,7 @@ function SelectorKeysChangeRow({ change }: { change: PolicyRuleFieldChange }) {
         {removed.map((k) => (
           <span
             key={`r-${k}`}
-            className="inline-flex items-center rounded-full bg-red-400/10 border border-red-400/30 px-2 py-0.5 text-[10px] font-mono text-red-300 line-through"
+            className="inline-flex items-center rounded-sm bg-bad-bg border border-bad-line px-2 py-0.5 text-[10px] font-mono text-bad line-through"
           >
             {k}
           </span>
@@ -283,7 +283,7 @@ function SelectorKeysChangeRow({ change }: { change: PolicyRuleFieldChange }) {
         {added.map((k) => (
           <span
             key={`a-${k}`}
-            className="inline-flex items-center rounded-full bg-green-400/10 border border-green-400/30 px-2 py-0.5 text-[10px] font-mono text-green-300"
+            className="inline-flex items-center rounded-sm bg-ok-bg border border-ok-line px-2 py-0.5 text-[10px] font-mono text-ok"
           >
             +{k}
           </span>
@@ -297,26 +297,26 @@ function SnapshotBlock({ snapshot }: { snapshot: PolicyRuleSnapshot }) {
   return (
     <dl className="mt-2 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 text-[11px]">
       <dt className="text-muted">Name:</dt>
-      <dd className="font-mono text-text">{snapshot.name ?? '(unknown)'}</dd>
+      <dd className="font-mono text-ink">{snapshot.name ?? '(unknown)'}</dd>
       <dt className="text-muted">Enabled:</dt>
-      <dd className="font-mono text-text">
+      <dd className="font-mono text-ink">
         {snapshot.enabled === undefined ? '(unknown)' : String(snapshot.enabled)}
       </dd>
       <dt className="text-muted">Priority:</dt>
-      <dd className="font-mono text-text">{snapshot.priority}</dd>
+      <dd className="font-mono text-ink">{snapshot.priority}</dd>
       <dt className="text-muted">Workflow:</dt>
-      <dd className="font-mono text-text">
+      <dd className="font-mono text-ink">
         {snapshot.workflow_name ?? '(deleted)'}
       </dd>
       <dt className="text-muted">Selector keys:</dt>
       <dd className="flex flex-wrap gap-1">
         {snapshot.selector_keys.length === 0 ? (
-          <span className="text-muted italic">none</span>
+          <span className="text-muted">none</span>
         ) : (
           snapshot.selector_keys.map((k) => (
             <span
               key={k}
-              className="inline-flex items-center rounded-full bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono"
+              className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono"
             >
               {k}
             </span>
@@ -334,7 +334,7 @@ function CorrelationFooter({ correlationID }: { correlationID: string }) {
       type="button"
       onClick={() => navigator.clipboard?.writeText(correlationID)}
       title="Click to copy full correlation ID"
-      className="text-[10px] text-muted hover:text-text font-mono"
+      className="text-[10px] text-muted hover:text-ink font-mono"
     >
       Correlation: {short} (copy)
     </button>

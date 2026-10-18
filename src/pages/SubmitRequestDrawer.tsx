@@ -355,10 +355,10 @@ export function SubmitRequestDrawer({
       >
         {/* Type toggle */}
         <div>
-          <label className="block text-xs text-muted font-medium uppercase tracking-wider mb-2">
+          <label className="block text-xs text-muted font-medium mb-2">
             Type
           </label>
-          <div className="inline-flex items-center gap-1 rounded-full bg-bg/60 border border-border p-0.5">
+          <div className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border p-0.5">
             <FlowOption
               value="read"
               current={flowType}
@@ -472,14 +472,14 @@ export function SubmitRequestDrawer({
 
           {/* Pinned details under either mode */}
           {mode === 'bound' && boundBinding?.secret && (
-            <div className="bg-bg/40 border border-border/60 rounded-lg p-3 space-y-1 text-[11px]">
+            <div className="bg-bg/40 border border-border/60 rounded-md p-3 space-y-1 text-[11px]">
               <div className="text-muted">
                 Provider: <span className="text-accent font-mono">{boundBinding.secret.provider_type}</span>
                 {' · '}
                 Cluster: <span className="text-accent font-mono">{boundBinding.secret.cluster_name}</span>
               </div>
               <div className="text-muted">
-                Ref: <span className="text-text font-mono break-all">{boundBinding.secret.secret_ref}</span>
+                Ref: <span className="text-ink font-mono break-all">{boundBinding.secret.secret_ref}</span>
               </div>
               <div className="text-muted">
                 Allowed ops:{' '}
@@ -503,7 +503,7 @@ export function SubmitRequestDrawer({
           }
         >
           {errors.keys && (
-            <div className="text-xs text-red-300 mb-2">
+            <div className="text-xs text-bad mb-2">
               {errors.keys.message ?? 'at least one key'}
             </div>
           )}
@@ -542,7 +542,7 @@ export function SubmitRequestDrawer({
                   className={
                     fields.length === 1
                       ? 'text-muted/30 cursor-not-allowed text-sm font-medium px-2 self-center'
-                      : 'text-red-300 hover:text-red-200 text-sm font-medium px-2 self-center'
+                      : 'text-bad hover:underline text-sm font-medium px-2 self-center'
                   }
                   title={
                     fields.length === 1 ? 'At least one key required' : 'Remove'
@@ -572,8 +572,8 @@ export function SubmitRequestDrawer({
           )}
 
           {matchedBinding && matchedBinding.allowed_keys !== null && (
-            <div className="mt-3 p-3 rounded-lg border border-accent/30 bg-accent/5">
-              <div className="text-[11px] text-accent uppercase tracking-wider font-medium mb-1.5">
+            <div className="mt-3 p-3 rounded-md border border-accent/30 bg-accent/5">
+              <div className="text-[11px] text-accent font-medium mb-1.5">
                 Your keys for this secret
               </div>
               <div className="flex flex-wrap gap-1">
@@ -596,7 +596,7 @@ export function SubmitRequestDrawer({
             </p>
           )}
           {projectId && targetRef.trim() && refBindings.length === 0 && !bindings.isLoading && (
-            <div className="mt-3 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/5 text-yellow-200 text-[11px]">
+            <div className="mt-3 p-3 rounded-md border border-warn-line bg-warn-bg text-warn text-[11px]">
               No binding for this secret in the selected project. Submit will
               return <span className="font-mono">out_of_scope_project</span>;
               ask an admin to bind the secret first.
@@ -613,14 +613,14 @@ export function SubmitRequestDrawer({
             placeholder="What are you doing with this? Incident #, ticket, runbook link…"
           />
           {errors.justification && (
-            <div className="text-xs text-red-300 mt-1">
+            <div className="text-xs text-bad mt-1">
               {errors.justification.message}
             </div>
           )}
         </Section>
 
         {apiError instanceof ApiError && (
-          <div className="text-xs text-red-300 bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-3 py-2">
+          <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
             {describeRevealError(apiError)}
           </div>
         )}
@@ -646,10 +646,10 @@ function FlowOption({
   return (
     <label
       className={
-        'px-4 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors ' +
+        'px-4 py-1 rounded-sm text-xs font-medium cursor-pointer transition-colors ' +
         (on
-          ? 'bg-accent/20 text-accent-bright'
-          : 'text-muted hover:text-text')
+          ? 'bg-accent/20 text-accent'
+          : 'text-muted hover:text-ink')
       }
     >
       <input
@@ -673,8 +673,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <fieldset className="border border-border/60 rounded-lg p-4 space-y-3">
-      <legend className="text-[11px] text-muted uppercase tracking-wider px-1 font-medium flex items-center gap-2">
+    <fieldset className="border border-border/60 rounded-md p-4 space-y-3">
+      <legend className="text-[11px] text-muted px-1 font-medium flex items-center gap-2">
         {title}
         {aside}
       </legend>
@@ -696,14 +696,14 @@ function Field({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-xs text-muted font-medium uppercase tracking-wider">
+      <label className="block text-xs text-muted font-medium">
         {label}
       </label>
       {children}
       {hint && !error && (
         <div className="text-[11px] text-muted/80">{hint}</div>
       )}
-      {error && <div className="text-xs text-red-300">{error}</div>}
+      {error && <div className="text-xs text-bad">{error}</div>}
     </div>
   );
 }
@@ -714,10 +714,10 @@ function ModeChip({ on, onClick, label }: { on: boolean; onClick: () => void; la
       type="button"
       onClick={onClick}
       className={
-        'px-2.5 py-1 text-[11px] rounded-full transition-colors ' +
+        'px-2.5 py-1 text-[11px] rounded-sm transition-colors ' +
         (on
           ? 'bg-accent/15 text-accent border border-accent/40'
-          : 'bg-bg/40 text-muted border border-border hover:text-text')
+          : 'bg-bg/40 text-muted border border-border hover:text-ink')
       }
     >
       {label}
@@ -876,4 +876,4 @@ function governingBinding(
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40';
+  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent ';

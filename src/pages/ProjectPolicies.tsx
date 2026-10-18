@@ -141,7 +141,7 @@ export function ProjectPolicies() {
 
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold">
+          <h3 className="text-ink font-semibold">
             Inherited (platform + team)
           </h3>
           <span className="text-muted text-xs">
@@ -163,7 +163,7 @@ export function ProjectPolicies() {
                   <div>
                     <div className="flex items-center gap-2">
                       <span
-                        className="rounded-sm bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted"
+                        className="rounded-sm bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] text-muted"
                         title={
                           r.is_team_inherited && r.team_name
                             ? `From team ${r.team_name}`
@@ -172,7 +172,7 @@ export function ProjectPolicies() {
                       >
                         {r.is_team_inherited ? 'team' : 'platform'}
                       </span>
-                      <span className="text-sm text-text">{r.name}</span>
+                      <span className="text-sm text-ink">{r.name}</span>
                     </div>
                     <div className="mt-1 text-[12px] text-muted">
                       priority {r.priority} · workflow{' '}
@@ -187,7 +187,7 @@ export function ProjectPolicies() {
                       )}
                     </div>
                   </div>
-                  <div className="text-[11px] text-muted/80 italic pt-1">
+                  <div className="text-[11px] text-muted/80 pt-1">
                     {r.is_team_inherited
                       ? `Read-only · manage on team page${r.team_name ? ` (${r.team_name})` : ''}`
                       : 'Read-only · use /admin/policies'}
@@ -201,7 +201,7 @@ export function ProjectPolicies() {
 
       <Card>
         <CardHeader>
-          <h3 className="text-text font-semibold">Project rules</h3>
+          <h3 className="text-ink font-semibold">Project rules</h3>
           <span className="text-muted text-xs">
             {scopedRules.length} rule{scopedRules.length === 1 ? '' : 's'}
           </span>
@@ -223,7 +223,7 @@ export function ProjectPolicies() {
                     className="py-3 flex items-start justify-between gap-3"
                   >
                     <div>
-                      <div className="text-sm text-text">{r.name}</div>
+                      <div className="text-sm text-ink">{r.name}</div>
                       <div className="mt-1 text-[12px] text-muted">
                         priority {r.priority} · workflow{' '}
                         {workflowName(r.workflow_id)}{' '}
@@ -247,7 +247,7 @@ export function ProjectPolicies() {
                       {editCap.allowed && (
                         <button
                           onClick={() => setConfirmDelete(r)}
-                          className="text-[12px] text-red-300 hover:underline"
+                          className="text-[12px] text-bad hover:underline"
                         >
                           Delete
                         </button>
@@ -402,7 +402,7 @@ function AuthorPolicyDrawer({
           <div className="rounded-sm border border-border bg-bg px-3 py-2 text-[12px] text-muted">
             Loading platform settings…
           </div>
-          <p className="text-[12px] text-muted italic">
+          <p className="text-[12px] text-muted">
             The priority cap is a live platform setting — authoring
             stays disabled until it loads.
           </p>
@@ -425,13 +425,13 @@ function AuthorPolicyDrawer({
         }
       >
         <div className="space-y-3">
-          <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="rounded-sm border border-bad-line bg-bad-bg px-3 py-2 text-[12px] text-bad">
             Could not load platform settings.{' '}
             {cap.error instanceof ApiError
               ? toPolicyRuleErrorToast(cap.error)
               : 'Try again shortly.'}
           </div>
-          <p className="text-[12px] text-muted italic">
+          <p className="text-[12px] text-muted">
             Authoring stays disabled until the cap is readable —
             falling back to a stale value would let scoped rules into
             the platform-reserved band.
@@ -562,13 +562,13 @@ function AuthorPolicyForm({
           <input
             type="text"
             {...register('name')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
             placeholder="my-non-prod-policy"
           />
         </Field>
 
         <fieldset className="space-y-2">
-          <legend className="text-text font-medium">
+          <legend className="text-ink font-medium">
             Match this rule when…
           </legend>
           <label className="flex items-center gap-2">
@@ -590,7 +590,7 @@ function AuthorPolicyForm({
           {envMatch === 'specific' && (
             <select
               {...register('environment_id')}
-              className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
+              className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
             >
               <option value="">— pick a non-prod env —</option>
               {nonProdEnvs.map((e) => (
@@ -601,12 +601,12 @@ function AuthorPolicyForm({
             </select>
           )}
           {errors.environment_id && (
-            <p className="text-[12px] text-red-300">
+            <p className="text-[12px] text-bad">
               {errors.environment_id.message}
             </p>
           )}
           {nonProdEnvs.length === 0 && (
-            <p className="text-[12px] text-muted italic">
+            <p className="text-[12px] text-muted">
               This project has no non-prod environments yet — admin
               creates them via /admin/projects.
             </p>
@@ -620,7 +620,7 @@ function AuthorPolicyForm({
           <input
             type="text"
             {...register('secret_ref_prefix')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text font-mono"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink font-mono"
             placeholder="billing/"
           />
         </Field>
@@ -634,7 +634,7 @@ function AuthorPolicyForm({
               server never sees operation="". */}
           <select
             {...register('operation')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
           >
             <option value="">— any operation —</option>
             {POLICY_SELECTOR_OPERATIONS.map((o) => (
@@ -651,7 +651,7 @@ function AuthorPolicyForm({
         >
           <select
             {...register('workflow_id')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
           >
             <option value="">— pick a workflow —</option>
             {eligibleWorkflows.map((w) => (
@@ -661,7 +661,7 @@ function AuthorPolicyForm({
             ))}
           </select>
           {eligibleWorkflows.length === 0 && workflows.isSuccess && (
-            <p className="text-[12px] text-muted italic">
+            <p className="text-[12px] text-muted">
               No workflows available for scoped authoring yet — admin
               enables one via /admin/workflows.
             </p>
@@ -675,7 +675,7 @@ function AuthorPolicyForm({
           <input
             type="number"
             {...register('priority')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-text"
+            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
           />
         </Field>
 
@@ -685,7 +685,7 @@ function AuthorPolicyForm({
         </label>
 
         {errorToast && (
-          <div className="rounded-sm border border-red-500/40 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="rounded-sm border border-bad-line bg-bad-bg px-3 py-2 text-[12px] text-bad">
             {errorToast}
           </div>
         )}
@@ -708,10 +708,10 @@ function Field({
   // <span>, where it has no effect.
   return (
     <label className="block [&>*+*]:mt-1">
-      <span className="text-text font-medium">{label}</span>
+      <span className="text-ink font-medium">{label}</span>
       {children}
       {error && (
-        <span className="block text-[12px] text-red-300">{error}</span>
+        <span className="block text-[12px] text-bad">{error}</span>
       )}
     </label>
   );

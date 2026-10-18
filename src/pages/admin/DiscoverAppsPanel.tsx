@@ -133,7 +133,7 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2">
+      <div className="text-xs text-warn bg-warn-bg border border-warn-line rounded-sm px-3 py-2">
         Bulk-create gitops mappings from ArgoCD discovery. The shared binding below applies to every checked app; re-run the panel for a different binding.
       </div>
 
@@ -175,13 +175,13 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
             />
           </Field>
           {!bindingValid && (
-            <div className="text-[11px] text-yellow-300">Set exactly one of the two UUIDs above.</div>
+            <div className="text-[11px] text-warn">Set exactly one of the two UUIDs above.</div>
           )}
         </fieldset>
       </div>
 
       {discover.error && (
-        <div className="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-sm px-3 py-2">
+        <div className="text-xs text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
           {stringifyError(discover.error)}
         </div>
       )}
@@ -220,7 +220,7 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
                       onChange={() => toggleGroup(g.apps)}
                       className="h-4 w-4 accent-accent"
                     />
-                    <span className="text-text text-sm font-medium">{g.namespace || '(no destination namespace)'}</span>
+                    <span className="text-ink text-sm font-medium">{g.namespace || '(no destination namespace)'}</span>
                     <span className="text-muted text-xs">· {g.apps.length} apps</span>
                   </div>
                   <ul>
@@ -234,7 +234,7 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
                             onChange={() => toggleApp(k)}
                             className="h-4 w-4 accent-accent"
                           />
-                          <span className="text-text text-sm flex-1">{a.name}</span>
+                          <span className="text-ink text-sm flex-1">{a.name}</span>
                           {a.project && (
                             <span className="text-[11px] bg-bg border border-border text-muted rounded-sm px-2">
                               {a.project}
@@ -245,8 +245,8 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
                               className={
                                 'text-[11px] rounded-sm px-2 ' +
                                 (a.sync_status === 'Synced'
-                                  ? 'bg-green-400/15 text-green-300'
-                                  : 'bg-yellow-400/15 text-yellow-300')
+                                  ? 'bg-ok-bg text-ok'
+                                  : 'bg-warn-bg text-warn')
                               }
                             >
                               {a.sync_status}
@@ -273,8 +273,8 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
         <div
           className={
             bulk.failed === 0
-              ? 'text-xs text-green-300 bg-green-400/10 border border-green-400/30 rounded-sm px-3 py-2'
-              : 'text-xs text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-sm px-3 py-2'
+              ? 'text-xs text-ok bg-ok-bg border border-ok-line rounded-sm px-3 py-2'
+              : 'text-xs text-warn bg-warn-bg border border-warn-line rounded-sm px-3 py-2'
           }
         >
           {bulk.done} created, {bulk.failed} failed.
@@ -306,7 +306,7 @@ export function DiscoverAppsPanel({ endpoint, onClose, onDone }: Props) {
         </button>
         <button
           onClick={onClose}
-          className="text-muted hover:text-text px-3 py-2 rounded-sm border border-border"
+          className="text-muted hover:text-ink px-3 py-2 rounded-sm border border-border"
         >
           Close
         </button>
@@ -357,7 +357,7 @@ function stringifyError(e: unknown): string {
 }
 
 const inputCls =
-  'w-full bg-bg border border-border rounded-sm px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent';
+  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent';
 
 function Field({
   label,

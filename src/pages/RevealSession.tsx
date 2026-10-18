@@ -332,7 +332,7 @@ export function RevealSession() {
         <PageHeader title="Reveal" />
         <Card>
           <CardBody>
-            <p className="text-red-300 text-sm">
+            <p className="text-bad text-sm">
               Missing route parameters. Go back to{' '}
               <Link to="/projects" className="text-accent underline">
                 My Projects
@@ -370,8 +370,8 @@ export function RevealSession() {
         }
       />
 
-      <div className="bg-yellow-400/10 border border-yellow-400/40 border-l-4 border-l-yellow-400 rounded-lg px-4 py-3 text-sm">
-        <div className="text-yellow-300 font-semibold">
+      <div className="bg-warn-bg border border-warn-line border-l-4 border-l-warn rounded-md px-4 py-3 text-sm">
+        <div className="text-warn font-semibold">
           These secrets are visible for a limited time.
         </div>
         <div className="text-muted text-xs mt-1">
@@ -391,8 +391,8 @@ export function RevealSession() {
         <Card>
           <CardBody>
             <div className="flex items-center gap-3 py-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-accent animate-pulse" />
-              <span className="text-text text-sm">
+              <span className="w-2.5 h-2.5 rounded-sm bg-accent animate-pulse" />
+              <span className="text-ink text-sm">
                 {phase === 'preparing' || phase === 'waiting'
                   ? 'Waiting for the agent to fetch the wraps…'
                   : phase === 'opening'
@@ -407,7 +407,7 @@ export function RevealSession() {
       {phase === 'error' && (
         <Card>
           <CardBody>
-            <div className="text-red-300 text-sm whitespace-pre-wrap">
+            <div className="text-bad text-sm whitespace-pre-wrap">
               {error ?? 'Reveal failed.'}
             </div>
             <div className="mt-3">
@@ -426,7 +426,7 @@ export function RevealSession() {
       {(phase === 'shown' || phase === 'expired') && (
         <Card>
           <CardHeader>
-            <div className="text-text font-semibold text-sm">
+            <div className="text-ink font-semibold text-sm">
               {rows.length} key{rows.length === 1 ? '' : 's'} revealed
             </div>
           </CardHeader>
@@ -442,8 +442,8 @@ export function RevealSession() {
             ))}
 
             {phase === 'expired' && (
-              <div className="bg-bg/40 border border-border rounded-lg px-4 py-3 mt-3 text-sm">
-                <div className="text-text font-semibold">
+              <div className="bg-bg/40 border border-border rounded-md px-4 py-3 mt-3 text-sm">
+                <div className="text-ink font-semibold">
                   Reveal session expired.
                 </div>
                 <div className="text-muted text-xs mt-1">
@@ -481,10 +481,10 @@ function SecretRow({
   };
 
   return (
-    <div className="bg-bg/40 border border-border/60 rounded-lg px-4 py-3 space-y-2">
+    <div className="bg-bg/40 border border-border/60 rounded-md px-4 py-3 space-y-2">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-mono text-text text-sm truncate">
+          <div className="font-mono text-ink text-sm truncate">
             {row.key_name}
           </div>
           <div className="text-muted text-[11px] font-mono">
@@ -505,7 +505,7 @@ function SecretRow({
         value={expired || !row.value ? '••••••••' : row.value}
         rows={2}
         onFocus={(e) => e.currentTarget.select()}
-        className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm font-mono break-all focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40 disabled:opacity-60"
+        className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono break-all focus:border-accent disabled:opacity-60"
         disabled={expired || !row.value}
       />
     </div>
@@ -517,16 +517,16 @@ function CountdownChip({ seconds }: { seconds: number }) {
     seconds > 30
       ? 'bg-accent/15 text-accent border-accent/40'
       : seconds > 10
-        ? 'bg-yellow-400/15 text-yellow-300 border-yellow-400/40'
-        : 'bg-red-500/15 text-red-300 border-red-500/40';
+        ? 'bg-warn-bg text-warn border-warn-line'
+        : 'bg-bad-bg text-bad border-bad-line';
   const mm = Math.max(0, Math.floor(seconds / 60));
   const ss = Math.max(0, seconds % 60);
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-mono ${tone}`}
+      className={`inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-[11px] font-mono ${tone}`}
       title="Session TTL — values auto-clear when this hits 0"
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+      <span className="w-1.5 h-1.5 rounded-sm bg-current animate-pulse" />
       {String(mm).padStart(2, '0')}:{String(ss).padStart(2, '0')}
     </span>
   );

@@ -17,6 +17,15 @@ export default [
   // parser + plugin + eslint-recommended overrides (turns off core rules
   // TypeScript already checks, e.g. no-undef) + the recommended set.
   ...tsPlugin.configs['flat/recommended'],
+  // public/theme-init.js runs as a classic script before the app.
+  {
+    files: ['public/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'script',
+      globals: { window: 'readonly', document: 'readonly' },
+    },
+  },
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {

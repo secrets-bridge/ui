@@ -119,7 +119,7 @@ function EndpointsSection() {
       {list.data && list.data.length > 0 && (
         <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+            <thead className="text-left text-muted text-[11px]">
               <tr className="border-b border-border/60">
                 <Th>Name</Th>
                 <Th>Base URL</Th>
@@ -260,7 +260,7 @@ function EndpointRow({
             }
             className={
               endpoint.enabled
-                ? 'text-accent hover:text-accent-bright text-sm font-medium'
+                ? 'text-accent hover:underline text-sm font-medium'
                 : 'text-muted/50 cursor-not-allowed text-sm font-medium'
             }
           >
@@ -268,7 +268,7 @@ function EndpointRow({
           </button>
           <button
             onClick={onDelete}
-            className="text-red-300 hover:text-red-200 text-sm font-medium"
+            className="text-bad hover:underline text-sm font-medium"
           >
             Delete
           </button>
@@ -320,7 +320,7 @@ function MappingsSection() {
       {list.data && list.data.length > 0 && (
         <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+            <thead className="text-left text-muted text-[11px]">
               <tr className="border-b border-border/60">
                 <Th>Endpoint</Th>
                 <Th>App</Th>
@@ -342,29 +342,29 @@ function MappingsSection() {
                     </span>
                   </Td>
                   <Td>
-                    <span className="font-mono text-text text-sm">
+                    <span className="font-mono text-ink text-sm">
                       {m.application_name}
                     </span>
                   </Td>
                   <Td className="text-muted">
                     {m.application_namespace || (
-                      <span className="text-muted/50 italic">—</span>
+                      <span className="text-muted/50">—</span>
                     )}
                   </Td>
                   <Td className="text-muted">
                     {m.project_name || (
-                      <span className="text-muted/50 italic">—</span>
+                      <span className="text-muted/50">—</span>
                     )}
                   </Td>
                   <Td className="text-muted">
                     {m.cluster_name || (
-                      <span className="text-muted/50 italic">—</span>
+                      <span className="text-muted/50">—</span>
                     )}
                   </Td>
                   <Td className="text-right">
                     <button
                       onClick={() => setConfirmDelete(m)}
-                      className="text-red-300 hover:text-red-200 text-sm font-medium"
+                      className="text-bad hover:underline text-sm font-medium"
                     >
                       Delete
                     </button>
@@ -423,7 +423,7 @@ function SectionHeader({
   return (
     <div className="flex items-start justify-between gap-4 mb-3">
       <div>
-        <h2 className="text-text text-base font-semibold">{title}</h2>
+        <h2 className="text-ink text-base font-semibold">{title}</h2>
         <p className="text-muted text-sm mt-1 max-w-2xl">{description}</p>
       </div>
       <div className="shrink-0">{action}</div>
@@ -443,7 +443,7 @@ function FeatureDisabledBanner() {
           <StatusPill variant="warning" tone="outline">
             disabled
           </StatusPill>
-          <span className="text-yellow-300 font-medium">
+          <span className="text-warn font-medium">
             GitOps observation integration is off on this api.
           </span>
         </div>
@@ -473,8 +473,8 @@ function isNotFound(e: unknown): boolean {
 
 function ErrorBanner({ title, err }: { title: string; err: unknown }) {
   return (
-    <Card className="border-red-500/40 p-5 text-sm mb-4">
-      <div className="text-red-300 font-medium">{title}</div>
+    <Card className="border-bad-line p-5 text-sm mb-4">
+      <div className="text-bad font-medium">{title}</div>
       <div className="text-muted mt-1">{stringifyError(err)}</div>
     </Card>
   );

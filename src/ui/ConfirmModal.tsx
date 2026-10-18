@@ -1,17 +1,13 @@
 /**
- * ConfirmModal — 420px centered card matching the Figma "Delete role?"
- * frame. Title in bold, muted description, optional inline error
- * banner with red border-left for API failures (e.g. "409 · Role is
- * referenced by 2 policies"), and a footer with Cancel + danger CTA.
- *
- * Replaces the per-page ConfirmModal copies that the admin pages
- * each carried locally.
+ * ConfirmModal — a yes/no Dialog for destructive or irreversible
+ * actions (sign out, revoke, delete). Shows an API failure inline with
+ * its status and keeps the dialog open so the user can retry or back
+ * out. While the call is in flight the dialog can't be dismissed.
  */
-
-import { useEffect } from 'react';
 
 import { ApiError } from '../api/client';
 import { Button } from './Button';
+import { Dialog } from './Dialog';
 
 interface Props {
   title: string;
@@ -34,57 +30,42 @@ export function ConfirmModal({
   loading,
   error,
 }: Props) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
-        onClick={onCancel}
-        aria-label="Close"
-      />
-      <div className="relative bg-surface border border-border rounded-2xl w-[440px] max-w-full p-6 space-y-4 shadow-2xl">
-        <div className="text-text font-bold text-xl tracking-tight">{title}</div>
-        <div className="text-muted text-sm leading-relaxed">{body}</div>
-
-        {error instanceof ApiError && (
-          <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-            <div className="text-red-300 font-semibold mb-0.5">
-              {error.status} · {statusLabel(error.status)}
-            </div>
-            <div className="text-red-200/90 text-xs">{error.message}</div>
-          </div>
-        )}
-        {error != null && !(error instanceof ApiError) && (
-          <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-            <div className="text-red-300 font-semibold mb-0.5">Network error</div>
-            <div className="text-red-200/90 text-xs">
-              {error instanceof Error ? error.message : String(error)}
-            </div>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between pt-2 border-t border-border/60">
-          <Button variant="secondary" size="md" onClick={onCancel}>
+    <Dialog
+      title={title}
+      onClose={onCancel}
+      dismissible={!loading}
+      actions={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={loading}>
             Cancel
           </Button>
           <Button
             variant={danger ? 'danger' : 'primary'}
-            size="md"
             disabled={loading}
+            aria-busy={loading}
             onClick={() => void onConfirm()}
           >
             {loading ? 'Working…' : confirmText}
           </Button>
+        </>
+      }
+    >
+      <p className="text-muted">{body}</p>
+
+      {error != null && (
+        <div role="alert" className="rounded-md border border-bad-line px-3.5 py-3 text-ui">
+          <div className="font-semibold text-bad">
+            {error instanceof ApiError
+              ? `${error.status} · ${statusLabel(error.status)}`
+              : 'Network error'}
+          </div>
+          <div className="mt-0.5 text-ink">
+            {error instanceof Error ? error.message : String(error)}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 }
 

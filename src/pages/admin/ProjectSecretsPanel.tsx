@@ -60,8 +60,8 @@ export function ProjectSecretsPanel({ project }: { project: Project }) {
   }
   if (bindings.error) {
     return (
-      <Card className="border-red-500/40 p-5 text-sm">
-        <span className="text-red-300">Failed to load bindings:</span>{' '}
+      <Card className="border-bad-line p-5 text-sm">
+        <span className="text-bad">Failed to load bindings:</span>{' '}
         <span className="text-muted">{(bindings.error as Error).message}</span>
       </Card>
     );
@@ -74,7 +74,7 @@ export function ProjectSecretsPanel({ project }: { project: Project }) {
       <Card className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-text font-semibold">Bound secrets</h3>
+            <h3 className="text-ink font-semibold">Bound secrets</h3>
             <p className="text-muted text-xs mt-1">
               Which discovered catalog rows members of{' '}
               <span className="font-mono text-accent">{project.name}</span> can
@@ -97,7 +97,7 @@ export function ProjectSecretsPanel({ project }: { project: Project }) {
       ) : (
         <Card className="overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-bg/40 text-left text-muted text-[11px] uppercase tracking-wider">
+            <thead className="bg-bg/40 text-left text-muted text-[11px]">
               <tr>
                 <th className="px-5 py-2 font-medium">Secret ref</th>
                 <th className="px-5 py-2 font-medium">Cluster</th>
@@ -230,7 +230,7 @@ function BindingRow({
           <button
             type="button"
             onClick={onUnbind}
-            className="text-red-300 hover:text-red-200 text-sm font-medium"
+            className="text-bad hover:underline text-sm font-medium"
           >
             Unbind
           </button>
@@ -351,7 +351,7 @@ function BindForm({
       />
 
       {errors.root?.message && (
-        <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-sm px-3 py-2">
+        <div className="text-sm text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
           {errors.root.message}
         </div>
       )}
@@ -441,7 +441,7 @@ function EditForm({
       />
 
       {errors.root?.message && (
-        <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-sm px-3 py-2">
+        <div className="text-sm text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
           {errors.root.message}
         </div>
       )}
@@ -478,7 +478,7 @@ function KeyPolicyFields({
       label="Allowed keys"
       hint="Tick to allow every key the secret exposes. Otherwise list the allowed keys, comma-separated."
     >
-      <label className="flex items-center gap-2 text-sm text-text mb-2">
+      <label className="flex items-center gap-2 text-sm text-ink mb-2">
         <input type="checkbox" {...registerAllowAll} className="rounded-sm" />
         Allow all keys
       </label>
@@ -493,7 +493,7 @@ function KeyPolicyFields({
         />
       )}
       {keysError && (
-        <p className="text-xs text-red-300 mt-1">{keysError}</p>
+        <p className="text-xs text-bad mt-1">{keysError}</p>
       )}
     </Field>
   );
@@ -516,7 +516,7 @@ function OpsField({
         {OP_OPTIONS.map((op) => (
           <label key={op} className="flex items-center gap-2 text-sm">
             <input type="checkbox" value={op} {...register} className="rounded-sm" />
-            <span className="text-text font-mono">{op}</span>
+            <span className="text-ink font-mono">{op}</span>
           </label>
         ))}
       </div>
@@ -537,12 +537,12 @@ function Field({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-[11px] text-muted font-medium uppercase tracking-wider">
+      <label className="block text-[11px] text-muted font-medium">
         {label}
       </label>
       {hint && <p className="text-xs text-muted mb-1">{hint}</p>}
       {children}
-      {error && <p className="text-xs text-red-300 mt-1">{error}</p>}
+      {error && <p className="text-xs text-bad mt-1">{error}</p>}
     </div>
   );
 }

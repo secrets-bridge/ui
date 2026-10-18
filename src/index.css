@@ -1,50 +1,184 @@
 @import 'tailwindcss';
 
 /*
- * Brand tokens synced from the Figma file "Secrets Bridge — Brand"
- * (version 2358961245452574711, 2026-05-29). Mapping notes in
- * `secrets-bridge/skills/ui/design/tokens/mapping.md`.
+ * Secrets Bridge design tokens (console handoff, slice 1, 2026-10-17).
+ * Values come from the design system's tokens.json; light is the
+ * default and dark uses the same names. The theme is chosen by
+ * `data-theme` on <html>, which public/theme-init.js sets before the
+ * first paint (stored choice, else the system setting). The media
+ * query covers a page that runs no script.
  *
- * Re-run the sync via `secrets-bridge/skills/ui/design/tokens/sync.sh`
- * after every design rev; then update the values here to match.
- * (Tailwind 4 CSS-first config; this replaces tailwind.config.js.)
+ * Never copy a hex value into a component. Use the utilities below
+ * (bg-surface, text-muted, border-edge, text-ok and so on).
  */
+:root,
+[data-theme='light'] {
+  --bg: #f6f5f1;
+  --surface: #ffffff;
+  --sunken: #efeee9;
+  --ink: #15171c;
+  --muted: #5b606b;
+  --border: #dddbd4;
+  --rule: #e8e6e0;
+  --edge: #7e838d;
+  --accent: #3141c8;
+  --on-accent: #ffffff;
+  --accent-soft: #e9ebfb;
+  --accent-line: #bfc5f3;
+  --ok: #1e7a46;
+  --ok-bg: #e6f4ec;
+  --ok-line: #a7d7ba;
+  --warn: #7a5200;
+  --warn-bg: #fff3d6;
+  --warn-line: #eacb86;
+  --bad: #b3261e;
+  --bad-bg: #fdecea;
+  --bad-line: #f1b8b3;
+  --info: #3e4a5c;
+  --info-bg: #eef0f3;
+  --info-line: #c9ced8;
+  --scrim: rgba(21, 23, 28, 0.36);
+  --overlay: 0 1px 2px rgba(21, 23, 28, 0.06), 0 16px 40px rgba(21, 23, 28, 0.16);
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --bg: #0f1013;
+  --surface: #17191e;
+  --sunken: #1d1f25;
+  --ink: #ececee;
+  --muted: #a2a6af;
+  --border: #2b2e36;
+  --rule: #22252b;
+  --edge: #686d7a;
+  --accent: #9aa3ff;
+  --on-accent: #0f1013;
+  --accent-soft: #1d2140;
+  --accent-line: #3a4285;
+  --ok: #6fcf97;
+  --ok-bg: #132219;
+  --ok-line: #24432f;
+  --warn: #f2c14e;
+  --warn-bg: #2a2210;
+  --warn-line: #4e4024;
+  --bad: #ff8a80;
+  --bad-bg: #2c1513;
+  --bad-line: #4e2522;
+  --info: #b7c0cf;
+  --info-bg: #1b1f27;
+  --info-line: #323846;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --overlay: 0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 44px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0f1013;
+    --surface: #17191e;
+    --sunken: #1d1f25;
+    --ink: #ececee;
+    --muted: #a2a6af;
+    --border: #2b2e36;
+    --rule: #22252b;
+    --edge: #686d7a;
+    --accent: #9aa3ff;
+    --on-accent: #0f1013;
+    --accent-soft: #1d2140;
+    --accent-line: #3a4285;
+    --ok: #6fcf97;
+    --ok-bg: #132219;
+    --ok-line: #24432f;
+    --warn: #f2c14e;
+    --warn-bg: #2a2210;
+    --warn-line: #4e4024;
+    --bad: #ff8a80;
+    --bad-bg: #2c1513;
+    --bad-line: #4e2522;
+    --info: #b7c0cf;
+    --info-bg: #1b1f27;
+    --info-line: #323846;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --overlay: 0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 44px rgba(0, 0, 0, 0.55);
+    color-scheme: dark;
+  }
+}
+
+:root {
+  --control-md: 32px;
+  --control-sm: 28px;
+  --control-touch: 44px;
+  --sidebar: 216px;
+  --rail: 260px;
+}
+
+/* `dark:` follows the resolved theme, not only the system setting. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/*
+ * Only token colours exist. Tailwind's default palette is cleared so a
+ * stray `text-red-300` generates nothing instead of a colour that fails
+ * contrast in one of the two themes.
+ */
+@theme inline {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-rule: var(--rule);
+  --color-edge: var(--edge);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-ok-line: var(--ok-line);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-line: var(--warn-line);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+  --color-bad-line: var(--bad-line);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-info-line: var(--info-line);
+  --color-scrim: var(--scrim);
+
+  /* Older pages say text-text for body copy; it is ink. */
+  --color-text: var(--ink);
+
+  --shadow-overlay: var(--overlay);
+}
+
 @theme {
-  /*
-   * In the Tailwind 3 config `blue`, `purple` and `teal` were single
-   * brand values that replaced the default scales, so classes such as
-   * bg-blue-400 generated nothing. Tailwind 4 would add the default
-   * scales back next to the brand value; clearing them keeps the
-   * rendered UI identical to v3.
-   */
-  --color-blue-*: initial;
-  --color-purple-*: initial;
-  --color-teal-*: initial;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Semantic surfaces. */
-  --color-bg: #0b1220; /* Navy 900 — app canvas (deepest) */
-  --color-surface: #0f172a; /* Dark Navy — cards / drawers / modals (raised) */
-  --color-text: #cbd5e1; /* Slate 300 — primary readable text */
-  --color-muted: #64748b; /* Slate 500 — secondary text */
-  --color-accent: #06b6d4; /* Cyan — primary CTA, selected chips */
-  --color-border: #1e293b; /* derived (slate-800) — not yet in Figma */
+  /* Square corners carry the brand: 4px is the largest radius. */
+  --radius-*: initial;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --radius-3xl: 4px;
 
-  /* Extended brand accents (use sparingly, intent-driven). */
-  --color-accent-bright: #22d3ee; /* Cyan Bright — hover, brand emphasis */
-  --color-teal: #14b8a6;
-  --color-blue: #2563eb;
-  --color-purple: #8b5cf6;
-  --color-success: #22c55e;
-
-  --font-sans: Inter, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --spacing-sidebar: 216px;
+  --spacing-rail: 260px;
 
   /*
-   * Tailwind 3 line-heights for the default type scale. v4 made them
-   * unitless ratios, which an element inheriting from a text-sm parent
-   * but setting only an arbitrary size (text-[11px] table headers,
-   * pills) scales down: header rows came out ~5px shorter. Absolute
-   * values keep the v3 metrics.
+   * Tailwind 3 line-heights for the default size scale, kept so pages
+   * that set only a size keep their v3 metrics.
    */
   --text-xs--line-height: 1rem;
   --text-sm--line-height: 1.25rem;
@@ -55,83 +189,40 @@
   --text-3xl--line-height: 2.25rem;
   --text-4xl--line-height: 2.5rem;
 
-  /*
-   * Brand type ramp from Figma's 6 text styles. Numeric tracking
-   * preserved verbatim from the source; line-heights rounded to
-   * sensible values.
-   */
-  --text-display: 64px;
-  --text-display--line-height: 78px;
-  --text-display--letter-spacing: -1.5px;
-  --text-display--font-weight: 800;
-  --text-h1: 40px;
-  --text-h1--line-height: 48px;
-  --text-h1--letter-spacing: -0.5px;
-  --text-h1--font-weight: 700;
-  --text-h2: 26px;
-  --text-h2--line-height: 32px;
-  --text-h2--letter-spacing: -0.3px;
-  --text-h2--font-weight: 700;
-  --text-eyebrow: 14px;
-  --text-eyebrow--line-height: 17px;
-  --text-eyebrow--letter-spacing: 3px;
-  --text-eyebrow--font-weight: 700;
-  --text-body: 18px;
-  --text-body--line-height: 22px;
-  --text-body--font-weight: 400;
-  --text-caption: 13px;
-  --text-caption--line-height: 16px;
-  --text-caption--letter-spacing: 0.3px;
-  --text-caption--font-weight: 500;
-
-  /* Gradient (Cyan→Blue) from the Foundations page. */
-  --background-image-brand-gradient: linear-gradient(
-    90deg,
-    #22d3ee 0%,
-    #2563eb 100%
-  );
+  /* Console type styles. Plex Mono is added with `font-mono`. */
+  --text-console-title: 20px;
+  --text-console-title--line-height: 24px;
+  --text-console-title--font-weight: 600;
+  --text-console-title--letter-spacing: -0.01em;
+  --text-dialog-title: 17px;
+  --text-dialog-title--line-height: 22px;
+  --text-dialog-title--font-weight: 600;
+  --text-block-heading: 13.5px;
+  --text-block-heading--line-height: 20px;
+  --text-block-heading--font-weight: 600;
+  --text-body: 13.5px;
+  --text-body--line-height: 20px;
+  --text-ui: 13px;
+  --text-ui--line-height: 18px;
+  --text-caption: 12.5px;
+  --text-caption--line-height: 18px;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-mono: 12.5px;
+  --text-mono--line-height: 18px;
+  --text-mono-small: 11.5px;
+  --text-mono-small--line-height: 16px;
 }
 
-/*
-  The default border color has changed to `currentcolor` in Tailwind CSS v4,
-  so we've added these compatibility styles to make sure everything still
-  looks the same as it did with Tailwind CSS v3.
-
-  If we ever want to remove these styles, we need to add an explicit border
-  color utility to any element that depends on these defaults.
-*/
 @layer base {
   *,
   ::after,
   ::before,
   ::backdrop,
   ::file-selector-button {
-    border-color: var(--color-gray-200, currentcolor);
+    border-color: var(--color-border);
   }
 
-  /*
-   * Tailwind 3 preflight defaults that v4 dropped: placeholders were
-   * gray-400 (v4: current text color at 50%) and buttons used a
-   * pointer cursor (v4: the browser default).
-   */
-  input::placeholder,
-  textarea::placeholder {
-    color: #9ca3af;
-  }
-
-  button:not(:disabled),
-  [role='button']:not(:disabled) {
-    cursor: pointer;
-  }
-}
-
-/*
- * In the base layer so utilities still win: Tailwind 4 emits real
- * cascade layers, and unlayered CSS beats every layer regardless of
- * specificity. Left unlayered, this font-family would override the
- * `font-sans` (Inter) class on <body>, which it never did under v3.
- */
-@layer base {
   html,
   body,
   #root {
@@ -139,7 +230,45 @@
   }
 
   body {
-    @apply bg-bg text-text;
-    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    line-height: 20px;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-muted);
+    opacity: 1;
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* 2px accent ring with a 2px gap on every interactive element. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* Headings and regions that receive focus on route change. */
+  [tabindex='-1']:focus {
+    outline: none;
+  }
+}
+
+/* Nothing in the product needs animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }

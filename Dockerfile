@@ -27,8 +27,8 @@ COPY vite.config.ts postcss.config.js ./
 COPY index.html ./
 COPY src ./src
 # Vite copies everything under `public/` to the dist/ root at build
-# time. Without this COPY, favicon.svg / favicon-512.png / robots.txt
-# / any top-level static asset never makes it into the image — nginx
+# time. Without this COPY, favicon.svg, theme-init.js and any other
+# top-level static asset never make it into the image. nginx
 # then serves index.html for /favicon.svg via the SPA fallback, which
 # the browser interprets as "no favicon".
 COPY public ./public

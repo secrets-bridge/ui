@@ -37,7 +37,10 @@ import { ApiError } from '../api/client';
 import { useMFAChallenge, useMFAFactors, useMFAVerify } from '../api/mfa';
 import type { MFAFactor, MFAFactorKind } from '../api/mfa';
 import { assertionResponseToJSON, toRequestOptions } from '../api/webauthn';
+import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
+import { Dialog } from '../ui/Dialog';
+import { Field, Input, Select } from '../ui/Field';
 import { useAuth } from './AuthContext';
 import {
   resolveStepUp,
@@ -112,15 +115,6 @@ function StepUpModal({
   const [pickedFactor, setPickedFactor] = useState<MFAFactor | null>(null);
   const [pickedKind, setPickedKind] = useState<MFAFactorKind | null>(null);
 
-  // Escape closes as a cancel — user explicitly bailed.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
-
   // Auto-navigate to /me/mfa if the factor list resolves and the user
   // has zero — they shouldn't see the picker at all. That's a cancel
   // from the step-up perspective (no verify can happen here).
@@ -140,48 +134,50 @@ function StepUpModal({
     []
   );
 
+  // With only an authenticator app enrolled there is nothing to pick:
+  // go straight to the code. Adjusted during render, like the other
+  // derived-state transitions in this codebase.
+  const list = factors.data ?? [];
+  const totpOnly =
+    list.length > 0 && list.every((f) => f.kind === 'totp');
+  if (stage === 'picker' && totpOnly) {
+    setPickedKind('totp');
+    setPickedFactor(list[0]);
+    setStage('totp');
+  }
+
+  // Escape, the scrim and Cancel all close the dialog as a cancel.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        className="absolute inset-0 bg-bg/80 backdrop-blur-xs"
-        onClick={onCancel}
-        aria-label="Close"
-      />
-      <div className="relative bg-surface border border-border rounded-2xl w-[480px] max-w-full p-6 space-y-4 shadow-2xl">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-text font-bold text-xl tracking-tight">
-              Confirm with MFA
-            </div>
-            <div className="text-muted text-xs mt-1">
-              This action needs a fresh second factor. Once verified,
-              you have 15 minutes before being asked again.
-            </div>
-          </div>
-        </div>
+    <Dialog
+      title="Confirm it's you"
+      onClose={onCancel}
+      actions={
+        <Button variant="secondary" onClick={onCancel}>
+          Cancel
+        </Button>
+      }
+    >
+      <p className="text-muted">
+        This action needs your second factor. After you confirm, you
+        won't be asked again for 15 minutes.
+      </p>
 
-        {stage === 'picker' && (
-          <FactorPicker factors={factors.data ?? []} loading={factors.isLoading} onPick={start} />
-        )}
-        {stage === 'totp' && (
-          <TOTPVerify
-            factors={(factors.data ?? []).filter((f) => f.kind === 'totp')}
-            initialFactor={pickedFactor}
-            onBack={() => setStage('picker')}
-            onSuccess={onVerified}
-          />
-        )}
-        {stage === 'webauthn' && pickedKind === 'webauthn' && (
-          <WebAuthnVerify onBack={() => setStage('picker')} onSuccess={onVerified} />
-        )}
-
-        <div className="flex items-center justify-end pt-3 border-t border-border/60">
-          <Button variant="secondary" size="sm" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      </div>
-    </div>
+      {stage === 'picker' && (
+        <FactorPicker factors={list} loading={factors.isLoading} onPick={start} />
+      )}
+      {stage === 'totp' && (
+        <TOTPVerify
+          factors={list.filter((f) => f.kind === 'totp')}
+          initialFactor={pickedFactor}
+          canGoBack={!totpOnly}
+          onBack={() => setStage('picker')}
+          onSuccess={onVerified}
+        />
+      )}
+      {stage === 'webauthn' && pickedKind === 'webauthn' && (
+        <WebAuthnVerify onBack={() => setStage('picker')} onSuccess={onVerified} />
+      )}
+    </Dialog>
   );
 }
 
@@ -197,7 +193,7 @@ function FactorPicker({
   onPick: (kind: MFAFactorKind, factor?: MFAFactor) => void;
 }) {
   if (loading) {
-    return <div className="text-muted text-sm">Loading factors…</div>;
+    return <p className="text-muted">Loading your factors…</p>;
   }
   const hasWebAuthn = factors.some((f) => f.kind === 'webauthn');
   const totpFactors = factors.filter((f) => f.kind === 'totp');
@@ -207,11 +203,11 @@ function FactorPicker({
         <button
           type="button"
           onClick={() => onPick('webauthn')}
-          className="w-full text-left bg-bg/40 hover:bg-bg/60 border border-border rounded-lg px-4 py-3 transition-colors"
+          className="w-full rounded-md border border-edge bg-surface px-3.5 py-2.5 text-left hover:bg-sunken"
         >
-          <div className="text-text font-medium text-sm">Use a security key</div>
-          <div className="text-muted text-xs mt-0.5">
-            Yubikey, Touch ID, Windows Hello — whichever you registered.
+          <div className="text-ui font-medium text-ink">Use a security key</div>
+          <div className="mt-0.5 text-caption text-muted">
+            A hardware key, Touch ID or Windows Hello, whichever you registered.
           </div>
         </button>
       )}
@@ -219,21 +215,21 @@ function FactorPicker({
         <button
           type="button"
           onClick={() => onPick('totp', totpFactors[0])}
-          className="w-full text-left bg-bg/40 hover:bg-bg/60 border border-border rounded-lg px-4 py-3 transition-colors"
+          className="w-full rounded-md border border-edge bg-surface px-3.5 py-2.5 text-left hover:bg-sunken"
         >
-          <div className="text-text font-medium text-sm">Use an authenticator app</div>
-          <div className="text-muted text-xs mt-0.5">
+          <div className="text-ui font-medium text-ink">Use an authenticator app</div>
+          <div className="mt-0.5 text-caption text-muted">
             {totpFactors.length === 1
               ? totpFactors[0].label
-              : `${totpFactors.length} TOTP factors — pick one after starting`}
+              : `${totpFactors.length} apps registered. Pick one on the next step.`}
           </div>
         </button>
       )}
       {factors.length === 0 && (
-        <div className="text-muted text-sm">
-          You haven't enrolled any factors yet. Redirecting to
-          enrollment…
-        </div>
+        <p className="text-muted">
+          You haven't added a second factor yet. Taking you to Security
+          settings…
+        </p>
       )}
     </div>
   );
@@ -244,11 +240,13 @@ function FactorPicker({
 function TOTPVerify({
   factors,
   initialFactor,
+  canGoBack,
   onBack,
   onSuccess,
 }: {
   factors: MFAFactor[];
   initialFactor: MFAFactor | null;
+  canGoBack: boolean;
   onBack: () => void;
   onSuccess: () => void;
 }) {
@@ -259,16 +257,24 @@ function TOTPVerify({
   const [code, setCode] = useState('');
   const [challengeID, setChallengeID] = useState<string | null>(null);
 
+  // A challenge is single-shot: the api consumes it on every verify,
+  // right or wrong. Ask for a fresh one up front and after each failed
+  // attempt, so a mistyped code can simply be typed again.
+  const newChallenge = async () => {
+    try {
+      const out = await challenge.mutateAsync({ kind: 'totp' });
+      return out.challenge_id;
+    } catch (err) {
+      handleMFAEdgeCase(err, navigate);
+      return null;
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const out = await challenge.mutateAsync({ kind: 'totp' });
-        if (!cancelled) setChallengeID(out.challenge_id);
-      } catch (err) {
-        handleMFAEdgeCase(err, navigate);
-      }
-    })();
+    void newChallenge().then((id) => {
+      if (!cancelled) setChallengeID(id);
+    });
     return () => {
       cancelled = true;
     };
@@ -290,62 +296,68 @@ function TOTPVerify({
       onSuccess();
     } catch (err) {
       handleMFAEdgeCase(err, navigate);
+      setCode('');
+      setChallengeID(null);
+      setChallengeID(await newChallenge());
     }
   };
 
   return (
-    <div className="space-y-4">
+    <form
+      className="flex flex-col gap-3.5"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
       {factors.length > 1 && (
-        <div>
-          <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
-            Which app
-          </label>
-          <select
-            value={factorId}
-            onChange={(e) => setFactorId(e.target.value)}
-            className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-sm focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
-          >
-            {factors.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <Field id="stepup-factor" label="Authenticator app">
+          {(p) => (
+            <Select {...p} value={factorId} onChange={(e) => setFactorId(e.target.value)}>
+              {factors.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       )}
-      <div>
-        <label className="block text-[11px] text-muted font-medium uppercase tracking-wider mb-1.5">
-          6-digit code
-        </label>
-        <input
-          type="text"
-          value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          placeholder="123456"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          maxLength={6}
-          autoFocus
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-text text-base font-mono tracking-widest text-center focus:outline-hidden focus:border-accent focus:ring-1 focus:ring-accent/40"
-        />
-      </div>
+      <Field id="stepup-code" label="Authentication code" hint="The 6-digit code from your authenticator app.">
+        {(p) => (
+          <Input
+            {...p}
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            autoFocus
+            data-autofocus
+            className="w-40 font-mono tracking-[0.3em]"
+          />
+        )}
+      </Field>
       {(challenge.isError || verify.isError) && (
         <ErrorBanner err={challenge.error ?? verify.error} />
       )}
-      <div className="flex items-center justify-between gap-2">
-        <Button variant="secondary" size="sm" onClick={onBack}>
-          Back
-        </Button>
+      <div className="flex items-center gap-2.5">
         <Button
+          type="submit"
           variant="primary"
-          size="md"
-          onClick={submit}
           disabled={!challengeID || codeTrim.length !== 6 || verify.isPending}
+          aria-busy={verify.isPending}
         >
-          {verify.isPending ? 'Verifying…' : 'Verify'}
+          {verify.isPending ? 'Checking…' : 'Confirm'}
         </Button>
+        {canGoBack && (
+          <Button variant="quiet" onClick={onBack}>
+            Use another factor
+          </Button>
+        )}
       </div>
-    </div>
+    </form>
   );
 }
 
@@ -419,26 +431,22 @@ function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
   }, []);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-bg/40 border border-border rounded-lg px-4 py-3 text-sm">
-        <div className="text-text font-medium">Tap your security key</div>
-        <div className="text-muted text-xs mt-1">
-          Or use your built-in biometrics (Touch ID, Windows Hello,
-          Face ID). The browser is waiting.
-        </div>
-      </div>
+    <div className="flex flex-col gap-3.5">
+      <Banner title="Use your security key">
+        Tap the key, or use Touch ID, Windows Hello or Face ID. The browser
+        is waiting for it.
+      </Banner>
       {browserError && (
-        <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-          <div className="text-red-300 font-semibold mb-0.5">Authenticator declined</div>
-          <div className="text-red-200/90 text-xs">{browserError}</div>
-        </div>
+        <Banner tone="error" title="The authenticator didn't confirm">
+          {browserError}
+        </Banner>
       )}
-      <div className="flex items-center justify-between gap-2">
-        <Button variant="secondary" size="sm" onClick={onBack} disabled={inFlight}>
-          Back
+      <div className="flex items-center gap-2.5">
+        <Button variant="primary" onClick={retry} disabled={inFlight} aria-busy={inFlight}>
+          {inFlight ? 'Waiting for the key…' : 'Try again'}
         </Button>
-        <Button variant="primary" size="md" onClick={retry} disabled={inFlight}>
-          {inFlight ? 'Waiting…' : 'Try again'}
+        <Button variant="quiet" onClick={onBack} disabled={inFlight}>
+          Use another factor
         </Button>
       </div>
     </div>
@@ -448,15 +456,26 @@ function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
 // --- shared bits ----------------------------------------------------
 
 function ErrorBanner({ err }: { err: unknown }) {
+  // A wrong or stale code is the common case: say so plainly. The
+  // original action has not run yet, so nothing happened.
+  if (err instanceof ApiError && (err.status === 400 || err.status === 410)) {
+    return (
+      <Banner tone="error" title="That code wasn't accepted.">
+        Nothing has happened yet. Check the code in your authenticator app and try again.
+      </Banner>
+    );
+  }
+  if (err instanceof ApiError && err.status === 429) {
+    return (
+      <Banner tone="error" title="Too many attempts.">
+        Wait a few minutes before you try again.
+      </Banner>
+    );
+  }
   return (
-    <div className="bg-red-500/10 border border-red-500/40 border-l-4 border-l-red-500 rounded-lg px-4 py-3 text-sm">
-      <div className="text-red-300 font-semibold mb-0.5">
-        {err instanceof ApiError ? `${err.status} · request failed` : 'Network error'}
-      </div>
-      <div className="text-red-200/90 text-xs">
-        {err instanceof Error ? err.message : String(err)}
-      </div>
-    </div>
+    <Banner tone="error" title={err instanceof ApiError ? `${err.status} · request failed` : 'Network error'}>
+      {err instanceof Error ? err.message : String(err)}
+    </Banner>
   );
 }
 

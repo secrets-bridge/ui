@@ -63,8 +63,8 @@ export function Policies() {
       />
 
       {list.isError && (
-        <Card className="border-red-500/40 p-5 text-sm mb-4">
-          <div className="text-red-300 font-medium">Failed to load policies</div>
+        <Card className="border-bad-line p-5 text-sm mb-4">
+          <div className="text-bad font-medium">Failed to load policies</div>
           <div className="text-muted mt-1">{stringifyError(list.error)}</div>
         </Card>
       )}
@@ -82,7 +82,7 @@ export function Policies() {
         <>
           <Card className="overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="text-left text-muted text-[11px] uppercase tracking-wider">
+              <thead className="text-left text-muted text-[11px]">
                 <tr className="border-b border-border/60">
                   <Th>Name</Th>
                   <Th>Anchor</Th>
@@ -180,19 +180,19 @@ function PolicyRow({
         </div>
       </Td>
       <Td>
-        <span className="text-[11px] uppercase tracking-wide text-muted">
+        <span className="text-[11px] text-muted">
           {p.team_id ? 'team' : p.project_id ? 'project' : 'platform'}
         </span>
       </Td>
       <Td>
         {selectorKeys.length === 0 ? (
-          <span className="text-muted text-xs italic">match-all</span>
+          <span className="text-muted text-xs">match-all</span>
         ) : (
           <div className="flex flex-wrap gap-1">
             {selectorKeys.map(([k, v]) => (
               <span
                 key={k}
-                className="inline-flex items-center gap-1 rounded-full bg-bg/60 border border-border px-2.5 py-0.5 text-[11px] font-mono"
+                className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border px-2.5 py-0.5 text-[11px] font-mono"
               >
                 <span className="text-muted">{k}</span>
                 <span className="text-muted/50">=</span>
@@ -203,7 +203,7 @@ function PolicyRow({
         )}
       </Td>
       <Td>
-        <span className="font-mono text-text text-sm">{workflowName}</span>
+        <span className="font-mono text-ink text-sm">{workflowName}</span>
       </Td>
       <Td>
         <span className="font-mono text-accent text-sm">{p.priority}</span>
@@ -226,13 +226,13 @@ function PolicyRow({
               visibility is admin-only per §4 C4. */}
           <Link
             to={`/admin/policies/${p.id}`}
-            className="text-accent hover:text-accent-bright text-sm font-medium"
+            className="text-accent hover:underline text-sm font-medium"
           >
             History
           </Link>
           <button
             onClick={onEdit}
-            className="text-accent hover:text-accent-bright text-sm font-medium"
+            className="text-accent hover:underline text-sm font-medium"
           >
             Edit
           </button>
@@ -243,7 +243,7 @@ function PolicyRow({
             className={
               sys
                 ? 'text-muted/50 cursor-not-allowed text-sm font-medium'
-                : 'text-red-300 hover:text-red-200 text-sm font-medium'
+                : 'text-bad hover:underline text-sm font-medium'
             }
           >
             Delete
