@@ -151,7 +151,9 @@ export interface ProjectSecretBinding {
    * Environment this binding is scoped to, or null for a project-wide
    * binding. An env-scoped binding only governs a request made in that
    * environment; a request with a blank or other environment is refused
-   * with 403 `out_of_scope_project` (api#201, API-S-03).
+   * with 403 `out_of_scope_project` (api#201, API-S-03). A project-wide
+   * binding governs requests in every environment of the project,
+   * prod included.
    */
   environment_id?: string | null;
   created_at?: string;
@@ -291,17 +293,22 @@ export interface ProjectSecretBindingInput {
   secret_id: string;
   allowed_keys?: string[] | null;
   allowed_ops?: string[];
+  /** An environment of the project, or null for the whole project. */
+  environment_id?: string | null;
   created_by?: string;
 }
 
 /**
- * Body shape for PUT /projects/:id/secrets/:secret_id. Both keys are
- * always sent: the api keeps the stored value for an absent key, so
- * "allow all keys" has to be an explicit null.
+ * Body shape for PUT /projects/:id/secrets/:secret_id. The api keeps
+ * the stored value for an absent key, so "allow all keys" and "whole
+ * project" have to be an explicit null (api#249). The console always
+ * sends every key.
  */
 export interface ProjectSecretBindingUpdate {
   allowed_keys: string[] | null;
   allowed_ops: string[];
+  /** An environment of the project, or null for the whole project. */
+  environment_id: string | null;
 }
 
 /**

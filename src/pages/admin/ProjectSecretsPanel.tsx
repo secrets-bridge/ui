@@ -12,7 +12,11 @@
  *
  * `allowed_keys` null means every key; an empty list is never sent.
  * A binding may be scoped to one environment (`environment_id`, api#201);
- * the table shows which one, or "Whole project".
+ * the table shows which one, or "Whole project". Bind and Edit both pick
+ * the environment explicitly and always send `environment_id` (null for
+ * the whole project), so Edit never changes the scope by omission
+ * (ui#143, api#249). The request flow offers a binding in its own
+ * environment, and a whole-project binding in every environment.
  */
 
 import { useMemo, useState } from 'react';
@@ -53,6 +57,18 @@ const OP_LABEL: Record<string, string> = { read: 'Read', patch: 'Change', discov
 
 const refOf = (b: ProjectSecretBinding) => b.secret?.secret_ref ?? b.secret_id;
 
+/** Select value for a whole-project binding; '' is "not chosen yet". */
+const WHOLE_PROJECT = 'project';
+const envChoice = z.string().min(1, 'Choose an environment, or the whole project.');
+const toEnvironmentId = (choice: string) => (choice === WHOLE_PROJECT ? null : choice);
+
+/** Environments of the project, for the Bind and Edit pickers. */
+interface EnvOptions {
+  list: Environment[];
+  isLoading: boolean;
+  error: unknown;
+}
+
 function splitKeys(csv: string): string[] {
   return csv
     .split(',')
@@ -76,6 +92,14 @@ export function ProjectSecretsPanel({ project }: { project: Project }) {
   const [confirmUnbind, setConfirmUnbind] = useState<ProjectSecretBinding | null>(null);
 
   const envById = useMemo(() => new Map((envs.data ?? []).map((e) => [e.id, e])), [envs.data]);
+  const envOptions = useMemo<EnvOptions>(
+    () => ({
+      list: [...(envs.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+      isLoading: envs.isLoading,
+      error: envs.error,
+    }),
+    [envs.data, envs.isLoading, envs.error],
+  );
   const rows = [...(bindings.data ?? [])].sort((a, b) => refOf(a).localeCompare(refOf(b)));
 
   const scope = (b: ProjectSecretBinding) => {
@@ -196,6 +220,7 @@ export function ProjectSecretsPanel({ project }: { project: Project }) {
         <BindDrawer
           project={project}
           existingSecretIds={new Set(rows.map((b) => b.secret_id))}
+          envs={envOptions}
           onDone={(ref) => {
             setAdding(false);
             toast(`Bound ${ref} to ${project.name}.`);
@@ -208,7 +233,7 @@ export function ProjectSecretsPanel({ project }: { project: Project }) {
         <EditDrawer
           project={project}
           binding={editing}
-          env={editing.environment_id ? envById.get(editing.environment_id) : undefined}
+          envs={envOptions}
           onDone={() => {
             toast(`Saved the binding for ${refOf(editing)}.`);
             setEditing(null);
@@ -252,6 +277,7 @@ const keyRuleError = { message: 'List at least one key, or allow every key.', pa
 const bindSchema = z
   .object({
     secret_id: z.guid('Choose a secret from the catalog.'),
+    environment: envChoice,
     allow_all_keys: z.boolean(),
     allowed_keys_csv: z.string(),
     allowed_ops: z.array(z.enum(OPS), { error: 'Allow at least one operation.' }).min(1, 'Allow at least one operation.'),
@@ -263,11 +289,13 @@ type BindFormValues = z.infer<typeof bindSchema>;
 function BindDrawer({
   project,
   existingSecretIds,
+  envs,
   onDone,
   onCancel,
 }: {
   project: Project;
   existingSecretIds: Set<string>;
+  envs: EnvOptions;
   onDone: (ref: string) => void;
   onCancel: () => void;
 }) {
@@ -286,13 +314,14 @@ function BindDrawer({
     formState: { errors, isSubmitting },
   } = useForm<BindFormValues>({
     resolver: zodResolver(bindSchema),
-    defaultValues: { secret_id: '', allow_all_keys: true, allowed_keys_csv: '', allowed_ops: ['read'] },
+    defaultValues: { secret_id: '', environment: '', allow_all_keys: true, allowed_keys_csv: '', allowed_ops: ['read'] },
   });
   const allowAll = useWatch({ control, name: 'allow_all_keys' });
 
   const onSubmit = async (v: BindFormValues) => {
     const body: ProjectSecretBindingInput = {
       secret_id: v.secret_id,
+      environment_id: toEnvironmentId(v.environment),
       allowed_ops: v.allowed_ops,
       allowed_keys: v.allow_all_keys ? null : splitKeys(v.allowed_keys_csv),
     };
@@ -345,6 +374,14 @@ function BindDrawer({
           )}
         </Field>
 
+        <EnvironmentField
+          id="bind-environment"
+          project={project}
+          envs={envs}
+          register={register('environment')}
+          error={errors.environment?.message}
+        />
+
         <KeyPolicyFields
           idPrefix="bind"
           registerAllowAll={register('allow_all_keys')}
@@ -369,6 +406,7 @@ function BindDrawer({
 
 const editSchema = z
   .object({
+    environment: envChoice,
     allow_all_keys: z.boolean(),
     allowed_keys_csv: z.string(),
     allowed_ops: z.array(z.enum(OPS), { error: 'Allow at least one operation.' }).min(1, 'Allow at least one operation.'),
@@ -380,13 +418,13 @@ type EditFormValues = z.infer<typeof editSchema>;
 function EditDrawer({
   project,
   binding,
-  env,
+  envs,
   onDone,
   onCancel,
 }: {
   project: Project;
   binding: ProjectSecretBinding;
-  env?: Environment;
+  envs: EnvOptions;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -400,6 +438,8 @@ function EditDrawer({
   } = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
     defaultValues: {
+      // The binding's current scope, sent back unchanged unless edited.
+      environment: binding.environment_id || WHOLE_PROJECT,
       // `== null` covers an absent field as well as an explicit null;
       // both mean "every key".
       allow_all_keys: binding.allowed_keys == null,
@@ -411,6 +451,7 @@ function EditDrawer({
 
   const onSubmit = async (v: EditFormValues) => {
     const body: ProjectSecretBindingUpdate = {
+      environment_id: toEnvironmentId(v.environment),
       allowed_ops: v.allowed_ops,
       allowed_keys: v.allow_all_keys ? null : splitKeys(v.allowed_keys_csv),
     };
@@ -427,16 +468,7 @@ function EditDrawer({
       title="Edit binding"
       subtitle={
         <>
-          <span className="break-all font-mono text-mono">{refOf(binding)}</span> ·{' '}
-          {env ? (
-            <>
-              {project.name} <EnvTag kind={env.kind}>{env.name}</EnvTag>
-            </>
-          ) : binding.environment_id ? (
-            project.name
-          ) : (
-            `whole ${project.name} project`
-          )}
+          <span className="break-all font-mono text-mono">{refOf(binding)}</span> · {project.name}
         </>
       }
       onClose={onCancel}
@@ -452,6 +484,14 @@ function EditDrawer({
       }
     >
       <form id="edit-binding" noValidate onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-[18px]">
+        <EnvironmentField
+          id="edit-environment"
+          project={project}
+          envs={envs}
+          currentId={binding.environment_id ?? undefined}
+          register={register('environment')}
+          error={errors.environment?.message}
+        />
         <KeyPolicyFields
           idPrefix="edit"
           registerAllowAll={register('allow_all_keys')}
@@ -472,6 +512,58 @@ function EditDrawer({
 }
 
 // --- shared fields ---------------------------------------------------
+
+function EnvironmentField({
+  id,
+  project,
+  envs,
+  currentId,
+  register,
+  error,
+}: {
+  id: string;
+  project: Project;
+  envs: EnvOptions;
+  /** The binding's stored environment, kept as an option even if the list doesn't have it. */
+  currentId?: string;
+  register: UseFormRegisterReturn;
+  error?: string;
+}) {
+  const missingCurrent = currentId && !envs.list.some((e) => e.id === currentId);
+  const hint = envs.isLoading
+    ? 'Loading the environments…'
+    : envs.error
+      ? `Couldn't load the environments. ${errorText(envs.error)}`
+      : envs.list.length === 0
+        ? `${project.name} has no environments yet. A whole-project binding applies to any you add.`
+        : 'Requests in this environment can use the secret. Whole project applies to every environment of the project, prod included.';
+  return (
+    <Field id={id} label="Environment" hint={hint} error={error}>
+      {(p) =>
+        // Mount the registered select only once the list is in, so the
+        // default (the binding's current environment) lands on a real
+        // option instead of being dropped while the options swap.
+        envs.isLoading ? (
+          <Select {...p} disabled value="" onChange={() => undefined}>
+            <option value="">Loading…</option>
+          </Select>
+        ) : (
+          <Select {...p} {...register}>
+            <option value="">Choose an environment</option>
+            {envs.list.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+                {e.kind === 'prod' ? ' · prod' : ''}
+              </option>
+            ))}
+            {missingCurrent && <option value={currentId}>{currentId.slice(0, 8)} (current)</option>}
+            <option value={WHOLE_PROJECT}>Whole project</option>
+          </Select>
+        )
+      }
+    </Field>
+  );
+}
 
 function KeyPolicyFields({
   idPrefix,
