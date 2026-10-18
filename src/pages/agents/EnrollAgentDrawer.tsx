@@ -371,7 +371,7 @@ function helmCommand(i: Issued, endpoint: string): string {
     ...provider,
   ];
   return [
-    'helm upgrade --install secrets-bridge-agent oci://ghcr.io/secrets-bridge/charts/agent \\',
+    'helm upgrade --install secrets-bridge-agent oci://ghcr.io/secrets-bridge/charts/secrets-bridge-agent \\',
     '  --version <chart-version> \\',
     `  --namespace ${NAMESPACE} \\`,
     ...sets.map((s, n) => `  --set ${s}${n < sets.length - 1 ? ' \\' : ''}`),

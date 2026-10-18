@@ -195,11 +195,11 @@ export function Workflows() {
   );
 }
 
-// Deleting a workflow also deletes every policy that points to it
-// (policy_rules.workflow_id ON DELETE CASCADE), and the api refuses it
-// while any request references the workflow (no ON DELETE on
-// access_requests.workflow_id). The dialog says both and counts the
-// policies first.
+// Deleting a workflow also deletes every policy that points to it, and
+// the api refuses it while any request references the workflow. The
+// dialog says both and counts the policies first. Confirming sends
+// delete_policy_rules=true, because the dialog has told the admin the
+// policies go too; without it the api answers 409 workflow_in_use.
 function DeleteWorkflow({ workflow, onClose, onDeleted }: { workflow: Workflow; onClose: () => void; onDeleted: () => void }) {
   const del = useDeleteWorkflow();
   const policies = usePolicies();
@@ -221,7 +221,7 @@ function DeleteWorkflow({ workflow, onClose, onDeleted }: { workflow: Workflow; 
       onCancel={onClose}
       onConfirm={async () => {
         try {
-          await del.mutateAsync(workflow.id);
+          await del.mutateAsync({ id: workflow.id, deletePolicyRules: true });
           void qc.invalidateQueries({ queryKey: policiesKey.all });
           onDeleted();
         } catch {
