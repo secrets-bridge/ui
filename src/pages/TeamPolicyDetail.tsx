@@ -1,230 +1,107 @@
 /**
- * R-follow-up #5 §5 D7 — Team policy rule Detail page.
+ * R-follow-up #5 §5 D7 — a team policy rule's page.
  *
  *   /teams/:id/policies/:ruleID
  *
- * Fail-closed for team coverage per §5 C4: when
- * `useMyPolicyAuthorTeamCoverage` returns undefined (network failure /
- * not yet loaded), the History tab renders disabled with a "Loading
- * authorization context…" label. NEVER auto-allows. Mirrors
- * R-follow-up #3 §5 C3.
+ * Fail-closed on team coverage (§5 C4): until
+ * `useMyPolicyAuthorTeamCoverage` has loaded, History says it is
+ * checking access and never loads. Mirrors R-follow-up #3 §5 C3.
  */
 
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
+import { useMyPolicyAuthorTeamCoverage } from '../api/myPolicyAuthorTeamCoverage';
+import { useTeamPolicyRuleHistory } from '../api/policyRuleHistory';
+import { useTeamPolicyRule } from '../api/teamPolicyRules';
+import { useTeams } from '../api/teams';
 import { useAuth } from '../auth/AuthContext';
 import { canViewPolicyRuleHistory } from '../auth/capabilities';
-import { useMyPolicyAuthorTeamCoverage } from '../api/myPolicyAuthorTeamCoverage';
-import { useTeamPolicyRule } from '../api/teamPolicyRules';
-import { Card, CardBody } from '../ui/Card';
-import { PageHeader } from '../ui/PageHeader';
-import { StatusPill } from '../ui/StatusPill';
-import { useTeamPolicyRuleHistory } from '../api/policyRuleHistory';
-import { PolicyHistoryTimeline } from './PolicyHistoryTimeline';
-
-type Tab = 'overview' | 'history';
+import { formatExact } from '../lib/time';
+import { Banner } from '../ui/Banner';
+import { PolicyHistoryView } from './PolicyHistoryTimeline';
+import { DetailRows, Loading, Panel, RuleDetailFrame, RuleLoadProblem, RuleStatus, Selector, type RuleTab } from './policies/parts';
 
 export function TeamPolicyDetail() {
   const { id: teamID, ruleID } = useParams<{ id: string; ruleID: string }>();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<RuleTab>('overview');
   const rule = useTeamPolicyRule(teamID, ruleID);
   const coverage = useMyPolicyAuthorTeamCoverage();
+  const teams = useTeams();
   const auth = useAuth();
 
-  // Fail-closed: when coverage is still loading, the History tab is
-  // disabled with a clear label. NEVER fall back to allowed.
+  // Fail closed while coverage loads: never fall back to allowed.
   const coverageReady = coverage.data !== undefined;
   const historyAllowed = coverageReady
-    ? canViewPolicyRuleHistory(
-        { kind: 'team', teamID: teamID ?? '' },
-        {
-          permissions: auth.identity?.permissions,
-          teamCoverage: coverage.data,
-        },
-      )
+    ? canViewPolicyRuleHistory({ kind: 'team', teamID: teamID ?? '' }, { permissions: auth.identity?.permissions, teamCoverage: coverage.data })
     : ({ allowed: false, reason: 'no_perm' } as const);
 
-  if (rule.isLoading) {
-    return (
-      <div className="max-w-4xl mx-auto p-6">
-        <Card><CardBody><p className="text-sm text-muted">Loading rule…</p></CardBody></Card>
-      </div>
-    );
-  }
+  const team = teams.data?.find((t) => t.id === teamID);
+  const listPath = `/teams/${teamID}/policies`;
+  const base = [
+    { label: 'Team policies', to: '/teams/policies' },
+    { label: team?.name ?? 'Team', to: listPath },
+  ];
+
+  if (rule.isLoading) return <Loading>Loading the rule…</Loading>;
   if (rule.isError || !rule.data) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
-        <Card className="border-bad-line">
-          <CardBody>
-            <h3 className="text-bad font-medium text-sm">Failed to load rule</h3>
-            <p className="text-muted text-xs mt-1">{String(rule.error ?? 'Unknown error')}</p>
-            <Link
-              to={`/teams/${teamID}/policies`}
-              className="text-accent text-xs hover:underline inline-block mt-2"
-            >
-              ← Back to team policies
-            </Link>
-          </CardBody>
-        </Card>
-      </div>
+      <RuleLoadProblem
+        crumbs={[...base, { label: 'Rule' }]}
+        error={rule.error}
+        back={{ to: listPath, label: "Back to the team's policies" }}
+        onRetry={() => void rule.refetch()}
+      />
     );
   }
 
   const r = rule.data.rule;
+  const inherited = r.is_platform_inherited || r.is_ancestor_inherited;
+  const kind = r.is_platform_inherited ? 'Platform rule' : r.is_ancestor_inherited ? `Parent team rule${r.team_name ? ` from ${r.team_name}` : ''}` : 'Team rule';
+  const workflow = r.workflow_name ?? r.workflow_id.slice(0, 8);
+
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-4">
-      <PageHeader
-        title={r.name}
-        description={`Team rule · workflow ${r.workflow_name ?? r.workflow_id.slice(0, 8) + '…'} · priority ${r.priority}`}
-        actions={
-          <Link
-            to={`/teams/${teamID}/policies`}
-            className="text-accent text-xs hover:underline"
-          >
-            ← Back
-          </Link>
-        }
-      />
-
-      <TabBar
-        tab={tab}
-        onTab={setTab}
-        historyDisabled={!historyAllowed.allowed}
-        historyLabel={
-          !coverageReady
-            ? 'Loading authorization context…'
-            : historyAllowed.allowed
-              ? undefined
-              : 'You need policy.author on this team to view history'
-        }
-      />
-
-      {tab === 'overview' && <OverviewBlock rule={r} />}
-      {tab === 'history' && historyAllowed.allowed && (
-        <TeamHistoryTabBody teamID={teamID!} ruleID={ruleID!} />
-      )}
-    </div>
-  );
-}
-
-function TabBar({
-  tab,
-  onTab,
-  historyDisabled,
-  historyLabel,
-}: {
-  tab: Tab;
-  onTab: (t: Tab) => void;
-  historyDisabled: boolean;
-  historyLabel?: string;
-}) {
-  return (
-    <div className="border-b border-border flex gap-4 text-sm">
-      <button
-        type="button"
-        onClick={() => onTab('overview')}
-        className={
-          tab === 'overview'
-            ? 'pb-2 border-b-2 border-accent text-ink'
-            : 'pb-2 text-muted hover:text-ink'
-        }
-      >
-        Overview
-      </button>
-      <button
-        type="button"
-        onClick={() => onTab('history')}
-        disabled={historyDisabled}
-        title={historyLabel}
-        className={
-          historyDisabled
-            ? 'pb-2 text-muted/50 cursor-not-allowed'
-            : tab === 'history'
-              ? 'pb-2 border-b-2 border-accent text-ink'
-              : 'pb-2 text-muted hover:text-ink'
-        }
-      >
-        History
-      </button>
-    </div>
-  );
-}
-
-function OverviewBlock({ rule }: { rule: { name: string; selector_keys?: string[]; selector?: Record<string, unknown>; enabled: boolean; is_system?: boolean; team_name?: string } }) {
-  return (
-    <Card>
-      <CardBody className="space-y-3 text-sm">
-        <div className="flex items-center gap-2">
-          {rule.enabled ? (
-            <StatusPill variant="success" tone="outline">enabled</StatusPill>
-          ) : (
-            <StatusPill variant="error" tone="outline">disabled</StatusPill>
-          )}
-          {rule.is_system && (
-            <StatusPill variant="system" tone="outline">system</StatusPill>
-          )}
-        </div>
-        <dl className="grid grid-cols-[10rem_1fr] gap-x-3 gap-y-1 text-[12px]">
-          {rule.team_name && (
-            <>
-              <dt className="text-muted">Team:</dt>
-              <dd className="font-mono text-ink">{rule.team_name}</dd>
-            </>
-          )}
-          <dt className="text-muted">Selector keys:</dt>
-          <dd className="flex flex-wrap gap-1">
-            {(rule.selector_keys ?? Object.keys(rule.selector ?? {})).map((k) => (
-              <span
-                key={k}
-                className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono"
-              >
-                {k}
-              </span>
-            ))}
-          </dd>
-        </dl>
-        <p className="text-[11px] text-muted">
-          Edit / delete via the parent list page's drawer. Detail page is
-          read-only by design (R-follow-up #5 §5 OQ5-2).
-        </p>
-      </CardBody>
-    </Card>
-  );
-}
-
-function TeamHistoryTabBody({ teamID, ruleID }: { teamID: string; ruleID: string }) {
-  const [limit, setLimit] = useState(50);
-  const q = useTeamPolicyRuleHistory(teamID, ruleID, limit);
-  if (q.isLoading) {
-    return (
-      <Card><CardBody><p className="text-sm text-muted">Loading history…</p></CardBody></Card>
-    );
-  }
-  if (q.isError) {
-    return (
-      <Card className="border-bad-line">
-        <CardBody>
-          <p className="text-sm text-bad">Failed to load history.</p>
-          <button
-            type="button"
-            onClick={() => q.refetch()}
-            className="text-accent text-xs hover:underline mt-1"
-          >
-            Retry
-          </button>
-        </CardBody>
-      </Card>
-    );
-  }
-  const data = q.data!;
-  return (
-    <PolicyHistoryTimeline
-      entries={data.entries}
-      hasMore={data.has_more}
-      limit={data.limit}
-      onLoadMore={() => setLimit((n) => Math.min(n + 50, 500))}
-      pageScope="team"
+    <RuleDetailFrame
+      crumbs={[...base, { label: r.name }]}
+      title={r.name}
+      fact={`${kind} · priority ${r.priority} · workflow ${workflow}`}
+      tab={tab}
+      onTab={setTab}
+      overview={
+        <Panel>
+          <DetailRows
+            rows={[
+              ['Status', <RuleStatus key="s" enabled={r.enabled} />],
+              ['Applies to', inherited ? `${kind}, inherited by this team` : `${r.team_name ?? team?.name ?? 'This team'} and its sub-teams, non-production only`],
+              [
+                inherited ? 'Matches on' : 'Matches',
+                inherited || !r.selector ? <Selector key="m" keys={r.selector_keys} /> : <Selector key="m" selector={r.selector} />,
+              ],
+              ['Workflow', workflow],
+              ['Priority', <span key="p" className="font-mono text-mono">{r.priority}</span>],
+              ...(r.updated_at ? ([['Last changed', formatExact(r.updated_at)]] as [string, string][]) : []),
+            ]}
+          />
+          <p className="border-t border-rule px-5 py-3 text-caption text-muted">
+            {inherited ? "Read-only here. Its selector values aren't shown." : "Create or delete rules from the team's policies page."}
+          </p>
+        </Panel>
+      }
+      history={
+        historyAllowed.allowed ? (
+          <TeamHistory teamID={teamID!} ruleID={ruleID!} />
+        ) : !coverageReady ? (
+          <p className="text-muted">Checking your access to this team…</p>
+        ) : (
+          <Banner title="History needs the policy.author permission for this team.">Ask an administrator if you need to see who changed this rule.</Banner>
+        )
+      }
     />
   );
+}
+
+function TeamHistory({ teamID, ruleID }: { teamID: string; ruleID: string }) {
+  const [limit, setLimit] = useState(50);
+  const q = useTeamPolicyRuleHistory(teamID, ruleID, limit);
+  return <PolicyHistoryView query={q} onLoadMore={() => setLimit((n) => Math.min(n + 50, 500))} pageScope="team" />;
 }

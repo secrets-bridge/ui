@@ -7,6 +7,8 @@ export interface Lane {
   key: string;
   label: string;
   who: string;
+  /** When the decision was made, on its own line under who. */
+  when?: string;
   state: 'waiting' | 'approved' | 'rejected' | 'queued' | 'closed';
   stateLabel: string;
   note?: string;
@@ -33,7 +35,8 @@ export function ApprovalLanes({ lanes }: { lanes: Lane[] }) {
           </span>
           <div className="min-w-0">
             <p className="m-0 font-semibold text-ink">{l.label}</p>
-            <p className="m-0 mt-0.5 font-normal text-muted">{l.who}</p>
+            <p className="m-0 mt-0.5 break-words font-normal text-muted">{l.who}</p>
+            {l.when && <p className="m-0 font-mono text-mono-small text-muted">{l.when}</p>}
             {l.note && <p className="m-0 mt-0.5 font-normal text-ink">“{l.note}”</p>}
           </div>
           <span className="whitespace-nowrap font-normal text-muted">{l.stateLabel}</span>

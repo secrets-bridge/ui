@@ -1,177 +1,234 @@
 /**
- * Assignments admin page (`/admin/assignments`).
+ * Assignments (`/admin/assignments`): who holds which role, and where.
+ * Each row gives one user a role, everywhere or narrowed by a scope
+ * (project, team and its sub-teams, environment name, secret path
+ * prefix, provider type).
  *
- * The third leg of the pattern-2 RBAC tripod (the first two being
- * Roles + Projects). Each row binds a user to a role with an optional
- * narrowing scope.
+ * - "Grant a role" opens a drawer. Empty scope fields are left out of
+ *   the body, so the api treats them as "any" (a grant with no scope is
+ *   global).
+ * - Revoke asks first.
+ * - The user is typed as an id: the api has no user directory to pick
+ *   from yet. People find their id on their Profile page.
+ * - value_provider is team-scoped by design (Slice N5): granting it
+ *   without a team hands every team's inbox to one person, so that
+ *   asks for "global" to be typed.
  *
- * Polished in ui#17 to match the design pattern (PageHeader, Card,
- * shared `src/ui/` primitives, StatusPill for the role + scope chips).
- *
- * Layout:
- *   - Filter strip + table of every assignment in the system. Role
- *     pill + scope chips per row.
- *   - "+ Grant role" drawer with a role dropdown + project +
- *     environment + secret_ref_prefix + provider_type inputs.
- *   - Per-row Revoke confirm.
- *
- * Hard rules:
- *   - The user_id field is free-form text today (no users table —
- *     identities come from the future OIDC flow, api#26).
- *   - Empty scope fields are stripped on submit so the api treats
- *     them as wildcards (matching the policy_rules.selector pattern).
- *   - Project_id is a UUID dropdown hydrated from useProjects;
- *     environment is a name input (not a UUID — the api scope keys
- *     reference envs by name to match user_roles.scope).
+ * api: GET/POST /user-roles, DELETE /user-roles/:id.
  */
 
 import { useMemo, useState } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useForm, useWatch, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import { ApiError } from '../../api/client';
-import type { UserRole, UserRoleInput } from '../../api/types';
-import {
-  useGrantUserRole,
-  useRevokeUserRole,
-  useUserRoles,
-} from '../../api/assignments';
+import { useGrantUserRole, useRevokeUserRole, useUserRoles } from '../../api/assignments';
 import { useRoles } from '../../api/roles';
-import { useTeams, type Team } from '../../api/teams';
+import { useTeams } from '../../api/teams';
 import { useEnvironments, useProjects } from '../../api/tenancy';
+import type { UserRole, UserRoleInput } from '../../api/types';
+import { useAuth } from '../../auth/AuthContext';
+import { providerLabel } from '../../lib/providers';
+import { formatExact, formatShort } from '../../lib/time';
+import { Banner } from '../../ui/Banner';
 import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card';
 import { ConfirmModal } from '../../ui/ConfirmModal';
+import { DataTable, type Column } from '../../ui/DataTable';
 import { Drawer } from '../../ui/Drawer';
+import { EmptyState } from '../../ui/EmptyState';
+import { Field, Input, Select } from '../../ui/Field';
 import { PageHeader } from '../../ui/PageHeader';
-import { StatusPill } from '../../ui/StatusPill';
+import { useToast } from '../../ui/toastContext';
+import { buildIndentedTeams, errorText } from './roles/format';
+
+const PROVIDER_TYPES = ['vault', 'aws-sm', 'gcp-sm', 'azure-kv'];
+const SCOPE_LABEL: Record<string, string> = {
+  project_id: 'Project',
+  team_id: 'Team',
+  environment: 'Environment',
+  secret_ref_prefix: 'Path prefix',
+  provider_type: 'Provider',
+};
 
 export function Assignments() {
   const list = useUserRoles();
   const roles = useRoles();
   const projects = useProjects();
-  const teamLookup = useTeams();
+  const teams = useTeams();
   const revoke = useRevokeUserRole();
+  const { identity } = useAuth();
+  const toast = useToast();
 
   const [filter, setFilter] = useState('');
   const [granting, setGranting] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState<UserRole | null>(null);
 
-  const filtered = useMemo(() => {
-    if (!list.data) return [];
-    if (!filter.trim()) return list.data;
-    const f = filter.toLowerCase();
-    return list.data.filter((r) => r.user_id.toLowerCase().includes(f));
-  }, [list.data, filter]);
+  const roleName = (id: string) => roles.data?.find((r) => r.id === id)?.name ?? `${id.slice(0, 8)}…`;
+  const projectName = (id: string) => projects.data?.find((p) => p.id === id)?.name ?? `${id.slice(0, 8)}…`;
+  const teamName = (id: string) => teams.data?.find((t) => t.id === id)?.name ?? `${id.slice(0, 8)}…`;
+  const scopeValue = (k: string, v: string) =>
+    k === 'project_id' ? projectName(v) : k === 'team_id' ? teamName(v) : k === 'provider_type' ? providerLabel(v) : v;
 
-  const roleName = (id: string) =>
-    roles.data?.find((r) => r.id === id)?.name ?? id.slice(0, 8) + '…';
+  const all = useMemo(
+    () => [...(list.data ?? [])].sort((a, b) => a.user_id.localeCompare(b.user_id) || Date.parse(b.granted_at) - Date.parse(a.granted_at)),
+    [list.data],
+  );
+  const f = filter.trim().toLowerCase();
+  const rows = f
+    ? all.filter((r) => r.user_id.toLowerCase().includes(f) || (roles.data?.find((x) => x.id === r.role_id)?.name ?? '').toLowerCase().includes(f))
+    : all;
+  const people = new Set(all.map((r) => r.user_id)).size;
 
-  const projectName = (id: string) =>
-    projects.data?.find((p) => p.id === id)?.name ?? id.slice(0, 8) + '…';
+  const userCell = (r: UserRole) => (
+    <span className="break-all font-mono text-mono text-ink">
+      {r.user_id}
+      {identity && r.user_id === identity.id && <span className="ml-2 font-sans text-caption text-muted">You</span>}
+    </span>
+  );
+  const scopeCell = (r: UserRole) => {
+    const entries = Object.entries(r.scope ?? {});
+    if (entries.length === 0) return <span className="text-muted">Everywhere</span>;
+    return (
+      <span className="flex flex-col gap-0.5">
+        {entries.map(([k, v]) => (
+          <span key={k}>
+            <span className="text-muted">{SCOPE_LABEL[k] ?? k}:</span>{' '}
+            <span className={k === 'secret_ref_prefix' || k === 'environment' ? 'font-mono text-mono' : ''}>{scopeValue(k, v)}</span>
+          </span>
+        ))}
+      </span>
+    );
+  };
+  const revokeButton = (r: UserRole) => (
+    <Button
+      variant="danger"
+      size="sm"
+      onClick={() => {
+        revoke.reset();
+        setConfirmRevoke(r);
+      }}
+      aria-label={`Revoke ${roleName(r.role_id)} from ${r.user_id}`}
+    >
+      Revoke…
+    </Button>
+  );
 
-  const teamName = (id: string) =>
-    teamLookup.data?.find((t) => t.id === id)?.name ?? id.slice(0, 8) + '…';
+  const columns: Column<UserRole>[] = [
+    { key: 'user', header: 'User', render: userCell, className: 'max-w-[300px]' },
+    { key: 'role', header: 'Role', render: (r) => <span className="font-mono text-mono">{roleName(r.role_id)}</span> },
+    { key: 'scope', header: 'Scope', render: scopeCell },
+    {
+      key: 'granted',
+      header: 'Granted (UTC)',
+      render: (r) => (
+        <span title={`${formatExact(r.granted_at)}${r.granted_by ? ` by ${r.granted_by}` : ''}`} className="whitespace-nowrap">
+          {formatShort(r.granted_at)}
+        </span>
+      ),
+    },
+    { key: 'actions', header: 'Actions', hiddenHeader: true, align: 'right', render: revokeButton },
+  ];
 
   return (
     <div>
       <PageHeader
         title="Assignments"
-        description="User × role × scope bindings. Scope keys narrow the assignment to a single project / environment / ref prefix / provider type. Empty scope = global."
+        description={
+          list.data
+            ? `${all.length} ${all.length === 1 ? 'assignment' : 'assignments'} for ${people} ${people === 1 ? 'user' : 'users'}. Each gives one user a role, everywhere or within a scope.`
+            : 'Each assignment gives one user a role, everywhere or within a scope.'
+        }
         actions={
           <Button variant="primary" onClick={() => setGranting(true)}>
-            + Grant role
+            Grant a role
           </Button>
         }
       />
 
-      <div className="flex gap-2 mb-4">
-        <input
-          type="text"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter by user_id…"
-          className="flex-1 bg-surface border border-edge rounded-md px-3.5 py-2 text-ink text-sm focus:border-accent"
-        />
-        {filter && (
-          <Button variant="secondary" size="sm" onClick={() => setFilter('')}>
-            Clear
-          </Button>
-        )}
-      </div>
+      {all.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2.5">
+          <label className="min-w-[260px] flex-1 max-[600px]:w-full">
+            <span className="sr-only">Filter by user id or role</span>
+            <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by user id or role" className="w-full" />
+          </label>
+          {f && (
+            <>
+              <Button variant="quiet" onClick={() => setFilter('')}>
+                Reset filter
+              </Button>
+              <span className="text-ui font-normal text-muted" aria-live="polite">
+                Showing {rows.length} of {all.length}
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
+      {list.isLoading && <p className="text-muted">Loading assignments…</p>}
       {list.isError && (
-        <Card className="border-bad-line p-5 text-sm mb-4">
-          <div className="text-bad font-medium">
-            Failed to load assignments
-          </div>
-          <div className="text-muted mt-1">{stringifyError(list.error)}</div>
-        </Card>
+        <Banner
+          tone="error"
+          title="Couldn't load the assignments."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void list.refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          {errorText(list.error)}
+        </Banner>
       )}
-
-      {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
-
-      {list.data && list.data.length === 0 && (
-        <Card className="p-10 text-center text-muted text-sm">
-          No assignments yet. Grant a role to start scoping access.
-        </Card>
-      )}
-
-      {list.data && list.data.length > 0 && filtered.length === 0 && (
-        <Card className="p-10 text-center text-muted text-sm">
-          No assignments match{' '}
-          <code className="font-mono text-accent">{filter}</code>.
-        </Card>
-      )}
-
-      {filtered.length > 0 && (
-        <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px]">
-              <tr className="border-b border-border/60">
-                <Th>User</Th>
-                <Th>Role</Th>
-                <Th>Scope</Th>
-                <Th>Granted</Th>
-                <Th className="text-right">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => (
-                <AssignmentRow
-                  key={r.id}
-                  row={r}
-                  roleName={roleName(r.role_id)}
-                  projectName={projectName}
-                  teamName={teamName}
-                  onRevoke={() => setConfirmRevoke(r)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+      {list.data &&
+        (all.length === 0 ? (
+          <EmptyState title="No assignments yet.">Grant a role to give someone access.</EmptyState>
+        ) : rows.length === 0 ? (
+          <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">No assignment matches that filter.</p>
+        ) : (
+          <DataTable
+            label="Assignments"
+            columns={columns}
+            rows={rows}
+            rowKey={(r) => r.id}
+            minWidth={780}
+            stacked={(r) => (
+              <div className="flex flex-col gap-1">
+                <p className="flex items-start justify-between gap-3">
+                  <span className="font-mono text-mono font-medium">{roleName(r.role_id)}</span>
+                  {revokeButton(r)}
+                </p>
+                <p className="text-caption">{userCell(r)}</p>
+                <div className="text-caption">{scopeCell(r)}</div>
+                <p className="text-caption text-muted">Granted {formatShort(r.granted_at)} UTC</p>
+              </div>
+            )}
+          />
+        ))}
 
       {granting && (
-        <Drawer title="Grant role" onClose={() => setGranting(false)}>
-          <AssignmentForm
-            onDone={() => setGranting(false)}
-            onCancel={() => setGranting(false)}
-          />
-        </Drawer>
+        <GrantDrawer
+          onDone={(roleLabel, user) => {
+            setGranting(false);
+            toast(`Granted ${roleLabel} to ${user}.`);
+          }}
+          onCancel={() => setGranting(false)}
+        />
       )}
 
       {confirmRevoke && (
         <ConfirmModal
-          title={`Revoke ${roleName(confirmRevoke.role_id)} from ${confirmRevoke.user_id}?`}
-          body="This assignment will be removed. Any in-flight requests already gated on this scope continue uninterrupted; new requests fall back to whatever other assignments the user has."
+          title={`Revoke ${roleName(confirmRevoke.role_id)}?`}
+          body={`${identity && confirmRevoke.user_id === identity.id ? 'This is your own assignment: you may lose access to this page. ' : ''}User ${confirmRevoke.user_id} loses this role${Object.keys(confirmRevoke.scope ?? {}).length ? ' in this scope' : ''} at once. Requests already approved go on; anything new needs another assignment that covers it.`}
           confirmText="Revoke"
           danger
           onCancel={() => setConfirmRevoke(null)}
           onConfirm={async () => {
-            await revoke.mutateAsync(confirmRevoke.id);
-            setConfirmRevoke(null);
+            try {
+              await revoke.mutateAsync(confirmRevoke.id);
+              toast(`Revoked ${roleName(confirmRevoke.role_id)} from ${confirmRevoke.user_id}.`);
+              setConfirmRevoke(null);
+            } catch {
+              // Shown in the dialog.
+            }
           }}
           loading={revoke.isPending}
           error={revoke.error}
@@ -181,121 +238,25 @@ export function Assignments() {
   );
 }
 
-// --- row + cell bits ------------------------------------------------
+// --- grant drawer ---------------------------------------------------
 
-function AssignmentRow({
-  row: r,
-  roleName,
-  projectName,
-  teamName,
-  onRevoke,
-}: {
-  row: UserRole;
-  roleName: string;
-  projectName: (id: string) => string;
-  teamName: (id: string) => string;
-  onRevoke: () => void;
-}) {
-  const scopeKeys = Object.entries(r.scope ?? {});
-  return (
-    <tr className="border-b border-border/40 last:border-0 hover:bg-bg/20 align-top">
-      <Td>
-        <span className="font-mono text-ink text-sm">{r.user_id}</span>
-      </Td>
-      <Td>
-        <StatusPill variant="accent" tone="outline">
-          <span className="font-mono">{roleName}</span>
-        </StatusPill>
-      </Td>
-      <Td>
-        {scopeKeys.length === 0 ? (
-          <span className="text-muted text-xs">global</span>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {scopeKeys.map(([k, v]) => (
-              <span
-                key={k}
-                className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border px-2.5 py-0.5 text-[11px] font-mono"
-              >
-                <span className="text-muted">{k}</span>
-                <span className="text-muted/50">=</span>
-                <span className="text-accent">
-                  {k === 'project_id'
-                    ? projectName(v)
-                    : k === 'team_id'
-                      ? teamName(v)
-                      : v}
-                </span>
-              </span>
-            ))}
-          </div>
-        )}
-      </Td>
-      <Td className="text-muted text-xs">
-        <div>{r.granted_at.slice(0, 10)}</div>
-        {r.granted_by && (
-          <div className="text-muted/70 mt-0.5">by {r.granted_by}</div>
-        )}
-      </Td>
-      <Td className="text-right">
-        <button
-          onClick={onRevoke}
-          className="text-bad hover:underline text-sm font-medium"
-        >
-          Revoke
-        </button>
-      </Td>
-    </tr>
-  );
-}
-
-function Th({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
-}
-
-function Td({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <td className={`px-5 py-3.5 align-top ${className}`}>{children}</td>;
-}
-
-// --- form -----------------------------------------------------------
-
+const UUID_MSG = 'Choose from the list.';
 const schema = z.object({
-  user_id: z.string().min(1, 'user_id is required').max(255),
-  role_id: z.guid('pick a role'),
-  // Scope inputs (all optional; empty stripped on submit)
-  sc_project_id: z.guid().optional().or(z.literal('')),
-  // team_id: when set, the api expands the grant to the team's
-  // descendant subtree via auth.EffectiveProjectAccess (api#50). This
-  // is the "section head over X" pattern — Alice grants Bob
-  // `secret.approve` scoped to team "Section", and Bob covers every
-  // team / project under Section automatically.
-  sc_team_id: z.guid().optional().or(z.literal('')),
-  sc_environment: z.string().max(120).optional(),
-  sc_secret_ref_prefix: z.string().max(255).optional(),
+  user_id: z.string().trim().min(1, "Enter the user's id.").max(255, 'That id is too long.'),
+  role_id: z.guid('Choose a role.'),
+  // Scope inputs: all optional, empty ones are left out of the body.
+  sc_project_id: z.guid(UUID_MSG).optional().or(z.literal('')),
+  // A team grant covers the team and every sub-team's projects
+  // (auth.EffectiveProjectAccess, api#50).
+  sc_team_id: z.guid(UUID_MSG).optional().or(z.literal('')),
+  sc_environment: z.string().trim().max(120, 'Keep it under 120 characters.').optional(),
+  sc_secret_ref_prefix: z.string().trim().max(255, 'Keep it under 255 characters.').optional(),
   sc_provider_type: z.string().max(60).optional(),
 });
 
 type FormShape = z.infer<typeof schema>;
 
-function AssignmentForm({
-  onDone,
-  onCancel,
-}: {
-  onDone: () => void;
-  onCancel: () => void;
-}) {
+function GrantDrawer({ onDone, onCancel }: { onDone: (roleLabel: string, user: string) => void; onCancel: () => void }) {
   const grant = useGrantUserRole();
   const roles = useRoles();
   const projects = useProjects();
@@ -305,7 +266,7 @@ function AssignmentForm({
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     formState: { errors },
   } = useForm<FormShape>({
     resolver: zodResolver(schema),
@@ -320,280 +281,160 @@ function AssignmentForm({
     },
   });
 
-  // Teams flattened with a depth-indent prefix so the dropdown shows
-  // the hierarchy without rendering an actual tree (browsers don't
-  // support nested <option>s). Built from a single buildIndentedTeams
-  // pass so editing a team's parent reorders the list automatically.
   const teamOptions = useMemo(() => buildIndentedTeams(teams.data ?? []), [teams.data]);
+  // Environment scope is by name: several projects can each have "uat".
+  const envNames = useMemo(() => [...new Set((envs.data ?? []).map((e) => e.name))].sort(), [envs.data]);
 
-  // Distinct environment names for the dropdown (the api scope key is
-  // by name, not UUID; multiple projects can each have a "uat" env).
-  const envNames = useMemo(() => {
-    const set = new Set<string>();
-    envs.data?.forEach((e) => set.add(e.name));
-    return Array.from(set).sort();
-  }, [envs.data]);
-
-  // Slice N5 — value_provider is team-scoped by design. The role
-  // controls who can be on a team's inbox; granting it globally hands
-  // every team's inbox to one user. Require a team pick OR a
-  // type-to-confirm "global".
-  const watchedRoleID = watch('role_id');
-  const watchedTeamID = watch('sc_team_id');
-  const selectedRole = roles.data?.find((r) => r.id === watchedRoleID);
-  const isValueProviderRole = selectedRole?.name === 'value_provider';
-  const teamPicked = !!watchedTeamID;
-  const [globalConfirmTyped, setGlobalConfirmTyped] = useState('');
-  const showGlobalScopeGate =
-    isValueProviderRole && !teamPicked;
-  const globalGateOpen = showGlobalScopeGate;
-  const globalConfirmOk = globalConfirmTyped.trim() === 'global';
+  const [roleId, teamId] = useWatch({ control, name: ['role_id', 'sc_team_id'] });
+  const role = roles.data?.find((r) => r.id === roleId);
+  const needsGlobalConfirm = role?.name === 'value_provider' && !teamId;
+  const [globalTyped, setGlobalTyped] = useState('');
+  const [gateTried, setGateTried] = useState(false);
+  const globalOk = globalTyped.trim() === 'global';
 
   const onValid: SubmitHandler<FormShape> = async (data) => {
+    if (needsGlobalConfirm && !globalOk) {
+      setGateTried(true);
+      document.getElementById('grant-global')?.focus();
+      return;
+    }
     const scope: Record<string, string> = {};
     if (data.sc_project_id) scope.project_id = data.sc_project_id;
     if (data.sc_team_id) scope.team_id = data.sc_team_id;
     if (data.sc_environment) scope.environment = data.sc_environment;
-    if (data.sc_secret_ref_prefix)
-      scope.secret_ref_prefix = data.sc_secret_ref_prefix;
+    if (data.sc_secret_ref_prefix) scope.secret_ref_prefix = data.sc_secret_ref_prefix;
     if (data.sc_provider_type) scope.provider_type = data.sc_provider_type;
-
-    // Slice N5 — enforce the value_provider team-pick rule here too
-    // (defense in depth alongside the submit-button gate).
-    if (isValueProviderRole && !data.sc_team_id && !globalConfirmOk) {
-      return;
-    }
-
     const body: UserRoleInput = {
       user_id: data.user_id,
       role_id: data.role_id,
       scope: Object.keys(scope).length > 0 ? scope : undefined,
     };
-    await grant.mutateAsync(body);
-    onDone();
-  };
-
-  return (
-    <form onSubmit={handleSubmit(onValid)} className="space-y-4">
-      <Field
-        label="User ID"
-        error={errors.user_id?.message}
-        hint="Free-form for now (no users table — identities come from the future OIDC flow). Use the same identifier your IdP issues as `sub`."
-      >
-        <input
-          type="text"
-          {...register('user_id')}
-          className={inputCls}
-          placeholder="alice"
-        />
-      </Field>
-
-      <Field label="Role" error={errors.role_id?.message}>
-        <select {...register('role_id')} className={inputCls}>
-          <option value="">— pick a role —</option>
-          {roles.data?.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-              {r.is_system ? ' (system)' : ''}
-            </option>
-          ))}
-        </select>
-        {roles.isError && (
-          <div className="text-xs text-bad">failed to load roles</div>
-        )}
-      </Field>
-
-      <fieldset className="border border-border/60 rounded-md p-4 space-y-3">
-        <legend className="text-[11px] text-muted px-1 font-medium">
-          Scope — narrow the assignment. All optional; empty = global.
-        </legend>
-
-        <Field label="Project" error={errors.sc_project_id?.message}>
-          <select {...register('sc_project_id')} className={inputCls}>
-            <option value="">(any project)</option>
-            {projects.data
-              ?.filter((p) => p.status === 'active')
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-          </select>
-        </Field>
-
-        <Field
-          label="Team"
-          error={errors.sc_team_id?.message}
-          hint="Grant applies to the team AND every descendant team's projects. Use for 'section head over X' — Alice grants Bob `secret.approve` scoped to team 'Section', and Bob covers every team/project under Section automatically."
-        >
-          <select {...register('sc_team_id')} className={inputCls}>
-            <option value="">(any team)</option>
-            {teamOptions.map((opt) => (
-              <option key={opt.team.id} value={opt.team.id}>
-                {opt.indentedLabel}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field
-          label="Environment"
-          hint="By NAME (not UUID) since multiple projects can each have `uat`."
-        >
-          <input
-            list="env-options"
-            {...register('sc_environment')}
-            className={inputCls}
-            placeholder="uat"
-          />
-          <datalist id="env-options">
-            {envNames.map((n) => (
-              <option key={n} value={n} />
-            ))}
-          </datalist>
-        </Field>
-
-        <Field
-          label="Secret ref prefix"
-          hint="Prefix match (e.g. `billing/`)."
-        >
-          <input
-            type="text"
-            {...register('sc_secret_ref_prefix')}
-            className={inputCls}
-            placeholder="billing/"
-          />
-        </Field>
-
-        <Field
-          label="Provider type"
-          hint="exact: vault | aws-sm | gcp-sm | azure-kv"
-        >
-          <input
-            type="text"
-            {...register('sc_provider_type')}
-            className={inputCls}
-            placeholder="vault"
-          />
-        </Field>
-      </fieldset>
-
-      {globalGateOpen && (
-        <div className="bg-warn-bg border border-warn-line border-l-4 border-l-warn rounded-md px-3 py-3 text-xs space-y-2">
-          <p className="text-warn font-semibold">
-            value_provider with no team scope = global inbox access
-          </p>
-          <p className="text-warn">
-            Without a team pick, this user becomes a value provider for{' '}
-            <em>every</em> team's cross-team inbox. That's almost never
-            what you want — assign a specific team in Scope, or type{' '}
-            <span className="font-mono">global</span> below to override.
-          </p>
-          <input
-            type="text"
-            value={globalConfirmTyped}
-            onChange={(e) => setGlobalConfirmTyped(e.target.value)}
-            placeholder="type `global` to confirm"
-            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
-          />
-        </div>
-      )}
-
-      {grant.error instanceof ApiError && (
-        <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
-          {grant.error.status}: {grant.error.message}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between pt-3 border-t border-border/60">
-        <Button
-          type="button"
-          variant="secondary"
-          size="md"
-          onClick={onCancel}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          size="md"
-          disabled={
-            grant.isPending ||
-            (isValueProviderRole && !teamPicked && !globalConfirmOk)
-          }
-        >
-          {grant.isPending ? 'Saving…' : 'Grant'}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-// --- shared bits ----------------------------------------------------
-
-const inputCls =
-  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent ';
-
-function Field({
-  label,
-  error,
-  hint,
-  children,
-}: {
-  label: string;
-  error?: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-xs text-muted font-medium">
-        {label}
-      </label>
-      {children}
-      {hint && !error && (
-        <div className="text-[11px] text-muted/80">{hint}</div>
-      )}
-      {error && <div className="text-xs text-bad">{error}</div>}
-    </div>
-  );
-}
-
-function stringifyError(e: unknown): string {
-  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
-  if (e instanceof Error) return e.message;
-  return String(e);
-}
-
-// buildIndentedTeams takes the flat team list and produces a
-// preorder-traversal list with each entry decorated with a label
-// like "··· alpha-east-billing" so a flat <select> can display the
-// hierarchy. Detached subtrees become roots so they stay pickable.
-interface IndentedTeamOption {
-  team: Team;
-  indentedLabel: string;
-}
-
-function buildIndentedTeams(all: Team[]): IndentedTeamOption[] {
-  const ids = new Set(all.map((t) => t.id));
-  const byParent = new Map<string | null, Team[]>();
-  for (const t of all) {
-    const parent = t.parent_team_id && ids.has(t.parent_team_id) ? t.parent_team_id : null;
-    const bucket = byParent.get(parent) ?? [];
-    bucket.push(t);
-    byParent.set(parent, bucket);
-  }
-  const sorted = (arr: Team[]) => [...arr].sort((a, b) => a.name.localeCompare(b.name));
-  const out: IndentedTeamOption[] = [];
-  const walk = (parent: string | null, depth: number) => {
-    for (const t of sorted(byParent.get(parent) ?? [])) {
-      const prefix = depth === 0 ? '' : '· '.repeat(depth);
-      const archived = t.status === 'archived' ? ' (archived)' : '';
-      out.push({ team: t, indentedLabel: `${prefix}${t.name}${archived}` });
-      walk(t.id, depth + 1);
+    try {
+      await grant.mutateAsync(body);
+      onDone(role?.name ?? 'the role', data.user_id);
+    } catch {
+      // Shown below the form.
     }
   };
-  walk(null, 0);
-  return out;
+
+  return (
+    <Drawer
+      title="Grant a role"
+      subtitle="Give one user a role, everywhere or within a scope."
+      onClose={onCancel}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={grant.isPending}>
+            Cancel
+          </Button>
+          <Button type="submit" form="grant-role" variant="primary" disabled={grant.isPending} aria-busy={grant.isPending}>
+            {grant.isPending ? 'Granting…' : 'Grant role'}
+          </Button>
+        </>
+      }
+    >
+      <form id="grant-role" noValidate onSubmit={handleSubmit(onValid)} className="flex flex-col gap-[18px]">
+        <Field id="grant-user" label="User id" hint="Each person can find their user id on their Profile page." error={errors.user_id?.message}>
+          {(p) => (
+            <Input {...p} {...register('user_id')} placeholder="00000000-0000-0000-0000-000000000000" className="font-mono" autoComplete="off" spellCheck={false} data-autofocus />
+          )}
+        </Field>
+
+        <Field id="grant-role-id" label="Role" error={errors.role_id?.message ?? (roles.isError ? "Couldn't load the roles." : undefined)}>
+          {(p) => (
+            <Select {...p} {...register('role_id')}>
+              <option value="">{roles.isLoading ? 'Loading roles…' : 'Choose a role'}</option>
+              {roles.data?.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                  {r.is_system ? ' (built in)' : ''}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
+        <fieldset className="flex min-w-0 flex-col gap-3.5 rounded-md border border-border px-4 pb-4 pt-2">
+          <legend className="px-1 text-body font-semibold text-ink">Scope</legend>
+          <p className="text-caption text-muted">All optional. Leave everything empty to grant the role everywhere.</p>
+          <Field id="grant-project" label="Project" error={errors.sc_project_id?.message}>
+            {(p) => (
+              <Select {...p} {...register('sc_project_id')}>
+                <option value="">Any project</option>
+                {projects.data
+                  ?.filter((x) => x.status === 'active')
+                  .map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+              </Select>
+            )}
+          </Field>
+          <Field
+            id="grant-team"
+            label="Team"
+            hint="Covers the team and every team under it, with all their projects."
+            error={errors.sc_team_id?.message}
+          >
+            {(p) => (
+              <Select {...p} {...register('sc_team_id')}>
+                <option value="">Any team</option>
+                {teamOptions.map((o) => (
+                  <option key={o.team.id} value={o.team.id}>
+                    {o.indentedLabel}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Field id="grant-env" label="Environment" hint="By name, so uat covers every project's uat environment." error={errors.sc_environment?.message}>
+            {(p) => (
+              <>
+                <Input {...p} list="grant-env-options" {...register('sc_environment')} placeholder="uat" className="font-mono" autoComplete="off" />
+                <datalist id="grant-env-options">
+                  {envNames.map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
+              </>
+            )}
+          </Field>
+          <Field id="grant-prefix" label="Secret path prefix" hint="Only secrets whose path starts with this, like billing/." error={errors.sc_secret_ref_prefix?.message}>
+            {(p) => <Input {...p} {...register('sc_secret_ref_prefix')} placeholder="billing/" className="font-mono" autoComplete="off" spellCheck={false} />}
+          </Field>
+          <Field id="grant-provider" label="Provider" error={errors.sc_provider_type?.message}>
+            {(p) => (
+              <Select {...p} {...register('sc_provider_type')}>
+                <option value="">Any provider</option>
+                {PROVIDER_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {providerLabel(t)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </fieldset>
+
+        {needsGlobalConfirm && (
+          <div className="flex flex-col gap-3 rounded-md border border-bad-line px-3.5 py-3">
+            <p className="text-ui font-normal">
+              <span className="font-semibold text-bad">value_provider without a team covers every team's inbox.</span>{' '}
+              That's rarely what you want. Pick a team in Scope, or type global to grant it everywhere.
+            </p>
+            <Field id="grant-global" label="Type global to confirm" error={gateTried && !globalOk ? 'Pick a team, or type global.' : undefined}>
+              {(p) => <Input {...p} value={globalTyped} onChange={(e) => setGlobalTyped(e.target.value)} className="font-mono" autoComplete="off" spellCheck={false} />}
+            </Field>
+          </div>
+        )}
+
+        {grant.isError && (
+          <Banner tone="error" title="Not granted.">
+            {errorText(grant.error)}
+          </Banner>
+        )}
+      </form>
+    </Drawer>
+  );
 }

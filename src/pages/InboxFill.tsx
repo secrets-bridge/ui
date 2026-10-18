@@ -36,6 +36,7 @@ import { Breadcrumb } from '../ui/Breadcrumb';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Field, Input, Textarea } from '../ui/Field';
+import { Path } from '../ui/Path';
 import { Status } from '../ui/Status';
 import { useToast } from '../ui/toastContext';
 import { FillWindow } from './inbox/FillWindow';
@@ -331,7 +332,7 @@ function Details({ r, now }: { r: AccessRequest; now: number }) {
       'Destination',
       <span key="d">
         {r.destination_provider_label ?? r.target_provider_type}
-        {r.destination_secret_ref && <span className="block break-all font-mono text-mono">{r.destination_secret_ref}</span>}
+        {r.destination_secret_ref && <Path value={r.destination_secret_ref} className="block" />}
       </span>,
     ],
     ['Asked', formatExact(r.created_at)],

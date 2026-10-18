@@ -1,62 +1,49 @@
 /**
- * R-follow-up #3 (api#114) Slice 2 — team-anchored scoped policy
- * authoring page.
+ * R-follow-up #3 (api#114) Slice 2 — a team's policy rules.
  *
  *   /teams/:teamID/policies
  *
- * Shows the team's own rules + inherited ancestor-team rules + inherited
- * platform rules. Inherited rows are read-only and sanitized (selector
- * omitted; selector_keys only). Per §5 OQ2 the Author drawer is a
- * separate component from ProjectPolicies' drawer — selectors are
- * materially different (no env_id picker, no project_id ever, fewer
- * fields).
+ * The team's own rules, then the read-only rules it inherits from parent
+ * teams and the platform (selector values withheld; keys only). The
+ * author form is separate from the project one (§5 OQ2): a team rule
+ * always carries environment_kind=non_prod and can't pin a project,
+ * environment or team (§1 C1), so it only offers the safe optional
+ * keys: path prefix, provider and operation.
  *
- * Per §1 C1 lock the team rule's selector must carry
- * environment_kind="non_prod" and cannot pin project_id,
- * environment_id, or team_id. The form ALWAYS submits
- * environment_kind=non_prod and exposes only the safe-list optional
- * keys (secret_ref_prefix in v1).
- *
- * The Author drawer reads the live cap from the LIST response envelope
- * (no separate platform-settings GET). Fails closed when the cap is
- * missing — falling back to 9000 would defeat the scoped-author gate.
+ * The list endpoint needs policy.author on this team; a 403 shows as a
+ * permission panel, never as "0 rules" (QA P0-2). The form reads the
+ * live priority cap from the list response and stays closed without it.
  */
 
 import { useMemo, useState } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { z } from 'zod';
 
 import { ApiError } from '../api/client';
-import { toPolicyRuleErrorToast } from '../api/policyErrors';
-import {
-  POLICY_SELECTOR_PROVIDER_TYPES,
-  POLICY_SELECTOR_OPERATIONS,
-} from '../api/policySelectorEnums';
 import { useMyPolicyAuthorTeamCoverage } from '../api/myPolicyAuthorTeamCoverage';
-import {
-  useAuthorTeamPolicyRule,
-  useDeleteTeamPolicyRule,
-  useTeamPolicyRules,
-} from '../api/teamPolicyRules';
+import { toPolicyRuleErrorToast } from '../api/policyErrors';
+import { POLICY_SELECTOR_OPERATIONS, POLICY_SELECTOR_PROVIDER_TYPES } from '../api/policySelectorEnums';
+import { useAuthorTeamPolicyRule, useDeleteTeamPolicyRule, useTeamPolicyRules } from '../api/teamPolicyRules';
 import { useTeams } from '../api/teams';
-import type {
-  AuthorTeamPolicyRuleInput,
-  TeamPolicyRule,
-} from '../api/types';
+import type { AuthorTeamPolicyRuleInput, TeamPolicyRule } from '../api/types';
 import { useScopedAuthorableWorkflows } from '../api/workflows';
-import {
-  canAuthorTeamPolicy,
-  canEditPolicyRule,
-  canManagePlatformPolicy,
-} from '../auth/capabilities';
+import { canAuthorTeamPolicy, canEditPolicyRule, canManagePlatformPolicy } from '../auth/capabilities';
 import { useAuth } from '../auth/AuthContext';
+import { providerLabel } from '../lib/providers';
+import { Banner } from '../ui/Banner';
+import { Breadcrumb } from '../ui/Breadcrumb';
 import { Button } from '../ui/Button';
-import { Card, CardBody, CardHeader } from '../ui/Card';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { DataTable, type Column } from '../ui/DataTable';
 import { Drawer } from '../ui/Drawer';
+import { EmptyState } from '../ui/EmptyState';
+import { Field, Input, Select } from '../ui/Field';
 import { PageHeader } from '../ui/PageHeader';
+import { useToast } from '../ui/toastContext';
+import { operationLabel } from './policies/labels';
+import { Loading, RuleStatus, Selector } from './policies/parts';
 
 export function TeamPolicies() {
   const { id: teamID } = useParams<{ id: string }>();
@@ -65,222 +52,234 @@ export function TeamPolicies() {
   const teams = useTeams();
   const coverage = useMyPolicyAuthorTeamCoverage();
   const del = useDeleteTeamPolicyRule(teamID ?? '');
+  const toast = useToast();
+  const navigate = useNavigate();
 
   const team = teams.data?.find((t) => t.id === teamID);
-
   const [authoring, setAuthoring] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<TeamPolicyRule | null>(null);
 
-  const ownRules = useMemo(
-    () =>
-      (list.data?.rules ?? []).filter(
-        (r) => !r.is_platform_inherited && !r.is_ancestor_inherited,
-      ),
-    [list.data],
-  );
-  const ancestorRules = useMemo(
-    () => (list.data?.rules ?? []).filter((r) => r.is_ancestor_inherited),
-    [list.data],
-  );
-  const platformInherited = useMemo(
-    () => (list.data?.rules ?? []).filter((r) => r.is_platform_inherited),
-    [list.data],
+  const rules = useMemo(() => list.data?.rules ?? [], [list.data]);
+  const own = useMemo(() => rules.filter((r) => !r.is_platform_inherited && !r.is_ancestor_inherited), [rules]);
+  const inherited = useMemo(
+    () => [...rules.filter((r) => r.is_ancestor_inherited), ...rules.filter((r) => r.is_platform_inherited)],
+    [rules],
   );
 
-  if (!teamID) {
-    return (
-      <div className="max-w-5xl mx-auto p-6">
-        <Card>
-          <CardBody>
-            <p className="text-sm text-muted">Missing team id.</p>
-          </CardBody>
-        </Card>
-      </div>
-    );
-  }
+  const crumbs = [{ label: 'Team policies', to: '/teams/policies' }, { label: team?.name ?? 'Team' }];
 
-  if (teams.isLoading) {
-    return (
-      <div className="max-w-5xl mx-auto p-6">
-        <Card>
-          <CardBody>
-            <p className="text-sm text-muted">Loading team…</p>
-          </CardBody>
-        </Card>
-      </div>
-    );
-  }
+  if (!teamID) return <Loading>Missing team id.</Loading>;
+  if (teams.isLoading) return <Loading>Loading the team…</Loading>;
 
   const authorCap = canAuthorTeamPolicy(coverage.data, teamID);
   const showAdminShortcut = canManagePlatformPolicy(identity?.permissions);
-  const livePriorityCap = list.data?.priority_cap;
+  const cap = list.data?.priority_cap;
+  // QA P0-2: the list is policy.author-scoped; a 403 covers the whole
+  // response and must read as a permission problem.
+  const forbidden = list.error instanceof ApiError && list.error.status === 403;
 
-  // QA P0-2: the team list endpoint is policy.author-scoped — an actor
-  // without it gets a 403 (out_of_scope_team_policy) for the WHOLE
-  // response. Render that as a permission panel, never as "0 rules".
-  const listForbidden =
-    list.error instanceof ApiError && list.error.status === 403;
-
-  // QA P0-3: header copy is capability-aware — never promise authoring to
-  // an actor who can't author this team.
-  const headerDescription = authorCap.allowed
-    ? 'Author non-prod policy rules for this team. Rules cascade down to every descendant project.'
+  // QA P0-3: never promise authoring to someone who can't author here.
+  const description = authorCap.allowed
+    ? "Rules for this team's non-production requests. They apply to every project under the team and its sub-teams."
     : showAdminShortcut
-      ? "You don't have scoped policy.author on this team. Platform global rules are managed at /admin/policies."
-      : 'View inherited policy rules for this team. Authoring requires policy.author scoped to this team.';
+      ? "You can't author rules for this team. Platform rules are managed on the Policies page."
+      : 'The rules that apply to this team, read-only. Authoring needs the policy.author permission for this team.';
+
+  const detail = (r: TeamPolicyRule) => `/teams/${teamID}/policies/${r.id}`;
+  const from = (r: TeamPolicyRule) => (r.is_ancestor_inherited ? `Parent team${r.team_name ? ` · ${r.team_name}` : ''}` : 'Platform');
+  const workflow = (r: TeamPolicyRule) => r.workflow_name ?? r.workflow_id.slice(0, 8);
+
+  const ownColumns: Column<TeamPolicyRule>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      render: (r) => (
+        <Link to={detail(r)} className="font-medium text-accent hover:underline">
+          {r.name}
+        </Link>
+      ),
+    },
+    { key: 'sel', header: 'Matches', render: (r) => <Selector selector={r.selector ?? {}} />, className: 'max-w-[360px]' },
+    { key: 'wf', header: 'Workflow', render: workflow },
+    { key: 'prio', header: 'Priority', align: 'right', render: (r) => <span className="font-mono text-mono">{r.priority}</span> },
+    { key: 'status', header: 'Status', render: (r) => <RuleStatus enabled={r.enabled} /> },
+    {
+      key: 'actions',
+      header: 'Actions',
+      hiddenHeader: true,
+      align: 'right',
+      render: (r) =>
+        canEditPolicyRule(identity?.permissions, r).allowed ? (
+          <Button variant="danger" size="sm" onClick={() => setConfirmDelete(r)} aria-label={`Delete ${r.name}`}>
+            Delete…
+          </Button>
+        ) : null,
+    },
+  ];
+  const inheritedColumns: Column<TeamPolicyRule>[] = [
+    { key: 'name', header: 'Name', render: (r) => <span className="font-medium text-ink">{r.name}</span> },
+    { key: 'from', header: 'From', render: from },
+    { key: 'keys', header: 'Matches on', render: (r) => <Selector keys={r.selector_keys} /> },
+    { key: 'wf', header: 'Workflow', render: workflow },
+    { key: 'prio', header: 'Priority', align: 'right', render: (r) => <span className="font-mono text-mono">{r.priority}</span> },
+    { key: 'status', header: 'Status', render: (r) => <RuleStatus enabled={r.enabled} /> },
+  ];
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
-      <PageHeader
-        title={`${team?.name ?? 'Team'} · Team policies`}
-        description={headerDescription}
-        actions={
-          authorCap.allowed ? (
-            <Button onClick={() => setAuthoring(true)}>+ Author rule</Button>
-          ) : undefined
-        }
-      />
+    <div>
+      <Breadcrumb items={crumbs} />
+      <div className="mt-3">
+        <PageHeader
+          title={`${team?.name ?? 'Team'} policies`}
+          description={description}
+          actions={
+            authorCap.allowed ? (
+              <Button variant="primary" onClick={() => setAuthoring(true)}>
+                Create rule
+              </Button>
+            ) : undefined
+          }
+        />
+      </div>
 
-      {listForbidden && (
-        <Card>
-          <CardBody>
-            <div className="rounded-sm border border-warn-line bg-warn-bg px-4 py-3 text-sm text-warn">
-              <p className="font-medium">
-                You do not have scoped policy.author access for this team.
-              </p>
-              <p className="mt-1 text-[13px] text-warn">
-                Team-anchored policy authoring requires the{' '}
-                <code>policy.author</code> permission scoped to this team.
-                {showAdminShortcut
-                  ? ' As a platform admin you can still manage global rules at /admin/policies.'
-                  : ' Ask a platform admin to grant it.'}
-              </p>
-            </div>
-          </CardBody>
-        </Card>
-      )}
-
-      {!listForbidden && (
-        <>
-
-      {(ancestorRules.length > 0 || platformInherited.length > 0) && (
-        <Card>
-          <CardHeader>
-            <h3 className="text-ink font-semibold">
-              Inherited (read-only)
-            </h3>
-            <span className="text-muted text-xs">
-              {ancestorRules.length + platformInherited.length} rule
-              {ancestorRules.length + platformInherited.length === 1 ? '' : 's'}
-            </span>
-          </CardHeader>
-          <CardBody>
-            <ul className="divide-y divide-border">
-              {ancestorRules.map((r) => (
-                <InheritedRow
-                  key={r.id}
-                  rule={r}
-                  badgeLabel="team"
-                  badgeTooltip={r.team_name ? `From team ${r.team_name}` : undefined}
-                />
-              ))}
-              {platformInherited.map((r) => (
-                <InheritedRow key={r.id} rule={r} badgeLabel="platform" />
-              ))}
-            </ul>
-          </CardBody>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <h3 className="text-ink font-semibold">Team rules</h3>
-          <span className="text-muted text-xs">
-            {ownRules.length} rule{ownRules.length === 1 ? '' : 's'}
-          </span>
-        </CardHeader>
-        <CardBody>
-          {ownRules.length === 0 ? (
-            <EmptyState
-              canAuthor={authorCap.allowed}
-              onAuthor={() => setAuthoring(true)}
-              showAdminShortcut={showAdminShortcut}
-            />
+      {list.isLoading && <Loading>Loading rules…</Loading>}
+      {forbidden && (
+        <Banner title="You don't have policy.author for this team.">
+          Team rules need the policy.author permission scoped to this team.
+          {showAdminShortcut ? (
+            <>
+              {' '}
+              As an administrator you can still manage platform rules on the{' '}
+              <Link to="/admin/policies" className="font-medium text-accent hover:underline">
+                Policies
+              </Link>{' '}
+              page.
+            </>
           ) : (
-            <ul className="divide-y divide-border">
-              {ownRules.map((r) => {
-                const editCap = canEditPolicyRule(identity?.permissions, {
-                  is_platform_inherited: r.is_platform_inherited,
-                  is_ancestor_inherited: r.is_ancestor_inherited,
-                  is_system: r.is_system,
-                });
-                return (
-                  <li
-                    key={r.id}
-                    className="py-3 flex items-start justify-between gap-3"
-                  >
-                    <div>
-                      <div className="text-sm text-ink">{r.name}</div>
-                      <div className="mt-1 text-[12px] text-muted">
-                        priority {r.priority} · workflow{' '}
-                        {r.workflow_name ?? r.workflow_id.slice(0, 8) + '…'}
-                        {' · '}
-                        {r.enabled ? 'enabled' : 'disabled'}
-                      </div>
-                      {r.selector && (
-                        <div className="mt-1 text-[11px] font-mono text-muted/80">
-                          {JSON.stringify(r.selector)}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 pt-1">
-                      {/* R-follow-up #5 — History link routes to the
-                          Detail page where the audit timeline lives. */}
-                      <Link
-                        to={`/teams/${teamID}/policies/${r.id}`}
-                        className="text-[12px] text-accent hover:underline"
-                      >
-                        History
-                      </Link>
-                      {editCap.allowed && (
-                        <button
-                          onClick={() => setConfirmDelete(r)}
-                          className="text-[12px] text-bad hover:underline"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+            ' Ask a platform administrator to grant it.'
           )}
-        </CardBody>
-      </Card>
+        </Banner>
+      )}
+      {list.isError && !forbidden && (
+        <Banner
+          tone="error"
+          title="Couldn't load the rules."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void list.refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          {list.error instanceof ApiError ? toPolicyRuleErrorToast(list.error) : 'Network error.'}
+        </Banner>
+      )}
+
+      {list.data && (
+        <>
+          <section aria-labelledby="own-heading" className="mb-8">
+            <h2 id="own-heading" className="mb-3 text-block-heading text-ink">
+              Team rules
+              <span className="ml-2 font-mono text-mono-small font-normal text-muted">{own.length}</span>
+            </h2>
+            {own.length === 0 ? (
+              <EmptyState title="No team rules yet.">
+                Requests here follow the inherited rules below.
+                {showAdminShortcut && (
+                  <>
+                    {' '}
+                    Platform rules are managed on the{' '}
+                    <Link to="/admin/policies" className="font-medium text-accent hover:underline">
+                      Policies
+                    </Link>{' '}
+                    page.
+                  </>
+                )}
+              </EmptyState>
+            ) : (
+              <DataTable
+                label="Team rules"
+                columns={ownColumns}
+                rows={own}
+                rowKey={(r) => r.id}
+                onRowClick={(r) => navigate(detail(r))}
+                minWidth={760}
+                stacked={(r) => (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="flex items-center justify-between gap-3">
+                      <Link to={detail(r)} className="font-medium text-accent hover:underline">
+                        {r.name}
+                      </Link>
+                      <RuleStatus enabled={r.enabled} />
+                    </p>
+                    <p className="text-caption text-muted">
+                      Priority <span className="font-mono">{r.priority}</span> · {workflow(r)}
+                    </p>
+                    <Selector selector={r.selector ?? {}} />
+                    {canEditPolicyRule(identity?.permissions, r).allowed && (
+                      <div className="mt-1">
+                        <Button variant="danger" size="sm" onClick={() => setConfirmDelete(r)} aria-label={`Delete ${r.name}`}>
+                          Delete…
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              />
+            )}
+          </section>
+
+          {inherited.length > 0 && (
+            <section aria-labelledby="inherited-heading">
+              <h2 id="inherited-heading" className="mb-1 text-block-heading text-ink">
+                Inherited rules
+                <span className="ml-2 font-mono text-mono-small font-normal text-muted">{inherited.length}</span>
+              </h2>
+              <p className="mb-3 text-caption text-muted">
+                Read-only here. They are managed where they were created. Their selector values aren't shown, only what they match
+                on.
+              </p>
+              <DataTable
+                label="Inherited rules"
+                columns={inheritedColumns}
+                rows={inherited}
+                rowKey={(r) => r.id}
+                minWidth={760}
+                stacked={(r) => (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="flex items-center justify-between gap-3">
+                      <span className="font-medium text-ink">{r.name}</span>
+                      <RuleStatus enabled={r.enabled} />
+                    </p>
+                    <p className="text-caption text-muted">
+                      {from(r)} · priority <span className="font-mono">{r.priority}</span> · {workflow(r)}
+                    </p>
+                    <Selector keys={r.selector_keys} />
+                  </div>
+                )}
+              />
+            </section>
+          )}
         </>
       )}
 
-      {authoring && (
-        <TeamPolicyAuthorDrawer
-          teamID={teamID}
-          cap={livePriorityCap}
-          listError={list.error}
-          onClose={() => setAuthoring(false)}
-        />
-      )}
+      {authoring && <TeamPolicyAuthorDrawer teamID={teamID} cap={cap} listError={list.error} onClose={() => setAuthoring(false)} />}
 
       {confirmDelete && (
         <ConfirmModal
-          title="Delete policy rule?"
-          body={`The rule "${confirmDelete.name}" will be removed from this team. Inherited rules continue to apply.`}
-          confirmText="Delete"
+          title={`Delete ${confirmDelete.name}?`}
+          body="The rule is removed from this team and the projects under it. Inherited rules keep applying."
+          confirmText="Delete rule"
           danger
           loading={del.isPending}
           error={del.error}
           onConfirm={async () => {
-            await del.mutateAsync(confirmDelete.id);
-            setConfirmDelete(null);
+            try {
+              await del.mutateAsync(confirmDelete.id);
+              toast(`Deleted ${confirmDelete.name}.`);
+              setConfirmDelete(null);
+            } catch {
+              // Shown in the dialog.
+            }
           }}
           onCancel={() => setConfirmDelete(null)}
         />
@@ -289,171 +288,62 @@ export function TeamPolicies() {
   );
 }
 
-function InheritedRow({
-  rule,
-  badgeLabel,
-  badgeTooltip,
-}: {
-  rule: TeamPolicyRule;
-  badgeLabel: string;
-  badgeTooltip?: string;
-}) {
-  return (
-    <li className="py-3 flex items-start justify-between gap-3">
-      <div>
-        <div className="flex items-center gap-2">
-          <span
-            className="rounded-sm bg-bg/60 border border-border px-1.5 py-0.5 text-[10px] text-muted"
-            title={badgeTooltip}
-          >
-            {badgeLabel}
-          </span>
-          <span className="text-sm text-ink">{rule.name}</span>
-        </div>
-        <div className="mt-1 text-[12px] text-muted">
-          priority {rule.priority} · workflow{' '}
-          {rule.workflow_name ?? rule.workflow_id.slice(0, 8) + '…'}
-          {rule.selector_keys.length > 0 && (
-            <>
-              {' · selector keys: '}
-              <span className="font-mono text-[11px]">
-                {rule.selector_keys.join(', ')}
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-      <div className="text-[11px] text-muted/80 pt-1">
-        Read-only · manage on its owning surface
-      </div>
-    </li>
-  );
-}
-
-function EmptyState({
-  canAuthor,
-  onAuthor,
-  showAdminShortcut,
-}: {
-  canAuthor: boolean;
-  onAuthor: () => void;
-  showAdminShortcut: boolean;
-}) {
-  return (
-    <div className="py-6 text-center space-y-2">
-      <p className="text-sm text-muted">No team rules yet.</p>
-      {canAuthor && (
-        <Button onClick={onAuthor} variant="secondary">
-          + Author rule
-        </Button>
-      )}
-      {showAdminShortcut && (
-        <div className="pt-2 text-[12px] text-muted/80">
-          Platform engineer?{' '}
-          <Link
-            to="/admin/policies"
-            className="text-accent hover:underline"
-          >
-            Manage at /admin/policies
-          </Link>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ----------------------------------------------------------- */
-/* TeamPolicyAuthorDrawer — separate component per OQ2          */
-/* ----------------------------------------------------------- */
+/* Author drawer, separate from the project one (§5 OQ2). */
 
 function buildTeamAuthorSchema(cap: number) {
   return z.object({
-    name: z.string().min(1, 'name is required').max(120, 'name is too long'),
+    name: z.string().trim().min(1, 'Name the rule.').max(120, 'Keep the name under 120 characters.'),
     secret_ref_prefix: z.string().max(255).optional(),
-    // api#139 — optional provider_type from the backend-owned enum.
-    // Empty string = wildcard (omitted from the submitted selector).
+    // api#139 / api#141: optional, from the backend-owned enums; "" = any.
     provider_type: z.string().optional(),
-    // api#141 — optional operation from the backend-owned enum.
-    // Empty string = wildcard (omitted from the submitted selector).
     operation: z.string().optional(),
-    workflow_id: z.guid('pick a workflow'),
+    workflow_id: z.guid('Choose a workflow.'),
     priority: z.coerce
-      .number()
-      .int()
-      .min(0, 'priority must be 0 or higher')
-      .max(cap - 1, `priority must be < ${cap}`),
+      .number({ error: 'Enter a whole number.' })
+      .int('Enter a whole number.')
+      .min(0, 'Use 0 or more.')
+      .max(cap - 1, `Use a number below ${cap}; ${cap} and up is reserved for the platform.`),
     enabled: z.boolean(),
   });
 }
 
-// z.coerce.number() fields make the schema's input type differ from
-// its output (zod 4 types coerce input as unknown), so the form holds
-// the input shape and onValid receives the parsed output.
+// z.coerce.number() makes the input type differ from the output (zod 4
+// types coerce input as unknown): the form holds the input shape and
+// onValid receives the parsed output.
 type TeamAuthorFormInput = z.input<ReturnType<typeof buildTeamAuthorSchema>>;
 type TeamAuthorFormShape = z.output<ReturnType<typeof buildTeamAuthorSchema>>;
 
-function TeamPolicyAuthorDrawer({
-  teamID,
-  cap,
-  listError,
-  onClose,
-}: {
-  teamID: string;
-  cap: number | undefined;
-  listError: unknown;
-  onClose: () => void;
-}) {
-  // R-follow-up #2 fail-closed contract: the SPA refuses to render
-  // the form when the cap can't be read. The api fails the WHOLE
-  // list response with 503 platform_setting_unavailable in that
-  // case; the list query's error surfaces here.
+function TeamPolicyAuthorDrawer({ teamID, cap, listError, onClose }: { teamID: string; cap: number | undefined; listError: unknown; onClose: () => void }) {
+  // R-follow-up #2 fail-closed: without a readable cap (the api fails
+  // the whole list with 503 platform_setting_unavailable) no form.
   if (cap === undefined) {
     return (
       <Drawer
-        title="Author policy rule"
+        title="Create team rule"
         onClose={onClose}
         footer={
-          <div className="flex justify-end">
-            <Button variant="secondary" onClick={onClose}>
-              Close
-            </Button>
-          </div>
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
         }
       >
-        <div className="space-y-3">
-          <div className="rounded-sm border border-bad-line bg-bad-bg px-3 py-2 text-[12px] text-bad">
-            Could not load the platform-reserved priority cap.{' '}
-            {listError instanceof ApiError
-              ? toPolicyRuleErrorToast(listError)
-              : 'Try again shortly.'}
-          </div>
-          <p className="text-[12px] text-muted">
-            Authoring stays disabled until the cap is readable —
-            falling back to a stale value would let team rules into
-            the platform-reserved band.
-          </p>
-        </div>
+        <Banner tone="error" title="Couldn't load the priority limit for team rules.">
+          {listError instanceof ApiError ? toPolicyRuleErrorToast(listError) : 'Try again shortly.'}
+        </Banner>
+        <p className="mt-3 text-caption text-muted">
+          The form stays closed until the limit loads, so a rule can't land in the platform's reserved range.
+        </p>
       </Drawer>
     );
   }
-
-  return (
-    <TeamPolicyAuthorForm teamID={teamID} cap={cap} onClose={onClose} />
-  );
+  return <TeamPolicyAuthorForm teamID={teamID} cap={cap} onClose={onClose} />;
 }
 
-function TeamPolicyAuthorForm({
-  teamID,
-  cap,
-  onClose,
-}: {
-  teamID: string;
-  cap: number;
-  onClose: () => void;
-}) {
+function TeamPolicyAuthorForm({ teamID, cap, onClose }: { teamID: string; cap: number; onClose: () => void }) {
   const author = useAuthorTeamPolicyRule(teamID);
+  const toast = useToast();
   const workflows = useScopedAuthorableWorkflows();
-  const eligibleWorkflows = workflows.data ?? [];
+  const eligible = workflows.data ?? [];
 
   const schema = useMemo(() => buildTeamAuthorSchema(cap), [cap]);
   const {
@@ -467,36 +357,22 @@ function TeamPolicyAuthorForm({
       secret_ref_prefix: '',
       provider_type: '',
       operation: '',
-      workflow_id: eligibleWorkflows[0]?.id ?? '',
+      workflow_id: eligible[0]?.id ?? '',
       priority: 100,
       enabled: true,
     },
   });
 
   const onSubmit: SubmitHandler<TeamAuthorFormShape> = async (vals) => {
-    // §1 C1 strict: ALWAYS submit environment_kind=non_prod. NO
-    // project_id, NO environment_id, NO team_id (URL teamID is the
-    // source of truth per §4 / R-follow-up #2's URL-key-wins).
-    const selector: Record<string, unknown> = {
-      environment_kind: 'non_prod',
-    };
-    if (vals.secret_ref_prefix) {
-      selector.secret_ref_prefix = vals.secret_ref_prefix;
-    }
-    // api#139 — only set provider_type when a real value is chosen.
-    // Blank stays a wildcard; never submit provider_type="" (the
-    // server rejects it as provider_type_invalid).
-    if (vals.provider_type) {
-      selector.provider_type = vals.provider_type;
-    }
-    // api#141 — only set operation when a real value is chosen. Blank
-    // stays a wildcard; never submit operation="" (the server rejects
-    // it as operation_invalid).
-    if (vals.operation) {
-      selector.operation = vals.operation;
-    }
+    // §1 C1: always environment_kind=non_prod; never project_id,
+    // environment_id or team_id (the URL's team is the anchor).
+    const selector: Record<string, unknown> = { environment_kind: 'non_prod' };
+    if (vals.secret_ref_prefix) selector.secret_ref_prefix = vals.secret_ref_prefix.trim();
+    // Never send provider_type="" or operation="" (the server rejects them).
+    if (vals.provider_type) selector.provider_type = vals.provider_type;
+    if (vals.operation) selector.operation = vals.operation;
     const body: AuthorTeamPolicyRuleInput = {
-      name: vals.name,
+      name: vals.name.trim(),
       selector,
       priority: vals.priority,
       workflow_id: vals.workflow_id,
@@ -504,168 +380,96 @@ function TeamPolicyAuthorForm({
     };
     try {
       await author.mutateAsync(body);
+      toast(`Created ${body.name}.`);
       onClose();
     } catch {
-      // inline below
+      // Shown below.
     }
   };
 
-  const errorToast =
-    author.error instanceof ApiError
-      ? toPolicyRuleErrorToast(author.error)
-      : undefined;
-
   return (
     <Drawer
-      title="Author team policy rule"
+      title="Create team rule"
+      subtitle="Applies to non-production environments in every project under this team and its sub-teams."
       onClose={onClose}
       footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={author.isPending}>
             Cancel
           </Button>
-          <Button
-            onClick={handleSubmit(onSubmit)}
-            disabled={author.isPending}
-          >
-            {author.isPending ? 'Saving…' : 'Author rule'}
+          <Button type="submit" form="team-rule" variant="primary" disabled={author.isPending} aria-busy={author.isPending}>
+            {author.isPending ? 'Saving…' : 'Create rule'}
           </Button>
-        </div>
+        </>
       }
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 text-sm">
-        <Field label="Name" error={errors.name?.message}>
-          <input
-            type="text"
-            {...register('name')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
-            placeholder="non-prod-team-default"
-          />
+      <form id="team-rule" noValidate onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-[18px]">
+        <Field id="tr-name" label="Name" error={errors.name?.message}>
+          {(p) => <Input {...p} {...register('name')} placeholder="platform-team-non-prod" autoComplete="off" data-autofocus />}
         </Field>
-
-        <Field
-          label="Optional secret_ref_prefix"
-          error={errors.secret_ref_prefix?.message}
-        >
-          <input
-            type="text"
-            {...register('secret_ref_prefix')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink font-mono"
-            placeholder="billing/"
-          />
+        <Field id="tr-prefix" label="Secret path starts with (optional)" error={errors.secret_ref_prefix?.message}>
+          {(p) => <Input {...p} {...register('secret_ref_prefix')} placeholder="billing/" className="font-mono" autoComplete="off" spellCheck={false} />}
         </Field>
-
-        <Field
-          label="Optional provider_type"
-          error={errors.provider_type?.message}
-        >
-          {/* api#139 — backend-owned enum. Blank = wildcard; the
-              onSubmit only sets the key when a value is chosen, so the
-              server never sees provider_type="". */}
-          <select
-            {...register('provider_type')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
-          >
-            <option value="">— any provider —</option>
-            {POLICY_SELECTOR_PROVIDER_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field
-          label="Optional operation"
-          error={errors.operation?.message}
-        >
-          {/* api#141 — backend-owned enum. Blank = wildcard; the
-              onSubmit only sets the key when a value is chosen, so the
-              server never sees operation="". */}
-          <select
-            {...register('operation')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
-          >
-            <option value="">— any operation —</option>
-            {POLICY_SELECTOR_OPERATIONS.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Use workflow" error={errors.workflow_id?.message}>
-          <select
-            {...register('workflow_id')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
-          >
-            <option value="">— pick a workflow —</option>
-            {eligibleWorkflows.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-          {eligibleWorkflows.length === 0 && workflows.isSuccess && (
-            <p className="text-[12px] text-muted">
-              No workflows available for scoped authoring yet — admin
-              enables one via /admin/workflows.
-            </p>
+        <Field id="tr-provider" label="Provider (optional)" error={errors.provider_type?.message}>
+          {(p) => (
+            <Select {...p} {...register('provider_type')}>
+              <option value="">Any provider</option>
+              {POLICY_SELECTOR_PROVIDER_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {providerLabel(t)}
+                </option>
+              ))}
+            </Select>
           )}
         </Field>
-
-        <Field
-          label={`Priority (< ${cap} — platform reserved)`}
-          error={errors.priority?.message}
-        >
-          <input
-            type="number"
-            {...register('priority')}
-            className="w-full rounded-sm border border-border bg-bg px-2 py-1 text-ink"
-          />
+        <Field id="tr-op" label="Operation (optional)" error={errors.operation?.message}>
+          {(p) => (
+            <Select {...p} {...register('operation')}>
+              <option value="">Any operation</option>
+              {POLICY_SELECTOR_OPERATIONS.map((o) => (
+                <option key={o} value={o}>
+                  {operationLabel(o)}
+                </option>
+              ))}
+            </Select>
+          )}
         </Field>
-
-        <label className="flex items-center gap-2">
-          <input type="checkbox" {...register('enabled')} />
-          <span>Enabled</span>
-        </label>
-
-        <p className="text-[11px] text-muted/80">
-          Team rules always match environment_kind=non_prod and cascade
-          to every descendant project. They cannot pin a specific
-          project or environment.
-        </p>
-
-        {errorToast && (
-          <div className="rounded-sm border border-bad-line bg-bad-bg px-3 py-2 text-[12px] text-bad">
-            {errorToast}
+        <Field
+          id="tr-wf"
+          label="Workflow"
+          hint={eligible.length === 0 && workflows.isSuccess ? 'No workflow is open to team rules yet. An administrator enables one on the Workflows page.' : undefined}
+          error={errors.workflow_id?.message}
+        >
+          {(p) => (
+            <Select {...p} {...register('workflow_id')}>
+              <option value="">{workflows.isLoading ? 'Loading workflows…' : 'Choose a workflow'}</option>
+              {eligible.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <div className="grid grid-cols-1 gap-[18px] min-[480px]:grid-cols-2">
+          <Field id="tr-prio" label="Priority" hint={`Below ${cap}. The highest matching rule wins.`} error={errors.priority?.message}>
+            {(p) => <Input {...p} {...register('priority')} type="number" min={0} max={cap - 1} inputMode="numeric" className="font-mono" />}
+          </Field>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-body font-semibold text-ink">Status</span>
+            <label className="flex h-(--control-md) items-center gap-2.5 text-ui font-normal">
+              <input type="checkbox" {...register('enabled')} className="h-4 w-4 accent-accent" />
+              Enabled
+            </label>
           </div>
+        </div>
+        <p className="text-caption text-muted">Team rules can't pin a project or an environment, and never apply to production.</p>
+        {author.error instanceof ApiError && (
+          <Banner tone="error" title="Not created.">
+            {toPolicyRuleErrorToast(author.error)}
+          </Banner>
         )}
       </form>
     </Drawer>
-  );
-}
-
-function Field({
-  label,
-  error,
-  children,
-}: {
-  label: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  // `[&>*+*]:mt-1` is Tailwind 3's space-y-1 (margin-top on later
-  // siblings). v4's space-y puts margin-bottom on the inline label
-  // <span>, where it has no effect.
-  return (
-    <label className="block [&>*+*]:mt-1">
-      <span className="text-ink font-medium">{label}</span>
-      {children}
-      {error && (
-        <span className="block text-[12px] text-bad">{error}</span>
-      )}
-    </label>
   );
 }

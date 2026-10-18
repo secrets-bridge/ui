@@ -25,6 +25,7 @@ import { Drawer } from '../../ui/Drawer';
 import { EnvTag } from '../../ui/EnvTag';
 import { Field, Input, Textarea } from '../../ui/Field';
 import { KeyPicker } from '../../ui/KeyPicker';
+import { Path } from '../../ui/Path';
 
 const WHY_MIN = 15;
 
@@ -114,7 +115,7 @@ export function DirectRevealDrawer({ project, env, secret, onClose, onCreated, o
         className="flex flex-col gap-[18px]"
       >
         <div className="rounded-md border border-border bg-sunken px-3.5 py-3 text-ui font-normal">
-          <p className="break-all font-mono text-mono text-ink">{secret.ref}</p>
+          <p><Path value={secret.ref} className="text-ink" /></p>
           <p className="mt-1">
             {project.name} <EnvTag kind={env.kind}>{env.name}</EnvTag> · {providerLabel(secret.provider)}
           </p>

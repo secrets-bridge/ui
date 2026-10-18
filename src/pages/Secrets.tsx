@@ -29,6 +29,7 @@ import { DataTable, type Column } from '../ui/DataTable';
 import { Drawer } from '../ui/Drawer';
 import { EmptyState } from '../ui/EmptyState';
 import { Input, Select } from '../ui/Field';
+import { Path } from '../ui/Path';
 import { SearchIcon } from '../ui/icons';
 import { PageHeader } from '../ui/PageHeader';
 import { ToneStatus } from '../ui/Status';
@@ -347,7 +348,7 @@ function SecretDrawer({ secret: s, onClose }: { secret: Secret; onClose: () => v
     ...(s.updated_at_source ? [['Changed in provider', formatExact(s.updated_at_source)] as [string, React.ReactNode]] : []),
   ];
   return (
-    <Drawer title="Secret details" subtitle={<span className="break-all font-mono text-mono">{s.secret_ref}</span>} onClose={onClose}>
+    <Drawer title="Secret details" subtitle={<Path value={s.secret_ref} />} onClose={onClose}>
       <dl className="m-0">
         {rows.map(([k, v]) => (
           <div key={k} className="grid grid-cols-[150px_minmax(0,1fr)] gap-3 border-b border-rule py-2.5 text-ui font-normal">

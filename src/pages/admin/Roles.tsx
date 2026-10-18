@@ -1,149 +1,189 @@
 /**
- * Roles admin page. Visual layout matches the Figma frame
- * `Roles · /admin/roles (list)` on page 06:
+ * Roles (`/admin/roles`): every role with its description, how many
+ * permissions it carries and whether it is built in. The name opens the
+ * role in a drawer, where its permissions can change; name and
+ * description are fixed at create (the api has no rename).
  *
- *   PageHeader: "Roles" / "Define what each role can do across the
- *   platform. Permissions are grouped by resource." / "+ New role"
- *   primary CTA (brand gradient pill).
+ * Built-in roles (`is_system`) can be edited but not deleted: the api
+ * answers 409 on DELETE for them, so the page offers no Delete.
  *
- *   Card containing a table:
- *     NAME (mono)  · DESCRIPTION · PERMISSIONS · TYPE · ACTIONS
- *     System rows show a small `system` pill next to the name.
- *     Permissions column shows count + label ("N permissions" / "all").
- *     Actions column is text-only (Edit + Delete); Delete dims for
- *     system rows.
- *
- *   System-seed footer note.
- *
- * Drawer + ConfirmModal moved to `src/ui/` as shared components.
- *
- * Behavior is unchanged: list + create + edit-permissions + delete.
- * api endpoint: POST /roles, PUT /roles/:id/permissions, DELETE.
+ * api: GET/POST /roles, PUT /roles/:id/permissions, DELETE /roles/:id.
  */
 
 import { useState } from 'react';
 
-import { ApiError } from '../../api/client';
+import { useCreateRole, useDeleteRole, useRoles, useUpdateRole } from '../../api/roles';
 import type { Role } from '../../api/types';
-import {
-  useCreateRole,
-  useDeleteRole,
-  useRoles,
-  useUpdateRole,
-} from '../../api/roles';
+import { Banner } from '../../ui/Banner';
 import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card';
 import { ConfirmModal } from '../../ui/ConfirmModal';
-import { Drawer } from '../../ui/Drawer';
+import { DataTable, type Column } from '../../ui/DataTable';
+import { EmptyState } from '../../ui/EmptyState';
 import { PageHeader } from '../../ui/PageHeader';
-import { StatusPill } from '../../ui/StatusPill';
+import { useToast } from '../../ui/toastContext';
 import { RoleForm } from './RoleForm';
+import { errorText } from './roles/format';
 
 export function Roles() {
   const list = useRoles();
   const create = useCreateRole();
   const del = useDeleteRole();
+  const toast = useToast();
 
   const [editing, setEditing] = useState<Role | null>(null);
   const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
 
+  const rows = [...(list.data ?? [])].sort(
+    (a, b) => Number(!!b.is_system) - Number(!!a.is_system) || a.name.localeCompare(b.name),
+  );
+  const builtIn = rows.filter((r) => r.is_system).length;
+
+  const openCreate = () => {
+    create.reset();
+    setEditing(null);
+    setCreating(true);
+  };
+
+  const nameButton = (r: Role) => (
+    <button
+      type="button"
+      onClick={() => {
+        setCreating(false);
+        setEditing(r);
+      }}
+      className="text-left font-mono text-mono font-medium text-accent hover:underline"
+    >
+      {r.name}
+    </button>
+  );
+
+  const columns: Column<Role>[] = [
+    { key: 'name', header: 'Role', render: nameButton },
+    {
+      key: 'description',
+      header: 'Description',
+      render: (r) => (r.description ? <span>{r.description}</span> : <span className="text-muted">No description</span>),
+      className: 'max-w-[420px]',
+    },
+    { key: 'perms', header: 'Permissions', render: (r) => <PermissionCount role={r} />, className: 'whitespace-nowrap' },
+    { key: 'type', header: 'Type', render: (r) => (r.is_system ? 'Built in' : <span className="text-muted">Custom</span>) },
+    {
+      key: 'actions',
+      header: 'Actions',
+      hiddenHeader: true,
+      align: 'right',
+      render: (r) =>
+        r.is_system ? null : (
+          <Button variant="danger" size="sm" onClick={() => setConfirmDelete(r)} aria-label={`Delete ${r.name}`}>
+            Delete…
+          </Button>
+        ),
+    },
+  ];
+
   return (
     <div>
       <PageHeader
         title="Roles"
-        description="Define what each role can do across the platform. Permissions are grouped by resource."
+        description={
+          list.data
+            ? `${rows.length} ${rows.length === 1 ? 'role' : 'roles'}, ${builtIn} built in. A role is a set of permissions; assignments give it to people.`
+            : 'A role is a set of permissions; assignments give it to people.'
+        }
         actions={
-          <Button
-            variant="primary"
-            onClick={() => {
-              setEditing(null);
-              setCreating(true);
-            }}
-          >
-            + New role
+          <Button variant="primary" onClick={openCreate}>
+            Create role
           </Button>
         }
       />
 
+      {list.isLoading && <p className="text-muted">Loading roles…</p>}
       {list.isError && (
-        <Card className="border-bad-line p-5 text-sm mb-4">
-          <div className="text-bad font-medium">Failed to load roles</div>
-          <div className="text-muted mt-1">{stringifyError(list.error)}</div>
-        </Card>
+        <Banner
+          tone="error"
+          title="Couldn't load the roles."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void list.refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          {errorText(list.error)}
+        </Banner>
       )}
-
-      {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
-
-      {list.data && list.data.length === 0 && (
-        <Card className="p-10 text-center text-muted text-sm">
-          No roles defined yet. The api seeds <code className="font-mono">admin</code>{' '}
-          / <code className="font-mono">approver</code> /{' '}
-          <code className="font-mono">developer</code> on first boot.
-        </Card>
-      )}
-
-      {list.data && list.data.length > 0 && (
-        <>
-          <Card className="overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="text-left text-muted text-[11px]">
-                <tr className="border-b border-border/60">
-                  <Th>Name</Th>
-                  <Th>Description</Th>
-                  <Th>Permissions</Th>
-                  <Th>Type</Th>
-                  <Th className="text-right">Actions</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.data.map((r) => (
-                  <RoleRow
-                    key={r.id}
-                    role={r}
-                    onEdit={() => {
-                      setCreating(false);
-                      setEditing(r);
-                    }}
-                    onDelete={() => setConfirmDelete(r)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </Card>
-
-          <p className="text-muted text-xs mt-3">
-            System seed roles can't be deleted — delete is disabled (muted) with a tooltip <em>"System seed — not deletable"</em>.
-          </p>
-        </>
-      )}
+      {list.data &&
+        (rows.length === 0 ? (
+          <EmptyState title="No roles yet.">
+            The api creates the built-in roles (admin, approver, developer and others) when it first starts.
+          </EmptyState>
+        ) : (
+          <>
+            <DataTable
+              label="Roles"
+              columns={columns}
+              rows={rows}
+              rowKey={(r) => r.id}
+              onRowClick={(r) => {
+                setCreating(false);
+                setEditing(r);
+              }}
+              minWidth={720}
+              stacked={(r) => (
+                <div className="flex flex-col gap-1">
+                  <p className="flex items-center justify-between gap-3">
+                    {nameButton(r)}
+                    <span className="text-caption text-muted">{r.is_system ? 'Built in' : 'Custom'}</span>
+                  </p>
+                  {r.description && <p className="text-caption text-muted">{r.description}</p>}
+                  <p className="flex items-center justify-between gap-3 text-caption">
+                    <PermissionCount role={r} />
+                    {!r.is_system && (
+                      <Button variant="danger" size="sm" onClick={() => setConfirmDelete(r)} aria-label={`Delete ${r.name}`}>
+                        Delete…
+                      </Button>
+                    )}
+                  </p>
+                </div>
+              )}
+            />
+            <p className="mt-2 text-caption text-muted">Built-in roles can be edited but not deleted.</p>
+          </>
+        ))}
 
       {creating && (
-        <Drawer title="New role" onClose={() => setCreating(false)}>
-          <RoleForm
-            onCreate={async (body) => {
-              await create.mutateAsync(body);
-              setCreating(false);
-            }}
-            onCancel={() => setCreating(false)}
-            submitting={create.isPending}
-            submitError={create.error}
-          />
-        </Drawer>
+        <RoleForm
+          onCreate={async (body) => {
+            await create.mutateAsync(body);
+            setCreating(false);
+            toast(`Created role ${body.name}.`);
+          }}
+          onCancel={() => setCreating(false)}
+          submitting={create.isPending}
+          submitError={create.error}
+        />
       )}
 
-      {editing && <EditDrawer role={editing} onClose={() => setEditing(null)} />}
+      {editing && <EditRole role={editing} onClose={() => setEditing(null)} />}
 
       {confirmDelete && (
         <ConfirmModal
-          title={`Delete role "${confirmDelete.name}"?`}
-          body="This permanently removes the role. Members lose its permissions immediately. This cannot be undone."
-          confirmText="Delete"
+          title={`Delete role ${confirmDelete.name}?`}
+          body="The role and every assignment of it are removed, so people who had it lose its permissions at once. Workflows that used it as their approver role stop requiring it. This can't be undone."
+          confirmText="Delete role"
           danger
-          onCancel={() => setConfirmDelete(null)}
-          onConfirm={async () => {
-            await del.mutateAsync(confirmDelete.id);
+          onCancel={() => {
+            del.reset();
             setConfirmDelete(null);
+          }}
+          onConfirm={async () => {
+            try {
+              await del.mutateAsync(confirmDelete.id);
+              toast(`Deleted role ${confirmDelete.name}.`);
+              setConfirmDelete(null);
+            } catch {
+              // Shown in the dialog.
+            }
           }}
           loading={del.isPending}
           error={del.error}
@@ -153,116 +193,30 @@ export function Roles() {
   );
 }
 
-// --- row + cell bits ------------------------------------------------
-
-function RoleRow({
-  role,
-  onEdit,
-  onDelete,
-}: {
-  role: Role;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const sys = !!role.is_system;
-  return (
-    <tr className="border-b border-border/40 last:border-0 hover:bg-bg/20">
-      <Td>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-accent text-sm">{role.name}</span>
-          {sys && (
-            <StatusPill variant="system" tone="outline">
-              system
-            </StatusPill>
-          )}
-        </div>
-      </Td>
-      <Td className="text-muted">
-        {role.description || (
-          <span className=" text-muted/60">no description</span>
-        )}
-      </Td>
-      <Td>
-        <PermissionsCell role={role} />
-      </Td>
-      <Td className="text-ink">{sys ? 'System' : 'Custom'}</Td>
-      <Td className="text-right">
-        <div className="flex items-center justify-end gap-3">
-          <button
-            onClick={onEdit}
-            className="text-accent hover:underline text-sm font-medium"
-          >
-            Edit
-          </button>
-          <button
-            onClick={onDelete}
-            disabled={sys}
-            title={sys ? 'System seed — not deletable' : undefined}
-            className={
-              sys
-                ? 'text-muted/50 cursor-not-allowed text-sm font-medium'
-                : 'text-bad hover:underline text-sm font-medium'
-            }
-          >
-            Delete
-          </button>
-        </div>
-      </Td>
-    </tr>
-  );
-}
-
-function PermissionsCell({ role }: { role: Role }) {
+function PermissionCount({ role }: { role: Role }) {
   const n = role.permissions.length;
-  // System "admin" role gets the special "all" label per the Figma
-  // frame — visually distinguishes the omnipotent role from large but
-  // bounded permission lists.
-  if (role.name === 'admin') {
-    return <span className="text-accent text-sm font-medium">all</span>;
-  }
-  if (n === 0) {
-    return <span className="text-muted text-sm">none</span>;
-  }
+  if (n === 0) return <span className="text-muted">None</span>;
   return (
-    <span className="text-accent text-sm font-medium">
-      {n} permission{n === 1 ? '' : 's'}
+    <span title={[...role.permissions].sort().join(', ')}>
+      {n} {n === 1 ? 'permission' : 'permissions'}
     </span>
   );
 }
 
-function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
-}
-
-function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-5 py-3.5 align-middle ${className}`}>{children}</td>;
-}
-
-// --- edit drawer ----------------------------------------------------
-
-function EditDrawer({ role, onClose }: { role: Role; onClose: () => void }) {
+function EditRole({ role, onClose }: { role: Role; onClose: () => void }) {
   const update = useUpdateRole(role.id);
+  const toast = useToast();
   return (
-    <Drawer title={`Edit ${role.name}`} onClose={onClose}>
-      <p className="text-muted text-sm mb-4 -mt-2">
-        Name and description are immutable after creation.
-      </p>
-      <RoleForm
-        initial={role}
-        onUpdatePermissions={async (body) => {
-          await update.mutateAsync(body);
-          onClose();
-        }}
-        onCancel={onClose}
-        submitting={update.isPending}
-        submitError={update.error}
-      />
-    </Drawer>
+    <RoleForm
+      initial={role}
+      onUpdatePermissions={async (body) => {
+        await update.mutateAsync(body);
+        onClose();
+        toast(`Saved permissions for ${role.name}.`);
+      }}
+      onCancel={onClose}
+      submitting={update.isPending}
+      submitError={update.error}
+    />
   );
-}
-
-function stringifyError(e: unknown): string {
-  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
-  if (e instanceof Error) return e.message;
-  return String(e);
 }

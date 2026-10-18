@@ -1,54 +1,48 @@
 /**
- * Create / edit form for a Role.
+ * Create or edit a role, in a drawer.
  *
- * CRITICAL api constraint: name + description are IMMUTABLE after
- * create. The only mutation endpoint is `PUT /roles/:id/permissions`.
- * In edit mode (when `initial` is provided) the name + description
- * inputs are marked readOnly + visually dimmed so an operator can SEE
- * the current values without thinking they're editable.
+ * api constraint: name and description can't change after create. The
+ * only mutation is `PUT /roles/:id/permissions`, so in edit mode they
+ * show as plain text and only the permission list is editable.
  *
- * Permissions UX — CANONICAL catalog (replaces ui#6's interim trick):
+ * Permissions come from the catalog (`GET /api/v1/permissions`,
+ * api#32), grouped by the api's `group` field, each with its
+ * description. Permissions a role holds that the catalog doesn't know
+ * (typed before the catalog existed, or retired) show in a final
+ * "Not in the catalog" group so they can be removed. A free-form input
+ * still adds a string the catalog doesn't ship; the api stores it, but
+ * no route checks it.
  *
- *   - The picker hydrates from `GET /api/v1/permissions`
- *     (api#32 — internal/auth/permissions.go::Catalog). Operators
- *     see every permission the platform actually understands, grouped
- *     by the api's `group` field (RBAC / Workflows / Agents /
- *     Secrets / Observability / Integrations), with descriptions
- *     surfaced as hover tooltips.
- *
- *   - Permissions a role currently holds that aren't in the catalog
- *     (e.g. custom strings typed before the catalog landed, or
- *     deprecated entries) render in a final "Custom / unknown" group
- *     with a warning style. Toggling removes them. This is the
- *     graceful-degradation path that keeps old roles editable.
- *
- *   - A free-form add-input below the catalog still lets operators
- *     type a string the platform doesn't ship yet. The warning beneath
- *     it calls out that strings outside the catalog won't gate any
- *     handler until api#27 (P0-2) lands.
+ * Granting `secret.security.approve` asks the admin to type the
+ * permission first (Slice N5): a holder can approve cross-team
+ * requests on the security side.
  *
  * On submit:
- *   - create mode → POST /roles  with { name, description?, permissions }
- *   - edit mode   → PUT  /roles/:id/permissions  with { permissions }
+ *   - create → POST /roles with { name, description?, permissions }
+ *   - edit   → PUT /roles/:id/permissions with { permissions }
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useForm, useWatch, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import type {
-  PermissionDescriptor,
-  Role,
-  RoleCreateInput,
-  RolePermissionsInput,
-} from '../../api/types';
-import { ApiError } from '../../api/client';
 import { usePermissions } from '../../api/permissions';
+import type { PermissionDescriptor, Role, RoleCreateInput, RolePermissionsInput } from '../../api/types';
+import { Banner } from '../../ui/Banner';
+import { Button } from '../../ui/Button';
+import { Dialog } from '../../ui/Dialog';
+import { Drawer } from '../../ui/Drawer';
+import { Field, Input } from '../../ui/Field';
+import { errorText } from './roles/format';
 
 const schema = z.object({
-  name: z.string().min(1, 'name is required').max(120),
-  description: z.string().max(500).optional(),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Name the role.')
+    .max(120, 'Keep the name under 120 characters.'),
+  description: z.string().max(500, 'Keep the description under 500 characters.').optional(),
   permissions: z.array(z.string()).default([]),
 });
 
@@ -67,22 +61,15 @@ interface Props {
   submitError?: unknown;
 }
 
-const defaults: FormShape = {
-  name: '',
-  description: '',
-  permissions: [],
-};
+const defaults: FormShape = { name: '', description: '', permissions: [] };
 
-const UNKNOWN_GROUP = 'Custom / unknown';
+const UNKNOWN_GROUP = 'Not in the catalog';
+const UNKNOWN_HINT = 'Nothing in the platform checks this permission.';
 
-export function RoleForm({
-  initial,
-  onCreate,
-  onUpdatePermissions,
-  onCancel,
-  submitting,
-  submitError,
-}: Props) {
+// Granting one of these asks the admin to type it first. Removing is free.
+const TYPE_TO_CONFIRM = new Set(['secret.security.approve']);
+
+export function RoleForm({ initial, onCreate, onUpdatePermissions, onCancel, submitting, submitError }: Props) {
   const editMode = !!initial;
   const catalog = usePermissions();
 
@@ -90,7 +77,7 @@ export function RoleForm({
     register,
     handleSubmit,
     reset,
-    watch,
+    control,
     setValue,
     formState: { errors },
   } = useForm<FormInput, unknown, FormShape>({
@@ -99,53 +86,28 @@ export function RoleForm({
   });
 
   useEffect(() => {
-    if (initial) {
-      reset({
-        name: initial.name,
-        description: initial.description ?? '',
-        permissions: initial.permissions ?? [],
-      });
-    } else {
-      reset(defaults);
-    }
+    reset(
+      initial
+        ? { name: initial.name, description: initial.description ?? '', permissions: initial.permissions ?? [] }
+        : defaults,
+    );
   }, [initial, reset]);
 
-  const selected = watch('permissions') ?? [];
+  const watched = useWatch({ control, name: 'permissions' });
+  const selected = useMemo(() => watched ?? [], [watched]);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const groups = useMemo(() => buildGroups(catalog.data ?? [], selected), [catalog.data, selected]);
 
-  // Build the render list: every catalog descriptor (preserving the
-  // api's order so the UI shape matches the source of truth), PLUS
-  // synthetic descriptors for selected strings the catalog doesn't
-  // know about (so we can render + toggle them).
-  const groups = useMemo(
-    () => buildGroups(catalog.data ?? [], selected),
-    [catalog.data, selected],
-  );
-
-  // Slice N5 — type-to-confirm gate for high-blast-radius permissions.
-  // Today only `secret.security.approve` triggers it (the security
-  // approver bypasses the source-side workflow on cross-team rows).
-  // Future high-blast perms can be added to the set without further UI.
-  const TYPE_TO_CONFIRM_PERMS = new Set(['secret.security.approve']);
-  const [pendingConfirmPerm, setPendingConfirmPerm] = useState<string | null>(null);
-  const [confirmTyped, setConfirmTyped] = useState('');
+  const [pendingConfirm, setPendingConfirm] = useState<string | null>(null);
 
   const commitToggle = (p: string) => {
-    const next = selectedSet.has(p)
-      ? selected.filter((x) => x !== p)
-      : [...selected, p].sort();
+    const next = selectedSet.has(p) ? selected.filter((x) => x !== p) : [...selected, p].sort();
     setValue('permissions', next, { shouldDirty: true });
   };
 
   const toggle = (p: string) => {
-    // Removing a sensitive perm is free; granting it requires type-to-
-    // confirm. The api still validates server-side.
-    if (
-      TYPE_TO_CONFIRM_PERMS.has(p) &&
-      !selectedSet.has(p)
-    ) {
-      setPendingConfirmPerm(p);
-      setConfirmTyped('');
+    if (TYPE_TO_CONFIRM.has(p) && !selectedSet.has(p)) {
+      setPendingConfirm(p);
       return;
     }
     commitToggle(p);
@@ -154,238 +116,199 @@ export function RoleForm({
   const addCustom = (raw: string) => {
     const v = raw.trim();
     if (!v || selectedSet.has(v)) return;
+    if (TYPE_TO_CONFIRM.has(v)) {
+      setPendingConfirm(v);
+      return;
+    }
     setValue('permissions', [...selected, v].sort(), { shouldDirty: true });
   };
 
   const onValid: SubmitHandler<FormShape> = async (data) => {
-    if (editMode) {
-      if (!onUpdatePermissions) return;
-      await onUpdatePermissions({ permissions: data.permissions });
-    } else {
-      if (!onCreate) return;
-      await onCreate({
-        name: data.name,
-        description: data.description || undefined,
-        permissions: data.permissions,
-      });
+    try {
+      if (editMode) {
+        await onUpdatePermissions?.({ permissions: data.permissions });
+      } else {
+        await onCreate?.({ name: data.name, description: data.description || undefined, permissions: data.permissions });
+      }
+    } catch {
+      // The caller's mutation holds the error; it shows below the form.
     }
   };
 
   return (
-    <form onSubmit={handleSubmit(onValid)} className="space-y-4">
-      {editMode && (
-        <div className="text-xs text-warn bg-warn-bg border border-warn-line rounded-sm px-3 py-2">
-          Name and description are <strong>immutable</strong> after create — only the permission list can be changed.
-          {initial?.is_system && (
-            <>
-              {' '}
-              This is also a <strong>system seed</strong> role; it cannot be deleted.
-            </>
+    <Drawer
+      title={initial ? `Edit ${initial.name}` : 'Create role'}
+      subtitle={
+        editMode
+          ? "Only the permissions can change. A role's name and description are fixed when it is created."
+          : 'A role is a named set of permissions. Assignments give it to people.'
+      }
+      onClose={onCancel}
+      wide
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button type="submit" form="role-form" variant="primary" disabled={submitting} aria-busy={submitting}>
+            {submitting ? 'Saving…' : editMode ? 'Save permissions' : 'Create role'}
+          </Button>
+        </>
+      }
+    >
+      <form id="role-form" noValidate onSubmit={handleSubmit(onValid)} className="flex flex-col gap-[18px]">
+        {initial ? (
+          <dl className="m-0 rounded-md border border-border bg-sunken px-3.5 py-1">
+            <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 border-b border-rule py-2.5 text-ui font-normal">
+              <dt className="text-muted">Name</dt>
+              <dd className="m-0 font-mono text-mono text-ink">{initial.name}</dd>
+            </div>
+            <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 py-2.5 text-ui font-normal">
+              <dt className="text-muted">Description</dt>
+              <dd className="m-0 break-words text-ink">{initial.description || <span className="text-muted">None</span>}</dd>
+            </div>
+          </dl>
+        ) : (
+          <>
+            <Field id="role-name" label="Name" hint="Lowercase with underscores reads best, like release_manager." error={errors.name?.message}>
+              {(p) => (
+                <Input {...p} {...register('name')} placeholder="release_manager" className="font-mono" autoComplete="off" spellCheck={false} data-autofocus />
+              )}
+            </Field>
+            <Field id="role-description" label="Description (optional)" error={errors.description?.message}>
+              {(p) => <Input {...p} {...register('description')} placeholder="Approves releases to production" />}
+            </Field>
+          </>
+        )}
+        {initial?.is_system && <Banner>This is a built-in role. You can change its permissions, but not delete it.</Banner>}
+
+        <fieldset className="flex min-w-0 flex-col gap-3">
+          <legend className="mb-1 flex w-full items-baseline justify-between text-body font-semibold text-ink">
+            Permissions
+            <span className="font-mono text-mono-small font-normal text-muted">{selected.length} selected</span>
+          </legend>
+          {catalog.isLoading && <p className="text-muted">Loading the permission catalog…</p>}
+          {catalog.isError && (
+            <Banner tone="error" title="Couldn't load the permission catalog.">
+              The permissions this role already has still show. You can add others by name below.
+            </Banner>
           )}
-        </div>
-      )}
-
-      <Field label="Name" error={errors.name?.message}>
-        <input
-          type="text"
-          {...register('name')}
-          readOnly={editMode}
-          className={editMode ? inputClsReadonly : inputCls}
-          placeholder="developer"
-        />
-      </Field>
-
-      <Field label="Description" error={errors.description?.message}>
-        <input
-          type="text"
-          {...register('description')}
-          readOnly={editMode}
-          className={editMode ? inputClsReadonly : inputCls}
-        />
-      </Field>
-
-      <div className="space-y-2">
-        <div className="flex items-baseline justify-between">
-          <label className="block text-xs text-muted">Permissions</label>
-          <span className="text-[11px] text-muted/70">{selected.length} selected</span>
-        </div>
-
-        {catalog.isLoading && (
-          <div className="text-xs text-muted">Loading catalog…</div>
-        )}
-
-        {catalog.isError && (
-          <div className="text-xs text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
-            Failed to load permission catalog. Existing chips still work; new selections fall back to free-form.
-          </div>
-        )}
-
-        <div className="space-y-3 max-h-72 overflow-auto pr-1 -mr-1">
           {groups.map((g) => (
-            <div key={g.name} className="space-y-1">
-              <div
-                className={
-                  g.name === UNKNOWN_GROUP
-                    ? 'text-[11px] text-warn '
-                    : 'text-[11px] text-muted/80 '
-                }
-              >
-                {g.name}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
+            <div key={g.name} className="flex flex-col gap-1">
+              <h3 className={'text-label ' + (g.name === UNKNOWN_GROUP ? 'text-bad' : 'text-muted')}>{g.name}</h3>
+              <div className="flex flex-col rounded-md border border-border">
                 {g.items.map((d) => {
                   const on = selectedSet.has(d.key);
-                  const unknown = g.name === UNKNOWN_GROUP;
                   return (
-                    <button
+                    <label
                       key={d.key}
-                      type="button"
-                      onClick={() => toggle(d.key)}
-                      title={d.description || (unknown ? 'Not in the platform catalog — will not gate any handler' : d.key)}
-                      className={
-                        on
-                          ? unknown
-                            ? 'text-[11px] rounded-sm px-2 py-1 bg-warn-bg border border-warn-line text-warn'
-                            : 'text-[11px] rounded-sm px-2 py-1 bg-accent/20 border border-accent/60 text-accent'
-                          : 'text-[11px] rounded-sm px-2 py-1 bg-bg border border-border text-muted hover:text-ink hover:border-border'
-                      }
+                      className="flex cursor-pointer items-start gap-2.5 border-t border-rule px-3 py-2 first:border-t-0 hover:bg-sunken max-md:min-h-(--control-touch)"
                     >
-                      {on && <span className="mr-1">✓</span>}
-                      {d.key}
-                    </button>
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => toggle(d.key)}
+                        className="mt-[3px] h-4 w-4 shrink-0 accent-accent"
+                        data-perm={d.key}
+                      />
+                      <span className="min-w-0">
+                        <span className="block break-all font-mono text-mono text-ink">{d.key}</span>
+                        {d.description && <span className="block text-caption text-muted">{d.description}</span>}
+                      </span>
+                    </label>
                   );
                 })}
               </div>
             </div>
           ))}
-        </div>
+          <CustomAdd onAdd={addCustom} />
+        </fieldset>
 
-        <CustomAdd onAdd={addCustom} />
+        {submitError != null && (
+          <Banner tone="error" title={editMode ? 'Not saved.' : 'Not created.'}>
+            {errorText(submitError)}
+          </Banner>
+        )}
+      </form>
 
-        <div className="text-[11px] text-muted/80">
-          Catalog from <code>GET /api/v1/permissions</code>. The api does not yet enforce permissions
-          (<a className="underline" href="https://github.com/secrets-bridge/api/issues/27" target="_blank" rel="noreferrer">api#27</a>) — strings outside the catalog will not gate any handler.
-        </div>
-      </div>
-
-      {submitError instanceof ApiError && (
-        <div className="text-xs text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
-          {submitError.status}: {submitError.message}
-        </div>
+      {pendingConfirm && (
+        <ConfirmGrant
+          permission={pendingConfirm}
+          onCancel={() => setPendingConfirm(null)}
+          onConfirm={() => {
+            commitToggle(pendingConfirm);
+            setPendingConfirm(null);
+          }}
+        />
       )}
+    </Drawer>
+  );
+}
 
-      <div className="flex gap-2 pt-2 border-t border-border">
-        <button
-          type="submit"
-          disabled={submitting}
-          className="bg-accent text-bg font-medium px-4 py-2 rounded-sm hover:opacity-90 disabled:opacity-50"
-        >
-          {submitting ? 'Saving…' : editMode ? 'Save permissions' : 'Create'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-muted hover:text-ink px-3 py-2 rounded-sm border border-border"
-        >
-          Cancel
-        </button>
-      </div>
-      {pendingConfirmPerm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button
-            className="absolute inset-0 bg-scrim"
-            onClick={() => setPendingConfirmPerm(null)}
-            aria-label="Close"
-          />
-          <div className="relative bg-surface border border-border rounded-md w-[480px] max-w-full p-6 space-y-3 shadow-overlay">
-            <div className="text-ink font-semibold text-lg tracking-tight">
-              Add a high-blast-radius permission
-            </div>
-            <p className="text-muted text-sm">
-              You're about to grant{' '}
-              <span className="font-mono text-ink">{pendingConfirmPerm}</span>{' '}
-              to this role. A holder bypasses the source-side workflow on
-              cross-team requests — only grant it to security-cleared
-              reviewers.
-            </p>
-            <p className="text-muted text-xs">
-              Type <span className="font-mono text-ink">{pendingConfirmPerm}</span>{' '}
-              to confirm.
-            </p>
-            <input
-              type="text"
-              autoFocus
-              value={confirmTyped}
-              onChange={(e) => setConfirmTyped(e.target.value)}
-              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
-            />
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
-              <button
-                type="button"
-                onClick={() => setPendingConfirmPerm(null)}
-                className="text-muted hover:text-ink px-3 py-2 rounded-sm border border-border text-sm"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={confirmTyped.trim() !== pendingConfirmPerm}
-                onClick={() => {
-                  if (confirmTyped.trim() === pendingConfirmPerm) {
-                    commitToggle(pendingConfirmPerm);
-                    setPendingConfirmPerm(null);
-                    setConfirmTyped('');
-                  }
-                }}
-                className="bg-bad/90 hover:bg-bad text-bg disabled:opacity-40 disabled:cursor-not-allowed px-3 py-2 rounded-sm text-sm font-medium"
-              >
-                Grant {pendingConfirmPerm}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </form>
+function ConfirmGrant({ permission, onCancel, onConfirm }: { permission: string; onCancel: () => void; onConfirm: () => void }) {
+  const [typed, setTyped] = useState('');
+  const [tried, setTried] = useState(false);
+  const ok = typed.trim() === permission;
+  return (
+    <Dialog
+      title="Grant a security permission?"
+      onClose={onCancel}
+      actions={
+        <>
+          <Button variant="secondary" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              setTried(true);
+              if (ok) onConfirm();
+              else document.getElementById('confirm-perm')?.focus();
+            }}
+          >
+            Grant permission
+          </Button>
+        </>
+      }
+    >
+      <p className="text-muted">
+        Anyone with this role can give the security approval on cross-team requests. Grant it only to people cleared to
+        review security.
+      </p>
+      <Field
+        id="confirm-perm"
+        label={
+          <>
+            Type <span className="font-mono">{permission}</span> to confirm
+          </>
+        }
+        error={tried && !ok ? "The text doesn't match the permission name." : undefined}
+      >
+        {(p) => <Input {...p} value={typed} onChange={(e) => setTyped(e.target.value)} className="font-mono" autoComplete="off" spellCheck={false} data-autofocus />}
+      </Field>
+    </Dialog>
   );
 }
 
 /**
- * Build the rendered groups list:
- *   1. Iterate the catalog in API order; bucket by descriptor.group;
- *      preserve insertion order both for groups and within each group.
- *   2. Any currently-selected permission that the catalog DOESN'T
- *      know about → append to a synthetic "Custom / unknown" group
- *      at the bottom so operators can see + toggle it off.
+ * Catalog groups in api order, plus any selected permission the catalog
+ * doesn't know, in a last group so it can be seen and removed.
  */
-function buildGroups(
-  catalog: PermissionDescriptor[],
-  selected: string[],
-): { name: string; items: PermissionDescriptor[] }[] {
+function buildGroups(catalog: PermissionDescriptor[], selected: string[]): { name: string; items: PermissionDescriptor[] }[] {
   const groupMap = new Map<string, PermissionDescriptor[]>();
-  const knownKeys = new Set<string>();
-
+  const known = new Set<string>();
   for (const d of catalog) {
-    knownKeys.add(d.key);
+    known.add(d.key);
     const bucket = groupMap.get(d.group);
     if (bucket) bucket.push(d);
     else groupMap.set(d.group, [d]);
   }
-
   const groups = Array.from(groupMap.entries()).map(([name, items]) => ({ name, items }));
-
   const unknown = selected
-    .filter((p) => !knownKeys.has(p))
+    .filter((p) => !known.has(p))
     .sort()
-    .map<PermissionDescriptor>((key) => ({
-      key,
-      group: UNKNOWN_GROUP,
-      description: 'Not in the platform catalog — will not gate any handler',
-    }));
-
-  if (unknown.length > 0) {
-    groups.push({ name: UNKNOWN_GROUP, items: unknown });
-  }
-
+    .map<PermissionDescriptor>((key) => ({ key, group: UNKNOWN_GROUP, description: UNKNOWN_HINT }));
+  if (unknown.length > 0) groups.push({ name: UNKNOWN_GROUP, items: unknown });
   return groups;
 }
 
@@ -396,54 +319,34 @@ function CustomAdd({ onAdd }: { onAdd: (raw: string) => void }) {
     setVal('');
   };
   return (
-    <div className="flex gap-2 pt-1">
-      <input
-        type="text"
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            submit();
-          }
-        }}
-        placeholder="custom permission (e.g. secret.x.y) — Enter to add"
-        className={inputCls + ' flex-1'}
-      />
-      <button
-        type="button"
-        onClick={submit}
-        className="text-xs text-muted hover:text-ink border border-border rounded-sm px-3"
-      >
-        Add
-      </button>
-    </div>
-  );
-}
-
-const inputCls =
-  'w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent';
-
-const inputClsReadonly =
-  'w-full bg-bg/40 border border-border/60 rounded-sm px-3 py-2 text-muted text-sm cursor-not-allowed';
-
-function Field({
-  label,
-  error,
-  hint,
-  children,
-}: {
-  label: string;
-  error?: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-xs text-muted">{label}</label>
-      {children}
-      {hint && !error && <div className="text-[11px] text-muted/80">{hint}</div>}
-      {error && <div className="text-xs text-bad">{error}</div>}
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor="role-custom-perm" className="text-body font-semibold text-ink">
+        Add a permission by name
+      </label>
+      <div className="flex gap-2">
+        <Input
+          id="role-custom-perm"
+          aria-describedby="role-custom-perm-hint"
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          placeholder="secret.example.action"
+          className="min-w-0 flex-1 font-mono"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <Button type="button" variant="secondary" onClick={submit}>
+          Add
+        </Button>
+      </div>
+      <p id="role-custom-perm-hint" className="text-caption text-muted">
+        For a permission the catalog doesn't list yet. It is saved with the role, but nothing in the platform checks it.
+      </p>
     </div>
   );
 }

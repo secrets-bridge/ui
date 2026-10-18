@@ -1,267 +1,266 @@
 /**
- * Project Secrets panel (ui#26 Slice G).
+ * Project secrets (admin, Projects → a project → Secrets tab, ui#26).
  *
- * Lists every secret bound to the project + per-binding allowed_keys
- * + allowed_ops. Lets an admin bind a discovered catalog row, update
- * its allowlist / ops, or unbind it.
- *
- * Backed by the api endpoints from api#43 Slice A:
+ * Which discovered catalog secrets members of a project can request,
+ * and for each one the keys and operations allowed. The api refuses any
+ * request outside a binding (api#43 Slice C). Bind, edit and unbind:
  *
  *   GET    /api/v1/projects/:id/secrets             list
  *   POST   /api/v1/projects/:id/secrets             bind
  *   PUT    /api/v1/projects/:id/secrets/:secret_id  update
  *   DELETE /api/v1/projects/:id/secrets/:secret_id  unbind
  *
- * Conventions match the rest of the admin pages:
- *   - card-wrapped sections, font-mono cyan for identifiers
- *   - Drawer for create / edit forms
- *   - ConfirmModal for unbind
- *   - inline red banner on API errors (never alert())
- *   - allowed_keys: empty array UI is forbidden; null means "all keys"
- *     and is rendered as a single "all keys" StatusPill
+ * `allowed_keys` null means every key; an empty list is never sent.
+ * A binding may be scoped to one environment (`environment_id`, api#201);
+ * the table shows which one, or "Whole project".
  */
 
 import { useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch, type UseFormRegisterReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
+import { ApiError } from '../../api/client';
+import { useSecrets, type Secret } from '../../api/secrets';
 import {
   useBindProjectSecret,
+  useEnvironmentsForProject,
   useProjectSecrets,
   useUnbindProjectSecret,
   useUpdateProjectSecret,
 } from '../../api/tenancy';
-import { useSecrets, type Secret } from '../../api/secrets';
 import type {
+  Environment,
   Project,
   ProjectSecretBinding,
   ProjectSecretBindingInput,
   ProjectSecretBindingUpdate,
 } from '../../api/types';
+import { providerLabel } from '../../lib/providers';
+import { Banner } from '../../ui/Banner';
 import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card';
-import { Drawer } from '../../ui/Drawer';
 import { ConfirmModal } from '../../ui/ConfirmModal';
-import { StatusPill } from '../../ui/StatusPill';
+import { DataTable, type Column } from '../../ui/DataTable';
+import { Drawer } from '../../ui/Drawer';
+import { EmptyState } from '../../ui/EmptyState';
+import { EnvTag } from '../../ui/EnvTag';
+import { Field, Input, Select } from '../../ui/Field';
+import { Keys } from '../../ui/Keys';
+import { useToast } from '../../ui/toastContext';
 
-const OP_OPTIONS: readonly string[] = ['read', 'patch', 'discover'];
+const OPS = ['read', 'patch', 'discover'] as const;
+const OP_LABEL: Record<string, string> = { read: 'Read', patch: 'Change', discover: 'Discover' };
+
+const refOf = (b: ProjectSecretBinding) => b.secret?.secret_ref ?? b.secret_id;
+
+function splitKeys(csv: string): string[] {
+  return csv
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
+function errorText(err: unknown): string {
+  if (err instanceof ApiError) return `${err.status}: ${err.message}`;
+  return err instanceof Error ? err.message : String(err);
+}
 
 export function ProjectSecretsPanel({ project }: { project: Project }) {
   const bindings = useProjectSecrets(project.id);
+  const envs = useEnvironmentsForProject(project.id);
   const unbind = useUnbindProjectSecret(project.id);
+  const toast = useToast();
 
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<ProjectSecretBinding | null>(null);
   const [confirmUnbind, setConfirmUnbind] = useState<ProjectSecretBinding | null>(null);
 
-  if (bindings.isLoading) {
-    return <Card className="p-10 text-center text-muted text-sm">Loading bindings…</Card>;
-  }
-  if (bindings.error) {
-    return (
-      <Card className="border-bad-line p-5 text-sm">
-        <span className="text-bad">Failed to load bindings:</span>{' '}
-        <span className="text-muted">{(bindings.error as Error).message}</span>
-      </Card>
-    );
-  }
+  const envById = useMemo(() => new Map((envs.data ?? []).map((e) => [e.id, e])), [envs.data]);
+  const rows = [...(bindings.data ?? [])].sort((a, b) => refOf(a).localeCompare(refOf(b)));
 
-  const rows = bindings.data ?? [];
+  const scope = (b: ProjectSecretBinding) => {
+    if (!b.environment_id) return <span className="text-muted">Whole project</span>;
+    const env = envById.get(b.environment_id);
+    return env ? <EnvTag kind={env.kind}>{env.name}</EnvTag> : <span className="font-mono text-mono text-muted">{b.environment_id.slice(0, 8)}</span>;
+  };
+  const actions = (b: ProjectSecretBinding) => (
+    <span className="inline-flex gap-2">
+      <Button variant="secondary" size="sm" onClick={() => setEditing(b)} aria-label={`Edit binding for ${refOf(b)}`}>
+        Edit
+      </Button>
+      <Button variant="danger" size="sm" onClick={() => setConfirmUnbind(b)} aria-label={`Unbind ${refOf(b)}`}>
+        Unbind…
+      </Button>
+    </span>
+  );
+
+  const columns: Column<ProjectSecretBinding>[] = [
+    {
+      key: 'ref',
+      header: 'Path',
+      render: (b) => (
+        <button type="button" onClick={() => setEditing(b)} className="break-all text-left font-mono text-mono text-accent hover:underline">
+          {refOf(b)}
+        </button>
+      ),
+      className: 'max-w-[320px]',
+    },
+    { key: 'env', header: 'Environment', render: scope, className: 'whitespace-nowrap' },
+    {
+      key: 'provider',
+      header: 'Provider',
+      render: (b) =>
+        b.secret ? (
+          <span>
+            {providerLabel(b.secret.provider_type)}
+            {b.secret.cluster_name && <span className="block font-mono text-mono-small text-muted">{b.secret.cluster_name}</span>}
+          </span>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+    },
+    { key: 'keys', header: 'Keys', render: (b) => <Keys keys={b.allowed_keys ?? []} />, className: 'max-w-[220px]' },
+    { key: 'ops', header: 'Allows', render: (b) => b.allowed_ops.map((o) => OP_LABEL[o] ?? o).join(', '), className: 'whitespace-nowrap' },
+    { key: 'actions', header: 'Actions', hiddenHeader: true, align: 'right', render: actions, className: 'whitespace-nowrap' },
+  ];
 
   return (
-    <div className="space-y-4">
-      <Card className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-ink font-semibold">Bound secrets</h3>
-            <p className="text-muted text-xs mt-1">
-              Which discovered catalog rows members of{' '}
-              <span className="font-mono text-accent">{project.name}</span> can
-              request, plus the per-binding key allowlist + allowed ops.
-              Submit-time gate (api#43 Slice C) refuses anything outside the
-              binding.
-            </p>
-          </div>
-          <Button variant="primary" size="sm" onClick={() => setAdding(true)}>
-            Bind a secret
-          </Button>
+    <section aria-labelledby="ps-heading">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id="ps-heading" className="text-block-heading text-ink">
+            Bound secrets
+            {bindings.data && <span className="ml-2 font-mono text-mono-small font-normal text-muted">{rows.length}</span>}
+          </h2>
+          <p className="mt-0.5 max-w-3xl text-caption text-muted">
+            Members of {project.name} can request only these secrets, and only the keys and operations each binding allows.
+          </p>
         </div>
-      </Card>
+        <Button variant="primary" onClick={() => setAdding(true)}>
+          Bind a secret
+        </Button>
+      </div>
 
-      {rows.length === 0 ? (
-        <Card className="p-10 text-center text-muted text-sm">
-          No bindings yet. Members of this project see no secrets and any
-          submit returns <span className="font-mono">out_of_scope_project</span>.
-        </Card>
-      ) : (
-        <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-bg/40 text-left text-muted text-[11px]">
-              <tr>
-                <th className="px-5 py-2 font-medium">Secret ref</th>
-                <th className="px-5 py-2 font-medium">Cluster</th>
-                <th className="px-5 py-2 font-medium">Allowed keys</th>
-                <th className="px-5 py-2 font-medium">Ops</th>
-                <th className="px-5 py-2 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((b) => (
-                <BindingRow
-                  key={`${b.project_id}:${b.secret_id}`}
-                  binding={b}
-                  onEdit={() => setEditing(b)}
-                  onUnbind={() => setConfirmUnbind(b)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </Card>
+      {bindings.isLoading && <p className="text-muted">Loading bound secrets…</p>}
+      {bindings.isError && (
+        <Banner
+          tone="error"
+          title="Couldn't load the bound secrets."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void bindings.refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          {errorText(bindings.error)}
+        </Banner>
       )}
+      {bindings.data &&
+        (rows.length === 0 ? (
+          <EmptyState
+            title={`No secrets are bound to ${project.name}.`}
+            action={
+              <Button variant="secondary" onClick={() => setAdding(true)}>
+                Bind a secret
+              </Button>
+            }
+          >
+            Members can't request anything here until you bind a discovered secret.
+          </EmptyState>
+        ) : (
+          <DataTable
+            label={`Secrets bound to ${project.name}`}
+            columns={columns}
+            rows={rows}
+            rowKey={(b) => `${b.project_id}:${b.secret_id}`}
+            onRowClick={setEditing}
+            minWidth={820}
+            stacked={(b) => (
+              <div className="flex flex-col gap-1.5">
+                <button type="button" onClick={() => setEditing(b)} className="break-all text-left font-mono text-mono text-accent hover:underline">
+                  {refOf(b)}
+                </button>
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted">
+                  {scope(b)}
+                  <span>· {b.allowed_ops.map((o) => OP_LABEL[o] ?? o).join(', ')}</span>
+                  {b.secret && <span>· {providerLabel(b.secret.provider_type)}</span>}
+                </p>
+                <Keys keys={b.allowed_keys ?? []} variant="chips" />
+                <div className="mt-1">{actions(b)}</div>
+              </div>
+            )}
+          />
+        ))}
 
       {adding && (
-        <Drawer title="Bind a secret" onClose={() => setAdding(false)}>
-          <BindForm
-            project={project}
-            existingSecretIds={new Set(rows.map((b) => b.secret_id))}
-            onDone={() => setAdding(false)}
-            onCancel={() => setAdding(false)}
-          />
-        </Drawer>
+        <BindDrawer
+          project={project}
+          existingSecretIds={new Set(rows.map((b) => b.secret_id))}
+          onDone={(ref) => {
+            setAdding(false);
+            toast(`Bound ${ref} to ${project.name}.`);
+          }}
+          onCancel={() => setAdding(false)}
+        />
       )}
 
       {editing && (
-        <Drawer
-          title={`Edit binding · ${editing.secret?.secret_ref ?? editing.secret_id}`}
-          onClose={() => setEditing(null)}
-        >
-          <EditForm
-            project={project}
-            binding={editing}
-            onDone={() => setEditing(null)}
-            onCancel={() => setEditing(null)}
-          />
-        </Drawer>
+        <EditDrawer
+          project={project}
+          binding={editing}
+          env={editing.environment_id ? envById.get(editing.environment_id) : undefined}
+          onDone={() => {
+            toast(`Saved the binding for ${refOf(editing)}.`);
+            setEditing(null);
+          }}
+          onCancel={() => setEditing(null)}
+        />
       )}
 
       {confirmUnbind && (
         <ConfirmModal
-          title="Unbind this secret?"
-          body={`Members of ${project.name} will no longer see ${
-            confirmUnbind.secret?.secret_ref ?? confirmUnbind.secret_id
-          } in their catalog. Existing requests against it stay in the audit log.`}
+          title={`Unbind ${refOf(confirmUnbind)}?`}
+          body={`Members of ${project.name} can no longer request it. Requests already made stay in the audit log.`}
           confirmText="Unbind"
           danger
           loading={unbind.isPending}
           error={unbind.error}
           onConfirm={async () => {
-            await unbind.mutateAsync({ secretId: confirmUnbind.secret_id });
+            try {
+              await unbind.mutateAsync({ secretId: confirmUnbind.secret_id });
+              toast(`Unbound ${refOf(confirmUnbind)}.`);
+              setConfirmUnbind(null);
+            } catch {
+              // Shown in the dialog.
+            }
+          }}
+          onCancel={() => {
+            unbind.reset();
             setConfirmUnbind(null);
           }}
-          onCancel={() => setConfirmUnbind(null)}
         />
       )}
-    </div>
+    </section>
   );
 }
 
-// --- one row in the bindings table ----------------------------------
+// --- bind ------------------------------------------------------------
 
-function BindingRow({
-  binding,
-  onEdit,
-  onUnbind,
-}: {
-  binding: ProjectSecretBinding;
-  onEdit: () => void;
-  onUnbind: () => void;
-}) {
-  // The api uses `omitempty` on the AllowedKeys pointer, so the field
-  // is absent (undefined) — not literally `null` — when "all keys are
-  // allowed". `== null` covers both shapes; treat both as the same
-  // "all keys" semantic the field documents.
-  const allKeys = binding.allowed_keys == null;
-  const keys = binding.allowed_keys ?? [];
-  return (
-    <tr className="border-t border-border/40">
-      <td className="px-5 py-3 align-top">
-        <span className="font-mono text-accent text-sm">
-          {binding.secret?.secret_ref ?? binding.secret_id}
-        </span>
-        {binding.secret?.provider_type && (
-          <span className="ml-2 text-muted text-xs">
-            {binding.secret.provider_type}
-          </span>
-        )}
-      </td>
-      <td className="px-5 py-3 align-top text-muted text-xs">
-        {binding.secret?.cluster_name ?? '—'}
-      </td>
-      <td className="px-5 py-3 align-top">
-        {allKeys ? (
-          <StatusPill variant="accent" tone="outline">
-            all keys
-          </StatusPill>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {keys.map((k) => (
-              <StatusPill key={k} variant="neutral" tone="filled">
-                {k}
-              </StatusPill>
-            ))}
-          </div>
-        )}
-      </td>
-      <td className="px-5 py-3 align-top">
-        <div className="flex flex-wrap gap-1">
-          {binding.allowed_ops.map((op) => (
-            <StatusPill key={op} variant="accent" tone="filled">
-              {op}
-            </StatusPill>
-          ))}
-        </div>
-      </td>
-      <td className="px-5 py-3 align-top text-right">
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" size="sm" onClick={onEdit}>
-            Edit
-          </Button>
-          <button
-            type="button"
-            onClick={onUnbind}
-            className="text-bad hover:underline text-sm font-medium"
-          >
-            Unbind
-          </button>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-// --- bind form (new binding) ----------------------------------------
+const keyRule = (v: { allow_all_keys: boolean; allowed_keys_csv: string }) => v.allow_all_keys || splitKeys(v.allowed_keys_csv).length > 0;
+const keyRuleError = { message: 'List at least one key, or allow every key.', path: ['allowed_keys_csv'] };
 
 const bindSchema = z
   .object({
-    secret_id: z.guid('pick a secret from the list'),
+    secret_id: z.guid('Choose a secret from the catalog.'),
     allow_all_keys: z.boolean(),
     allowed_keys_csv: z.string(),
-    allowed_ops: z.array(z.enum(['read', 'patch', 'discover'])).min(1, 'at least one op'),
+    allowed_ops: z.array(z.enum(OPS), { error: 'Allow at least one operation.' }).min(1, 'Allow at least one operation.'),
   })
-  .refine(
-    (v) =>
-      v.allow_all_keys ||
-      v.allowed_keys_csv
-        .split(',')
-        .map((k) => k.trim())
-        .filter(Boolean).length > 0,
-    { message: 'either allow all keys or list at least one', path: ['allowed_keys_csv'] },
-  );
+  .refine(keyRule, keyRuleError);
 
 type BindFormValues = z.infer<typeof bindSchema>;
 
-function BindForm({
+function BindDrawer({
   project,
   existingSecretIds,
   onDone,
@@ -269,123 +268,125 @@ function BindForm({
 }: {
   project: Project;
   existingSecretIds: Set<string>;
-  onDone: () => void;
+  onDone: (ref: string) => void;
   onCancel: () => void;
 }) {
   const catalog = useSecrets({ limit: 500 });
   const bind = useBindProjectSecret(project.id);
 
-  const candidates = useMemo<Secret[]>(() => {
-    const items = catalog.data?.items ?? [];
-    return items.filter((s) => !existingSecretIds.has(s.id));
-  }, [catalog.data, existingSecretIds]);
+  const candidates = useMemo<Secret[]>(
+    () => (catalog.data?.items ?? []).filter((s) => !existingSecretIds.has(s.id)).sort((a, b) => a.secret_ref.localeCompare(b.secret_ref)),
+    [catalog.data, existingSecretIds],
+  );
 
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     formState: { errors, isSubmitting },
-    setError,
   } = useForm<BindFormValues>({
     resolver: zodResolver(bindSchema),
-    defaultValues: {
-      secret_id: '',
-      allow_all_keys: true,
-      allowed_keys_csv: '',
-      allowed_ops: ['read'],
-    },
+    defaultValues: { secret_id: '', allow_all_keys: true, allowed_keys_csv: '', allowed_ops: ['read'] },
   });
-
-  const allowAll = watch('allow_all_keys');
+  const allowAll = useWatch({ control, name: 'allow_all_keys' });
 
   const onSubmit = async (v: BindFormValues) => {
     const body: ProjectSecretBindingInput = {
       secret_id: v.secret_id,
       allowed_ops: v.allowed_ops,
-      allowed_keys: v.allow_all_keys
-        ? null
-        : v.allowed_keys_csv
-            .split(',')
-            .map((k) => k.trim())
-            .filter(Boolean),
+      allowed_keys: v.allow_all_keys ? null : splitKeys(v.allowed_keys_csv),
     };
     try {
       await bind.mutateAsync(body);
-      onDone();
-    } catch (e) {
-      setError('root', { message: (e as Error).message });
+      onDone(candidates.find((s) => s.id === v.secret_id)?.secret_ref ?? 'the secret');
+    } catch {
+      // Shown in the banner below.
     }
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <Field label="Secret" error={errors.secret_id?.message}>
-        <select
-          {...register('secret_id')}
-          className="w-full bg-bg/40 border border-border/60 rounded-sm px-3 py-2 text-sm font-mono"
+    <Drawer
+      title="Bind a secret"
+      subtitle={`Let members of ${project.name} request a discovered secret.`}
+      onClose={onCancel}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button type="submit" form="bind-secret" variant="primary" disabled={isSubmitting} aria-busy={isSubmitting}>
+            {isSubmitting ? 'Binding…' : 'Bind secret'}
+          </Button>
+        </>
+      }
+    >
+      <form id="bind-secret" noValidate onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-[18px]">
+        <Field
+          id="bind-secret-id"
+          label="Secret"
+          hint={
+            catalog.isLoading
+              ? 'Loading the catalog…'
+              : catalog.data && candidates.length === 0
+                ? 'Every discovered secret is already bound to this project.'
+                : 'Secrets found by discovery. Paths only.'
+          }
+          error={errors.secret_id?.message}
         >
-          <option value="">— choose a discovered secret —</option>
-          {candidates.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.secret_ref} · {s.cluster_name} · {s.provider_type}
-            </option>
-          ))}
-        </select>
-        {catalog.data && candidates.length === 0 && (
-          <p className="text-xs text-muted mt-1">
-            Every discovered secret is already bound to this project.
-          </p>
+          {(p) => (
+            <Select {...p} {...register('secret_id')} className="font-mono" data-autofocus>
+              <option value="">Choose a secret</option>
+              {candidates.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.secret_ref} · {s.cluster_name} · {providerLabel(s.provider_type)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
+        <KeyPolicyFields
+          idPrefix="bind"
+          registerAllowAll={register('allow_all_keys')}
+          registerKeysCsv={register('allowed_keys_csv')}
+          keysError={errors.allowed_keys_csv?.message}
+          allowAll={allowAll}
+        />
+
+        <OpsField idPrefix="bind" register={register('allowed_ops')} error={errors.allowed_ops?.message} />
+
+        {bind.isError && (
+          <Banner tone="error" title="Not bound.">
+            {errorText(bind.error)}
+          </Banner>
         )}
-      </Field>
-
-      <KeyPolicyFields
-        registerAllowAll={register('allow_all_keys')}
-        registerKeysCsv={register('allowed_keys_csv')}
-        keysError={errors.allowed_keys_csv?.message}
-        allowAll={allowAll}
-      />
-
-      <OpsField
-        register={register('allowed_ops')}
-        error={errors.allowed_ops?.message as string | undefined}
-      />
-
-      {errors.root?.message && (
-        <div className="text-sm text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
-          {errors.root.message}
-        </div>
-      )}
-
-      <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="secondary" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" variant="primary" disabled={isSubmitting}>
-          {isSubmitting ? 'Binding…' : 'Bind'}
-        </Button>
-      </div>
-    </form>
+      </form>
+    </Drawer>
   );
 }
 
-// --- edit form (existing binding) -----------------------------------
+// --- edit ------------------------------------------------------------
 
-const editSchema = z.object({
-  allow_all_keys: z.boolean(),
-  allowed_keys_csv: z.string(),
-  allowed_ops: z.array(z.enum(['read', 'patch', 'discover'])).min(1, 'at least one op'),
-});
+const editSchema = z
+  .object({
+    allow_all_keys: z.boolean(),
+    allowed_keys_csv: z.string(),
+    allowed_ops: z.array(z.enum(OPS), { error: 'Allow at least one operation.' }).min(1, 'Allow at least one operation.'),
+  })
+  .refine(keyRule, keyRuleError);
 
 type EditFormValues = z.infer<typeof editSchema>;
 
-function EditForm({
+function EditDrawer({
   project,
   binding,
+  env,
   onDone,
   onCancel,
 }: {
   project: Project;
   binding: ProjectSecretBinding;
+  env?: Environment;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -394,155 +395,150 @@ function EditForm({
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     formState: { errors, isSubmitting },
-    setError,
   } = useForm<EditFormValues>({
     resolver: zodResolver(editSchema),
     defaultValues: {
-      allow_all_keys: binding.allowed_keys === null,
+      // `== null` covers an absent field as well as an explicit null;
+      // both mean "every key".
+      allow_all_keys: binding.allowed_keys == null,
       allowed_keys_csv: (binding.allowed_keys ?? []).join(', '),
-      allowed_ops: binding.allowed_ops as EditFormValues['allowed_ops'],
+      allowed_ops: binding.allowed_ops.filter((o): o is (typeof OPS)[number] => (OPS as readonly string[]).includes(o)),
     },
   });
-
-  const allowAll = watch('allow_all_keys');
+  const allowAll = useWatch({ control, name: 'allow_all_keys' });
 
   const onSubmit = async (v: EditFormValues) => {
     const body: ProjectSecretBindingUpdate = {
       allowed_ops: v.allowed_ops,
-      allowed_keys: v.allow_all_keys
-        ? null
-        : v.allowed_keys_csv
-            .split(',')
-            .map((k) => k.trim())
-            .filter(Boolean),
+      allowed_keys: v.allow_all_keys ? null : splitKeys(v.allowed_keys_csv),
     };
     try {
       await update.mutateAsync({ secretId: binding.secret_id, body });
       onDone();
-    } catch (e) {
-      setError('root', { message: (e as Error).message });
+    } catch {
+      // Shown in the banner below.
     }
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <KeyPolicyFields
-        registerAllowAll={register('allow_all_keys')}
-        registerKeysCsv={register('allowed_keys_csv')}
-        keysError={errors.allowed_keys_csv?.message}
-        allowAll={allowAll}
-      />
-
-      <OpsField
-        register={register('allowed_ops')}
-        error={errors.allowed_ops?.message as string | undefined}
-      />
-
-      {errors.root?.message && (
-        <div className="text-sm text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
-          {errors.root.message}
-        </div>
-      )}
-
-      <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="secondary" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" variant="primary" disabled={isSubmitting}>
-          {isSubmitting ? 'Saving…' : 'Save'}
-        </Button>
-      </div>
-    </form>
+    <Drawer
+      title="Edit binding"
+      subtitle={
+        <>
+          <span className="break-all font-mono text-mono">{refOf(binding)}</span> ·{' '}
+          {env ? (
+            <>
+              {project.name} <EnvTag kind={env.kind}>{env.name}</EnvTag>
+            </>
+          ) : binding.environment_id ? (
+            project.name
+          ) : (
+            `whole ${project.name} project`
+          )}
+        </>
+      }
+      onClose={onCancel}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button type="submit" form="edit-binding" variant="primary" disabled={isSubmitting} aria-busy={isSubmitting}>
+            {isSubmitting ? 'Saving…' : 'Save binding'}
+          </Button>
+        </>
+      }
+    >
+      <form id="edit-binding" noValidate onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-[18px]">
+        <KeyPolicyFields
+          idPrefix="edit"
+          registerAllowAll={register('allow_all_keys')}
+          registerKeysCsv={register('allowed_keys_csv')}
+          keysError={errors.allowed_keys_csv?.message}
+          allowAll={allowAll}
+          autoFocus
+        />
+        <OpsField idPrefix="edit" register={register('allowed_ops')} error={errors.allowed_ops?.message} />
+        {update.isError && (
+          <Banner tone="error" title="Not saved.">
+            {errorText(update.error)}
+          </Banner>
+        )}
+      </form>
+    </Drawer>
   );
 }
 
-// --- shared form fields ---------------------------------------------
-
-type Reg = ReturnType<ReturnType<typeof useForm>['register']>;
+// --- shared fields ---------------------------------------------------
 
 function KeyPolicyFields({
+  idPrefix,
   registerAllowAll,
   registerKeysCsv,
   keysError,
   allowAll,
+  autoFocus,
 }: {
-  registerAllowAll: Reg;
-  registerKeysCsv: Reg;
+  idPrefix: string;
+  registerAllowAll: UseFormRegisterReturn;
+  registerKeysCsv: UseFormRegisterReturn;
   keysError?: string;
   allowAll: boolean;
+  autoFocus?: boolean;
 }) {
+  const errId = `${idPrefix}-keys-error`;
   return (
-    <Field
-      label="Allowed keys"
-      hint="Tick to allow every key the secret exposes. Otherwise list the allowed keys, comma-separated."
-    >
-      <label className="flex items-center gap-2 text-sm text-ink mb-2">
-        <input type="checkbox" {...registerAllowAll} className="rounded-sm" />
-        Allow all keys
+    <fieldset className="flex min-w-0 flex-col gap-1.5">
+      <legend className="mb-1.5 p-0 text-body font-semibold text-ink">Keys</legend>
+      <label className="flex items-center gap-2.5 text-ui font-normal">
+        <input type="checkbox" {...registerAllowAll} className="m-0 h-4 w-4 accent-accent" data-autofocus={autoFocus ? true : undefined} />
+        Allow every key in this secret
       </label>
       {!allowAll && (
-        <input
-          type="text"
+        <Input
           {...registerKeysCsv}
-          placeholder="DB_HOST, DB_PORT, REDIS_PASSWORD"
-          className="w-full bg-bg/40 border border-border/60 rounded-sm px-3 py-2 text-sm font-mono"
+          id={`${idPrefix}-keys`}
+          aria-label="Allowed keys, separated by commas"
+          aria-invalid={keysError ? true : undefined}
+          aria-describedby={keysError ? errId : undefined}
+          placeholder="DB_HOST, DB_PORT, DB_PASSWORD"
+          className="font-mono"
           autoComplete="off"
           spellCheck={false}
         />
       )}
+      <p className="text-caption text-muted">Requests for any other key are refused.</p>
       {keysError && (
-        <p className="text-xs text-bad mt-1">{keysError}</p>
+        <p id={errId} className="text-caption font-medium text-bad">
+          {keysError}
+        </p>
       )}
-    </Field>
+    </fieldset>
   );
 }
 
-function OpsField({
-  register,
-  error,
-}: {
-  register: Reg;
-  error?: string;
-}) {
+function OpsField({ idPrefix, register, error }: { idPrefix: string; register: UseFormRegisterReturn; error?: string }) {
+  const errId = `${idPrefix}-ops-error`;
   return (
-    <Field
-      label="Allowed operations"
-      hint="Which request types members of this project can submit against the bound secret."
-      error={error}
-    >
-      <div className="flex flex-wrap gap-3">
-        {OP_OPTIONS.map((op) => (
-          <label key={op} className="flex items-center gap-2 text-sm">
-            <input type="checkbox" value={op} {...register} className="rounded-sm" />
-            <span className="text-ink font-mono">{op}</span>
+    <fieldset className="flex min-w-0 flex-col gap-1.5" aria-describedby={error ? errId : undefined}>
+      <legend className="mb-1.5 p-0 text-body font-semibold text-ink">Allowed operations</legend>
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {OPS.map((op) => (
+          <label key={op} className="flex items-center gap-2.5 text-ui font-normal max-md:min-h-(--control-touch)">
+            <input type="checkbox" value={op} {...register} className="m-0 h-4 w-4 accent-accent" />
+            {OP_LABEL[op]}
+            <span className="font-mono text-mono-small text-muted">{op}</span>
           </label>
         ))}
       </div>
-    </Field>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-[11px] text-muted font-medium">
-        {label}
-      </label>
-      {hint && <p className="text-xs text-muted mb-1">{hint}</p>}
-      {children}
-      {error && <p className="text-xs text-bad mt-1">{error}</p>}
-    </div>
+      <p className="text-caption text-muted">The request types members can submit for this secret.</p>
+      {error && (
+        <p id={errId} className="text-caption font-medium text-bad">
+          {error}
+        </p>
+      )}
+    </fieldset>
   );
 }
