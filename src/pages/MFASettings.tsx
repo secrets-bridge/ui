@@ -54,11 +54,14 @@ import {
 } from '../api/mfa';
 import { attestationResponseToJSON, toCreationOptions } from '../api/webauthn';
 import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { Drawer } from '../ui/Drawer';
+import { Banner } from '../ui/Banner';
+import { DataTable, type Column } from '../ui/DataTable';
+import { Field, Input } from '../ui/Field';
+import { EmptyState } from '../ui/EmptyState';
 import { PageHeader } from '../ui/PageHeader';
-import { StatusPill } from '../ui/StatusPill';
+import { formatExact } from '../lib/time';
 
 type EnrollMode = 'totp' | 'webauthn' | null;
 
@@ -75,95 +78,65 @@ export function MFASettings() {
     typeof window.PublicKeyCredential !== 'undefined' &&
     window.isSecureContext;
 
+  const columns: Column<MFAFactor>[] = [
+    { key: 'label', header: 'Name', render: (f) => <span className="text-ink">{f.label}</span> },
+    { key: 'kind', header: 'Kind', render: (f) => (f.kind === 'webauthn' ? 'Security key or passkey' : 'Authenticator app') },
+    { key: 'added', header: 'Added', render: (f) => <span className="whitespace-nowrap text-muted">{formatExact(f.created_at)}</span> },
+    {
+      key: 'used',
+      header: 'Last used',
+      render: (f) => <span className="whitespace-nowrap text-muted">{f.last_used_at ? formatExact(f.last_used_at) : 'Never'}</span>,
+    },
+    {
+      key: 'act',
+      header: 'Action',
+      hiddenHeader: true,
+      align: 'right',
+      render: (f) => (
+        <Button variant="danger" size="sm" onClick={() => setDeleteTarget(f)}>
+          Remove…<span className="sr-only"> {f.label}</span>
+        </Button>
+      ),
+    },
+  ];
+
   return (
     <div>
       <PageHeader
-        title="Multi-factor authentication"
-        description="Add a security key or an authenticator app. We require a second factor on sensitive actions — approving requests, revealing secrets, editing roles."
+        title="Second factor"
+        description="Approving, rejecting and revealing ask for a second factor. Add an authenticator app, a security key or a passkey."
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setEnrollMode('webauthn')}
+              disabled={!supportsWebAuthn}
+              title={supportsWebAuthn ? undefined : 'Security keys need HTTPS (or localhost) and a browser that supports WebAuthn.'}
+            >
+              Add security key…
+            </Button>
+            <Button variant="primary" onClick={() => setEnrollMode('totp')}>
+              Add authenticator app…
+            </Button>
+          </>
+        }
       />
 
-      <div className="flex flex-wrap gap-3 mb-6">
-        <Button variant="primary" onClick={() => setEnrollMode('totp')}>
-          Add authenticator app
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => setEnrollMode('webauthn')}
-          disabled={!supportsWebAuthn}
-          title={
-            supportsWebAuthn
-              ? undefined
-              : 'WebAuthn requires HTTPS (or localhost) and a browser that supports it.'
-          }
-        >
-          Add security key / passkey
-        </Button>
-      </div>
-
-      {list.isLoading && (
-        <Card className="p-6 text-center text-muted text-sm">Loading factors…</Card>
-      )}
+      {list.isLoading && <p className="text-muted">Loading your factors…</p>}
       {list.isError && (
-        <Card className="border-bad-line p-5 mb-4">
-          <div className="text-bad font-medium">Failed to load factors</div>
-          <div className="text-muted text-xs mt-1">{stringifyError(list.error)}</div>
-        </Card>
+        <Banner tone="error" title="Couldn't load your factors.">
+          {stringifyError(list.error)}
+        </Banner>
       )}
 
       {list.data && factors.length === 0 && (
-        <Card className="p-10 text-center">
-          <div className="text-ink font-semibold mb-2">No factors enrolled yet</div>
-          <div className="text-muted text-sm">
-            Add a security key or authenticator app to satisfy step-up
-            on Tier 2 actions.
-          </div>
-        </Card>
+        <EmptyState title="You haven't added a second factor yet.">
+          Add an authenticator app or a security key. Until you do, you can't approve, reject or reveal.
+        </EmptyState>
       )}
 
       {factors.length > 0 && (
-        <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px]">
-              <tr className="border-b border-border/60">
-                <Th>Label</Th>
-                <Th>Kind</Th>
-                <Th>Added</Th>
-                <Th>Last used</Th>
-                <Th className="text-right">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {factors.map((f) => (
-                <tr key={f.id} className="border-b border-border/40 last:border-0 align-middle">
-                  <Td>
-                    <div className="text-ink">{f.label}</div>
-                  </Td>
-                  <Td>
-                    <StatusPill
-                      variant={f.kind === 'webauthn' ? 'success' : 'accent'}
-                      tone="outline"
-                    >
-                      {f.kind === 'webauthn' ? 'Security key' : 'TOTP'}
-                    </StatusPill>
-                  </Td>
-                  <Td className="text-muted">{shortDate(f.created_at)}</Td>
-                  <Td className="text-muted">
-                    {f.last_used_at ? shortDate(f.last_used_at) : 'never'}
-                  </Td>
-                  <Td className="text-right">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setDeleteTarget(f)}
-                    >
-                      Remove
-                    </Button>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <DataTable label="Your second factors" columns={columns} rows={factors} rowKey={(f) => f.id} minWidth={560} />
       )}
 
       {enrollMode === 'totp' && (
@@ -175,10 +148,11 @@ export function MFASettings() {
 
       {deleteTarget && (
         <ConfirmModal
-          title="Remove this factor?"
+          title={`Remove “${deleteTarget.label}”?`}
           body={
-            `“${deleteTarget.label}” will be removed. ` +
-            `If it was your only factor, you'll be asked to enroll a new one before performing Tier 2 actions.`
+            factors.length === 1
+              ? "This is your only second factor. Without one you can't approve, reject or reveal until you add another."
+              : 'You can still use your other factors. You may be asked to confirm with one of them first.'
           }
           confirmText="Remove"
           danger
@@ -204,6 +178,9 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
   const [label, setLabel] = useState('');
   const [code, setCode] = useState('');
   const [challenge, setChallenge] = useState<TOTPEnrollResponse | null>(null);
+  // Set after a wrong code: the api spends the enrollment challenge on
+  // any attempt, so a new code to scan is issued straight away.
+  const [restarted, setRestarted] = useState(false);
 
   const enroll = useEnrollTOTP();
   const confirm = useConfirmTOTP();
@@ -213,30 +190,39 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
 
   const startEnroll = async () => {
     if (!labelTrim) return;
-    confirm.reset();
     setChallenge(null);
     setCode('');
-    const out = await enroll.mutateAsync({ label: labelTrim });
-    // The drawer renders from `challenge`; drop the cache's copy of the
-    // seed now (UI-N-02).
-    enroll.reset();
-    setChallenge(out);
+    try {
+      const out = await enroll.mutateAsync({ label: labelTrim });
+      // The drawer renders from `challenge`; drop the cache's copy of
+      // the seed now (UI-N-02).
+      enroll.reset();
+      setChallenge(out);
+    } catch {
+      // Shown from enroll.error below.
+    }
   };
 
   const submitCode = async () => {
     if (!challenge || codeTrim.length !== 6) return;
-    await confirm.mutateAsync({
-      challenge_id: challenge.challenge_id,
-      code: codeTrim,
-    });
-    confirm.reset();
-    setChallenge(null);
-    onClose();
+    try {
+      await confirm.mutateAsync({ challenge_id: challenge.challenge_id, code: codeTrim });
+      confirm.reset();
+      setChallenge(null);
+      onClose();
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 400 || err.status === 410)) {
+        confirm.reset();
+        setRestarted(true);
+        await startEnroll();
+      }
+    }
   };
 
   return (
     <Drawer
       title="Add authenticator app"
+      subtitle="Any app that shows 6-digit codes works, such as 1Password, Bitwarden or Google Authenticator."
       onClose={onClose}
       footer={
         challenge ? (
@@ -246,10 +232,11 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
             </Button>
             <Button
               variant="primary"
-              onClick={submitCode}
-              disabled={codeTrim.length !== 6 || confirm.isPending}
+              onClick={() => void submitCode()}
+              disabled={codeTrim.length !== 6 || confirm.isPending || enroll.isPending}
+              aria-busy={confirm.isPending}
             >
-              {confirm.isPending ? 'Verifying…' : 'Verify + add'}
+              {confirm.isPending ? 'Checking…' : 'Add app'}
             </Button>
           </>
         ) : (
@@ -259,86 +246,76 @@ function TOTPEnrollDrawer({ onClose }: { onClose: () => void }) {
             </Button>
             <Button
               variant="primary"
-              onClick={startEnroll}
+              onClick={() => void startEnroll()}
               disabled={!labelTrim || enroll.isPending}
+              aria-busy={enroll.isPending}
             >
-              {enroll.isPending ? 'Generating…' : 'Show QR code'}
+              {enroll.isPending ? 'Preparing…' : 'Show the code to scan'}
             </Button>
           </>
         )
       }
     >
       {!challenge && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[11px] text-muted font-medium mb-1.5">
-              Label
-            </label>
-            <input
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="iPhone backup, Bitwarden, 1Password…"
-              autoFocus
-              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
-            />
-            <div className="text-[11px] text-muted/80 mt-1">
-              How this factor will show up in your list. Must be unique
-              across your factors.
-            </div>
-          </div>
+        <div className="flex flex-col gap-4">
+          <Field id="totp-label" label="Name" hint="How this app shows in your list, so you can tell your factors apart.">
+            {(p) => (
+              <Input
+                {...p}
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Phone, password manager"
+                autoFocus
+                maxLength={64}
+                className="w-full"
+              />
+            )}
+          </Field>
           {enroll.isError && <ErrorBanner err={enroll.error} />}
         </div>
       )}
 
       {challenge && (
-        <div className="space-y-5">
-          <div>
-            <div className="text-[11px] text-muted font-medium mb-2">
-              1 · Scan with your authenticator
-            </div>
-            <Card className="p-5 flex flex-col items-center gap-4">
-              <div className="bg-white rounded-md p-3">
-                <QRCodeSVG
-                  value={challenge.provisioning_uri}
-                  size={192}
-                  level="M"
-                  marginSize={0}
-                />
+        <div className="flex flex-col gap-5">
+          {restarted && (
+            <Banner tone="error" title="That code wasn't accepted.">
+              The code to scan has changed. Remove the entry you just added in your app, scan this new one and type
+              its code.
+            </Banner>
+          )}
+          <section>
+            <h3 className="mb-2 text-body font-semibold text-ink">1. Scan this with your app</h3>
+            <div className="flex flex-col items-center gap-4 rounded-md border border-border px-5 py-5">
+              <div className="rounded-md bg-white p-3">
+                <QRCodeSVG value={challenge.provisioning_uri} size={192} level="M" marginSize={0} />
               </div>
-              <details className="text-xs text-muted w-full">
-                <summary className="cursor-pointer hover:text-ink">
-                  Can't scan? Show the secret to type manually
-                </summary>
-                <div className="mt-3 font-mono text-[11px] break-all bg-bg/40 border border-border/60 rounded-md px-3 py-2 text-ink">
+              <details className="w-full text-caption text-muted">
+                <summary className="cursor-pointer hover:text-ink">Can't scan? Type the setup key instead</summary>
+                <code className="mt-3 block select-all break-all rounded-sm border border-dashed border-edge bg-sunken px-3 py-2 font-mono text-mono text-ink">
                   {challenge.secret_base32}
-                </div>
-                <div className="mt-2 text-[11px] text-muted/80">
-                  Algorithm SHA1 · 6 digits · 30 second period.
-                </div>
+                </code>
+                <p className="mt-2">Time-based, 6 digits, 30-second period, SHA-1.</p>
               </details>
-            </Card>
-          </div>
-          <div>
-            <div className="text-[11px] text-muted font-medium mb-2">
-              2 · Type the 6-digit code your app shows
             </div>
-            <input
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="123456"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              autoFocus
-              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-base font-mono tracking-widest text-center focus:border-accent"
-            />
-            <div className="text-[11px] text-muted/80 mt-1">
-              If the code is wrong, the challenge resets — close this
-              drawer and start over.
-            </div>
-          </div>
+          </section>
+          <Field id="totp-code" label="2. Type the 6-digit code your app shows" hint="The code changes every 30 seconds.">
+            {(p) => (
+              <Input
+                {...p}
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                autoFocus
+                className="w-40 font-mono tracking-[0.3em]"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void submitCode();
+                }}
+              />
+            )}
+          </Field>
           {confirm.isError && <ErrorBanner err={confirm.error} />}
         </div>
       )}
@@ -412,50 +389,43 @@ function WebAuthnEnrollDrawer({ onClose }: { onClose: () => void }) {
             variant="primary"
             onClick={run}
             disabled={!labelTrim || inFlight}
+            aria-busy={inFlight}
           >
-            {inFlight ? 'Waiting for authenticator…' : 'Add factor'}
+            {inFlight ? 'Waiting for your key…' : 'Add security key'}
           </Button>
         </>
       }
     >
-      <div className="space-y-4">
-        <div>
-          <label className="block text-[11px] text-muted font-medium mb-1.5">
-            Label
-          </label>
-          <input
-            type="text"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="Yubikey 5C, iPhone Touch ID, Windows Hello…"
-            autoFocus
-            disabled={inFlight}
-            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent disabled:opacity-50"
-          />
-          <div className="text-[11px] text-muted/80 mt-1">
-            How this factor will show up in your list. Must be unique
-            across your factors.
-          </div>
+      <div className="flex flex-col gap-4">
+        <Field id="webauthn-label" label="Name" hint="How this key shows in your list, so you can tell your factors apart.">
+          {(p) => (
+            <Input
+              {...p}
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Hardware key, laptop fingerprint"
+              autoFocus
+              disabled={inFlight}
+              maxLength={64}
+              className="w-full"
+            />
+          )}
+        </Field>
+
+        <div className="rounded-md border border-border bg-sunken px-3.5 py-3 text-ui font-normal">
+          <p className="font-semibold text-ink">What happens next</p>
+          <ol className="mt-1 list-inside list-decimal text-muted">
+            <li>Your browser asks you to choose a security key or passkey.</li>
+            <li>Tap the key, or use your fingerprint or face.</li>
+            <li>The key is added once the browser confirms it.</li>
+          </ol>
+          <p className="mt-1.5 text-caption text-muted">A key you already added can't be added twice.</p>
         </div>
 
-        <Card className="p-4 text-sm space-y-2">
-          <div className="text-ink font-medium">When you click “Add factor”…</div>
-          <ol className="list-decimal list-inside text-muted text-xs space-y-1">
-            <li>Your browser will prompt you to choose an authenticator.</li>
-            <li>Tap your security key or use your built-in biometrics.</li>
-            <li>The factor is added once the browser hands back proof.</li>
-          </ol>
-          <div className="text-[11px] text-muted/80 pt-1">
-            The browser blocks re-registering an authenticator you
-            already added.
-          </div>
-        </Card>
-
         {browserError && (
-          <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-4 py-3 text-sm">
-            <div className="text-bad font-semibold mb-0.5">Authenticator declined</div>
-            <div className="text-bad text-xs">{browserError}</div>
-          </div>
+          <Banner tone="error" title="The authenticator didn't confirm.">
+            {browserError}
+          </Banner>
         )}
         {start.isError && <ErrorBanner err={start.error} />}
         {finish.isError && <ErrorBanner err={finish.error} />}
@@ -467,46 +437,22 @@ function WebAuthnEnrollDrawer({ onClose }: { onClose: () => void }) {
 // --- shared bits ----------------------------------------------------
 
 function ErrorBanner({ err }: { err: unknown }) {
+  if (err instanceof ApiError && err.status === 409) {
+    return (
+      <Banner tone="error" title="That name is taken.">
+        Each of your factors needs its own name.
+      </Banner>
+    );
+  }
   return (
-    <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-4 py-3 text-sm">
-      <div className="text-bad font-semibold mb-0.5">
-        {err instanceof ApiError ? `${err.status} · request failed` : 'Network error'}
-      </div>
-      <div className="text-bad text-xs">
-        {err instanceof Error ? err.message : String(err)}
-      </div>
-    </div>
+    <Banner tone="error" title={err instanceof ApiError ? `${err.status} · it didn't work` : 'Network error'}>
+      {err instanceof Error ? err.message : String(err)}
+    </Banner>
   );
-}
-
-function shortDate(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '—';
-  return new Date(t).toISOString().slice(0, 10);
 }
 
 function stringifyError(e: unknown): string {
   if (e instanceof ApiError) return `${e.status}: ${e.message}`;
   if (e instanceof Error) return e.message;
   return String(e);
-}
-
-function Th({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
-}
-
-function Td({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <td className={`px-5 py-3.5 ${className}`}>{children}</td>;
 }

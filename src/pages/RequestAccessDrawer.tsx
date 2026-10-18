@@ -25,10 +25,11 @@
 import { useMemo, useState } from 'react';
 
 import { ApiError } from '../api/client';
-import { useEnvSecrets, type EnvSecretKey } from '../api/devSecrets';
+import { useEnvSecrets } from '../api/devSecrets';
 import { useMe } from '../api/me';
 import { useSubmitPatchRequest, useSubmitReadRequest } from '../api/requests';
 import { revealErrorMessage } from '../api/revealErrors';
+import { groupBoundSecrets } from '../lib/boundSecrets';
 import { looksLikeASecret } from '../lib/justification';
 import { providerLabel } from '../lib/providers';
 import { scopeOptions } from '../requests/scope';
@@ -56,26 +57,6 @@ interface Props {
 
 type Op = 'read' | 'patch';
 
-interface SecretOption {
-  ref: string;
-  provider: string;
-  /** Allowed key names; empty when the binding allows every key. */
-  keys: string[];
-  allKeys: boolean;
-  ops: string[];
-}
-
-function groupSecrets(rows: EnvSecretKey[]): SecretOption[] {
-  const by = new Map<string, SecretOption>();
-  for (const r of rows) {
-    const s = by.get(r.secret_ref) ?? { ref: r.secret_ref, provider: r.provider_type, keys: [], allKeys: false, ops: r.allowed_ops };
-    if (r.key_name) s.keys.push(r.key_name);
-    else s.allKeys = true;
-    by.set(r.secret_ref, s);
-  }
-  return [...by.values()].sort((a, b) => a.ref.localeCompare(b.ref));
-}
-
 export function RequestAccessDrawer({ prefill, onClose, onCreated }: Props) {
   const me = useMe();
   const scopes = useMemo(() => scopeOptions(me.data?.projects), [me.data]);
@@ -102,7 +83,7 @@ export function RequestAccessDrawer({ prefill, onClose, onCreated }: Props) {
   const envId = scope ? envIdOf(scope) : undefined;
   const envSecrets = useEnvSecrets(scopeOpt?.projectId, envId);
   const secrets = useMemo(
-    () => groupSecrets(envSecrets.data ?? []).filter((s) => s.ops.includes(op)),
+    () => groupBoundSecrets(envSecrets.data ?? []).filter((s) => s.ops.includes(op)),
     [envSecrets.data, op],
   );
   // A secret that is no longer offered (scope or operation changed, or a

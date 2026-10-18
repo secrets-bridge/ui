@@ -356,7 +356,7 @@ function SidebarFooter({ onSignOut }: { onSignOut: () => void }) {
 
       <div className="mt-2 flex items-center gap-3 whitespace-nowrap px-1.5 text-caption">
         <button type="button" onClick={() => navigate('/me/mfa')} className="text-muted hover:text-ink hover:underline">
-          Security
+          Second factor
         </button>
         <button type="button" onClick={onSignOut} className="text-muted hover:text-ink hover:underline">
           Sign out

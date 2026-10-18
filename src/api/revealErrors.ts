@@ -46,6 +46,10 @@ export const REVEAL_ERROR_MESSAGES: Record<string, string> = {
     "This secret isn't bound for read in this environment, so it can't be revealed here. It may be bound to a different environment; ask a project admin.",
   'requested key is not permitted by the binding allowlist':
     "That key is outside the binding's allowed keys for this environment.",
+  'matched policy does not permit direct reveal':
+    "The policy for this project and environment doesn't allow direct reveal. Request access instead, and an approver reviews it.",
+  'direct reveal is not permitted on prod environments':
+    'Direct reveal is blocked in Production. Request access instead, and an approver reviews it.',
 
   // POST /requests, /requests/read and .../environments/:env_id/request
   out_of_scope_project:
