@@ -24,6 +24,12 @@ import { useAdminAgents, useCreateEnrollmentToken } from '../../api/agents';
 import { ApiError } from '../../api/client';
 import { useProviderConnectionsAdmin } from '../../api/providerConnections';
 import type { ProviderConnection } from '../../api/types';
+import {
+  AGENT_NAMESPACE as NAMESPACE,
+  AGENT_TOKEN_SECRET as TOKEN_SECRET,
+  helmInstallCommand,
+  isInstallSafe,
+} from '../../lib/agentInstall';
 import { providerLabel } from '../../lib/providers';
 import { copySecret, useClearCopiedSecretOnUnmount } from '../../lib/secretClipboard';
 import { formatClock, formatRemaining } from '../../lib/time';
@@ -40,8 +46,6 @@ const LIFETIMES = [
   { seconds: 86400, label: '24 hours' },
 ];
 
-const NAMESPACE = 'secrets-bridge';
-const TOKEN_SECRET = 'secrets-bridge-agent-enroll';
 const MASK = '••••••••••••';
 
 interface Issued {
@@ -75,7 +79,9 @@ export function EnrollAgentDrawer({ initialConnectionId, onClose }: { initialCon
   if (!connection) errors.connection = 'Choose the connection this agent will serve.';
   else if (connection.status !== 'active') errors.connection = 'This connection is disabled. Enable it first.';
   if (!cluster) errors.cluster = 'Name the cluster the agent runs in.';
-  else if (/\s/.test(cluster) || cluster.length > 100) errors.cluster = 'Use the cluster identifier, without spaces.';
+  // It also goes into the helm command the next step shows.
+  else if (cluster.length > 100 || !isInstallSafe(cluster))
+    errors.cluster = 'Use the cluster identifier: letters, digits and . _ - : / @ % + only.';
   const show = (k: string) => (tried ? errors[k] : undefined);
 
   const submit = async () => {
@@ -225,7 +231,7 @@ function TokenSteps({ issued, copied, onCopied, closeWarned }: { issued: Issued;
   const secretCmd = (token: string) =>
     [`kubectl -n ${NAMESPACE} create secret generic ${TOKEN_SECRET} \\`, `  --from-literal=enrollment_token=${token}`].join('\n');
   const endpoint = window.location.origin;
-  const helm = helmCommand(issued, endpoint);
+  const helm = helmInstallCommand(issued.connection, issued.cluster, endpoint);
   const expired = Date.parse(issued.expiresAt) <= now;
 
   // The new agent: bound to this connection, from this cluster, created
@@ -337,45 +343,6 @@ function TokenSteps({ issued, copied, onCopied, closeWarned }: { issued: Issued;
       </section>
     </div>
   );
-}
-
-function helmCommand(i: Issued, endpoint: string): string {
-  const scope = i.connection.scope ?? {};
-  const str = (k: string) => (typeof scope[k] === 'string' && scope[k] ? (scope[k] as string) : undefined);
-  const provider: string[] =
-    i.connection.type === 'vault'
-      ? [
-          'providers.vault.enabled=true',
-          `providers.vault.addr=${str('address') ?? '<vault-address>'}`,
-          ...(str('namespace') ? [`providers.vault.namespace=${str('namespace')}`] : []),
-          ...(str('mount') ? [`providers.vault.kvMount=${str('mount')}`] : []),
-          ...(str('kvPrefix') ? [`providers.vault.kvPrefix=${str('kvPrefix')}`] : []),
-          'providers.vault.kubernetesRole=<vault-role>',
-        ]
-      : i.connection.type === 'aws-sm'
-        ? [
-            'providers.awsSecretsManager.enabled=true',
-            `providers.awsSecretsManager.region=${str('region') ?? '<aws-region>'}`,
-            ...(str('endpoint') ? [`providers.awsSecretsManager.endpoint=${str('endpoint')}`] : []),
-          ]
-        : [];
-  const sets = [
-    `cp.endpoint=${endpoint}`,
-    `clusterName=${i.cluster}`,
-    `agent.providerType=${i.connection.type}`,
-    'enrollment.enabled=true',
-    `enrollment.tokenSecretName=${TOKEN_SECRET}`,
-    'identity.mode=file',
-    'identity.persistence.enabled=true',
-    'image.digest=sha256:<agent-image-digest>',
-    ...provider,
-  ];
-  return [
-    'helm upgrade --install secrets-bridge-agent oci://ghcr.io/secrets-bridge/charts/secrets-bridge-agent \\',
-    '  --version <chart-version> \\',
-    `  --namespace ${NAMESPACE} \\`,
-    ...sets.map((s, n) => `  --set ${s}${n < sets.length - 1 ? ' \\' : ''}`),
-  ].join('\n');
 }
 
 function createErrorText(err: unknown): string {
