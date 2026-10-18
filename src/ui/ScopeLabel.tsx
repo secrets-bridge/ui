@@ -21,10 +21,16 @@ export function ScopeLabel({
   logo?: string;
 }) {
   const known = !!project && project !== '—';
+  // The mark and the name stay together; when space runs out the
+  // environment tag moves to the next line instead of overflowing.
   return (
-    <span className="inline-flex max-w-full items-center gap-2 whitespace-nowrap">
-      {known && <EntityMark name={project} size={size} src={logo} />}
-      <span className="truncate">{project}</span>
+    <span className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="inline-flex min-w-0 max-w-full items-center gap-2 whitespace-nowrap">
+        {known && <EntityMark name={project} size={size} src={logo} />}
+        <span className="truncate" title={project}>
+          {project}
+        </span>
+      </span>
       {env && <EnvTag kind={envKind}>{env}</EnvTag>}
     </span>
   );
