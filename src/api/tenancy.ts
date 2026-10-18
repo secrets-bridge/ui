@@ -16,6 +16,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
+import { devSecretsKey } from './devSecrets';
 import type {
   Environment,
   EnvironmentInput,
@@ -135,6 +136,15 @@ export function useProjectSecrets(projectId: string | undefined) {
   });
 }
 
+// A binding change also changes what the request flow lists for each of
+// the project's environments (GET .../environments/:env_id/secrets).
+function invalidateBindings(qc: ReturnType<typeof useQueryClient>, projectId: string) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: projectSecretsKey.forProject(projectId) }),
+    qc.invalidateQueries({ queryKey: [...devSecretsKey.all, 'env', projectId] }),
+  ]);
+}
+
 export function useBindProjectSecret(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -143,8 +153,7 @@ export function useBindProjectSecret(projectId: string) {
         `/api/v1/projects/${projectId}/secrets`,
         body,
       ),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: projectSecretsKey.forProject(projectId) }),
+    onSuccess: () => invalidateBindings(qc, projectId),
   });
 }
 
@@ -156,8 +165,7 @@ export function useUpdateProjectSecret(projectId: string) {
         `/api/v1/projects/${projectId}/secrets/${secretId}`,
         body,
       ),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: projectSecretsKey.forProject(projectId) }),
+    onSuccess: () => invalidateBindings(qc, projectId),
   });
 }
 
@@ -166,8 +174,7 @@ export function useUnbindProjectSecret(projectId: string) {
   return useMutation({
     mutationFn: ({ secretId }: { secretId: string }) =>
       api.delete<void>(`/api/v1/projects/${projectId}/secrets/${secretId}`),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: projectSecretsKey.forProject(projectId) }),
+    onSuccess: () => invalidateBindings(qc, projectId),
   });
 }
 
