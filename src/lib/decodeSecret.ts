@@ -24,3 +24,17 @@ export function decodeSecret(base64: string): DecodedSecret {
     return { kind: 'binary', base64 };
   }
 }
+
+/**
+ * The other direction, for values a person types: UTF-8 bytes as
+ * base64. `btoa()` alone throws on anything outside Latin-1 and turns
+ * Latin-1 accents into single bytes that aren't valid UTF-8.
+ */
+export function encodeSecret(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let raw = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    raw += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(raw);
+}
