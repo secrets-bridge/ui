@@ -202,14 +202,10 @@ function SecretRow({
         mode === 'reveal'
           ? await directReveal.mutateAsync(body)
           : await submitRequest.mutateAsync(body);
-      // Reveal (auto-approved) → bulk reveal session page (Slice M4).
-      // Request (pending approval) → request detail page where the
-      // user sees approval state + can come back later to reveal.
-      if (mode === 'reveal') {
-        navigate(`/projects/${projectId}/env/${envId}/reveal/${resp.request_id}`);
-      } else {
-        navigate(`/requests/${resp.request_id}`);
-      }
+      // Both go to the request page. A direct reveal is approved at once;
+      // the page follows it until the agent stores the values, then the
+      // requester reveals them there with an explicit click and MFA.
+      navigate(`/requests/${resp.request_id}`);
     } catch (err) {
       // Binding refusals (api#201: not bound in this env, key outside
       // the allowlist) get readable copy; others show the api message.

@@ -31,7 +31,11 @@ export function PageHeader({ title, description, actions }: Props) {
           <p className="mt-[3px] max-w-3xl text-ui font-normal text-muted">{description}</p>
         )}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2.5">{actions}</div>}
+      {actions && (
+        <div className="flex flex-wrap items-center gap-2.5 max-[600px]:w-full max-[600px]:[&>button]:flex-1">
+          {actions}
+        </div>
+      )}
     </div>
   );
 }

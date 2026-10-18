@@ -1,1486 +1,662 @@
 /**
- * Request detail page (`/requests/:id`) — matches Figma frame 26:2.
+ * Request detail (`/requests/:id`).
  *
- * Layout (two columns on lg+):
+ * Breadcrumb, the operation and key names as the title, then the state:
+ * the exact status, the reveal condition and the project and
+ * environment. The main card says what is going on in one heading and
+ * one sentence and offers the single next action for this person:
+ * Approve… and Reject… for an approver whose decision is open, Cancel
+ * request… for the requester while it waits, Check status (a re-fetch,
+ * nothing more) while the agent works, Request again once it is closed.
+ * Then the timeline. The side column has the approvals, the details and
+ * the collapsed technical ids.
  *
- *   ┌── breadcrumb + title strip ───────────────────────────────────┐
- *   │ Requests · REQ-1042                                           │
- *   │ Read prod/db/password                                         │
- *   │ [Pending approval] type [read]  requested by alice@corp · 2m  │
- *   ├──── LEFT (≈ 1.6fr) ─────────┬──── RIGHT (≈ 1fr) ───────────────┤
- *   │ Timeline                    │ Details (k/v)                    │
- *   │ Approvals                   │ Time-to-decide pill              │
- *   │ Wraps (read flow only)      │ Approver actions card            │
- *   │ GitOps observations         │                                  │
- *   └─────────────────────────────┴──────────────────────────────────┘
+ * A request the person can't read answers 404 from the api; the page
+ * says so and shows nothing else about it.
  *
- * Data sourcing:
- *   - `useRequest(id)` hydrates the entire page; the api response
- *     includes inline `approvals[]`.
- *   - `useRequestGitOps(id)` hydrates the observations card when the
- *     §26 feature is on; a 404 from the api flips the card to a
- *     "feature off" banner without polluting the error surface.
- *   - The `Wraps` card is a **read-flow-only** preview today — the
- *     full single-shot reveal-once UX needs the read-wrap retrieval
- *     endpoint and a user-confirm step that lands with slice 7. We
- *     surface the placeholder so the operator knows what to expect.
- *
- * Hard rules:
- *   - NEVER call the wrap retrieval endpoint speculatively. The
- *     placeholder Reveal button is disabled today; the next slice
- *     wires the explicit click handler.
- *   - The page renders metadata only — no secret values appear in any
- *     of the cards' content.
+ * Values never appear here except inside the reveal (request/Reveal.tsx),
+ * which only starts on the requester's click and an MFA step-up.
  */
 
-import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 
-import { ApiError } from '../api/client';
-import {
-  revealWrap,
-  useApproveRequest,
-  useCancelRequest,
-  useRejectRequest,
-  useRequest,
-  useRequestGitOps,
-  useRequestWraps,
-  type RevealedWrap,
-  type WrapSummary,
-} from '../api/requests';
+import type { AuditEvent } from '../api/audit';
+import { api, ApiError } from '../api/client';
+import { requestsKey, useRequest, useRequestGitOps } from '../api/requests';
+import type { AccessRequest, Workflow } from '../api/types';
 import { useWorkflows } from '../api/workflows';
-import { describeRevealError } from '../api/revealErrors';
-import { isRevealSessionFlow, revealSessionPath } from '../api/revealSessions';
-import { useEnvironmentsForProject } from '../api/tenancy';
-import { useTeams } from '../api/teams';
-import type { AccessRequest } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { crossTeamVerifyCapability } from '../auth/capabilities';
-import { crossTeamErrorMessage, useVerifyCrossTeam } from '../api/crossTeam';
-import { clearCopiedSecret, copySecret } from '../lib/secretClipboard';
+import { providerLabel } from '../lib/providers';
+import { requestRef } from '../lib/requestRef';
+import { formatAge, formatClock, formatExact, formatRemaining } from '../lib/time';
+import { useNow } from '../lib/useNow';
+import { conditionLine, keysOf, operationTitle, pathOf } from '../requests/describe';
+import { useRevealConditions, type RevealCondition } from '../requests/revealState';
+import { requestScope, useScopeDisplay, type ScopeDisplay } from '../requests/scope';
+import { timelineFromAudit, timelineFromRequest, voterNames } from '../requests/timeline';
+import { ApprovalLanes, type Lane } from '../ui/ApprovalLanes';
+import { Banner } from '../ui/Banner';
+import { Breadcrumb } from '../ui/Breadcrumb';
 import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
-import { StatusPill } from '../ui/StatusPill';
-import {
-  RequestStatusPill,
-  formatRelativeShort,
-  shortId,
-} from './Requests';
+import { EmptyState } from '../ui/EmptyState';
+import { EnvTag } from '../ui/EnvTag';
+import { Keys } from '../ui/Keys';
+import { Status } from '../ui/Status';
+import { Timeline } from '../ui/Timeline';
+import { useToast } from '../ui/toastContext';
+import { CrossTeamApprovalChainCard, CrossTeamVerifyCard } from './request/CrossTeamVerify';
+import { ApproveDialog, CancelDialog, RejectDialog } from './request/DecisionDialogs';
+import { GitOpsCard } from './request/GitOps';
+import { Reveal } from './request/Reveal';
+import { RequestAccessDrawer } from './RequestAccessDrawer';
+
+type DialogKind = 'approve' | 'reject' | 'cancel' | null;
 
 export function RequestDetail() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { identity } = useAuth();
+  const { id = '' } = useParams<{ id: string }>();
   const req = useRequest(id);
-  const workflows = useWorkflows();
-  const gitops = useRequestGitOps(id);
-  const isReadFlow = req.data?.type === 'read';
-  const isOwner = req.data?.requester_id === identity?.id;
-  const wraps = useRequestWraps(id, !!req.data && isReadFlow && isOwner);
 
-  if (req.isLoading) {
-    return <div className="text-muted text-sm">Loading…</div>;
-  }
-  if (req.isError) {
+  if (req.isLoading) return <p className="text-muted">Loading the request…</p>;
+  if (req.error instanceof ApiError && [400, 403, 404].includes(req.error.status)) return <NoAccess />;
+  if (req.isError || !req.data) {
     return (
-      <Card className="border-bad-line p-5 text-sm">
-        <div className="text-bad font-medium">Failed to load request</div>
-        <div className="text-muted mt-1">{stringifyError(req.error)}</div>
-      </Card>
+      <Banner
+        tone="error"
+        title="Couldn't load this request."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void req.refetch()}>
+            Try again
+          </Button>
+        }
+      >
+        {req.error instanceof Error ? req.error.message : 'The api did not answer.'}
+      </Banner>
     );
   }
-  if (!req.data || !id) return null;
+  return <RequestView r={req.data} refetch={() => void req.refetch()} refetching={req.isFetching} />;
+}
 
-  const r = req.data;
+function NoAccess() {
+  useDocumentTitle("Request · Secrets Bridge");
+  return (
+    <div className="max-w-2xl">
+      <Breadcrumb items={[{ label: 'Requests', to: '/requests' }, { label: 'Request' }]} />
+      <h1 id="page-title" tabIndex={-1} className="mb-4 mt-3 text-console-title text-ink">
+        You can't open this request
+      </h1>
+      <EmptyState title="It doesn't exist, or it's outside the projects you have access to.">
+        If you need it, ask an administrator who manages access to that project. Nothing about the request is shown
+        here.
+      </EmptyState>
+    </div>
+  );
+}
+
+function useDocumentTitle(title: string) {
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
+}
+
+function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: () => void; refetching: boolean }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { identity, hasPermission } = useAuth();
   const me = identity?.id ?? '';
-  const isMine = r.requester_id === me;
-  const workflowName =
-    workflows.data?.find((w) => w.id === r.workflow_id)?.name ?? '—';
+  const now = useNow();
+  const display = useScopeDisplay()(r);
+  const [dialog, setDialog] = useState<DialogKind>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useDocumentTitle(`${requestRef(r.id)} · ${operationTitle(r)} · Secrets Bridge`);
 
-  // cross_team requests carry their target in the destination_* fields;
-  // target_secret_ref / target_provider_type are empty for them, so the
-  // title + Details rail must read the destination fields instead (ui#87
-  // follow-up: no blank rows, no stray "·").
-  const isCrossTeam = r.type === 'cross_team';
-  const displayRef = isCrossTeam
-    ? r.destination_secret_ref ?? ''
-    : r.target_secret_ref;
-  const displayProvider = isCrossTeam
-    ? r.destination_provider_label ?? ''
-    : r.target_provider_type;
-  const requesterLabel = r.requester_display ?? r.requester_id;
+  const isMine = r.requester_id === me;
+  const reveal = useRevealConditions(useMemo(() => [r], [r]), me).get(r.id);
+  const workflows = useWorkflows();
+  const workflow = workflows.data?.find((w) => w.id === r.workflow_id);
+
+  // The real trail with names, for people who can read the audit log.
+  const audit = useQuery({
+    queryKey: ['audit-events', 'request', r.id],
+    queryFn: () => api.get<AuditEvent[]>(`/api/v1/audit-events?correlation_id=${encodeURIComponent(r.id)}&limit=200`),
+    enabled: hasPermission('audit.read'),
+    retry: false,
+    staleTime: 15_000,
+  });
+  const names = useMemo(() => voterNames(audit.data ?? []), [audit.data]);
+  const timeline = useMemo(
+    () => (audit.data ? timelineFromAudit(audit.data, r, me) : timelineFromRequest(r, me)),
+    [audit.data, r, me],
+  );
+
+  // After a decision the card changes under the closing dialog. Once the
+  // refreshed request arrives, focus its new state heading (handoff:
+  // focus goes to the state heading when the trigger is gone).
+  const focusStateOnUpdate = useRef(false);
+  useEffect(() => {
+    if (!focusStateOnUpdate.current) return;
+    focusStateOnUpdate.current = false;
+    const raf = window.requestAnimationFrame(() => document.getElementById('state-heading')?.focus());
+    return () => window.cancelAnimationFrame(raf);
+  }, [r.status, r.updated_at, reveal?.state]);
+
+  const myVote = (r.approvals ?? []).find((a) => a.approver_id === me);
+  const decisionOpen =
+    r.type !== 'cross_team' && r.status === 'pending' && !isMine && hasPermission('secret.approve') && !myVote;
+  const approves = (r.approvals ?? []).filter((a) => a.decision === 'approve').length;
+  const lastApproval = workflow ? approves + 1 >= workflow.min_approvers : undefined;
+  const crossVerify =
+    r.type === 'cross_team' && r.status === 'pending_verification'
+      ? crossTeamVerifyCapability(r, me, identity?.permissions)
+      : null;
+
+  // The reveal stays mounted while values may be on screen, even after
+  // the wrap summaries say "consumed", so a refresh can't cut it short.
+  const [revealing, setRevealing] = useState(false);
+  const revealDeadline = reveal?.state === 'ready' ? reveal.deadline : undefined;
+  const [lastDeadline, setLastDeadline] = useState<string | undefined>(revealDeadline);
+  if (revealDeadline && revealDeadline !== lastDeadline) setLastDeadline(revealDeadline);
+  // Once a reveal ends on this page, don't offer it again while the
+  // summaries catch up: the values are gone.
+  const [revealDone, setRevealDone] = useState(false);
+  const showReveal = r.type === 'read' && isMine && (revealing || (!!revealDeadline && !revealDone));
+  const gitops = useRequestGitOps(r.id, isMine);
+
+  // While approved, follow the request until the agent reports back
+  // (a direct reveal lands here at once). Read-only: it never starts or
+  // repeats anything.
+  useEffect(() => {
+    if (r.status !== 'approved') return;
+    let n = 0;
+    const t = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      if (++n > 60) return window.clearInterval(t);
+      refetch();
+    }, 3000);
+    return () => window.clearInterval(t);
+  }, [r.status, refetch]);
+
+  const revealFinished = () => {
+    setRevealing(false);
+    setRevealDone(true);
+    focusStateOnUpdate.current = true;
+    void qc.invalidateQueries({ queryKey: requestsKey.one(r.id) });
+    void qc.invalidateQueries({ queryKey: ['audit-events'] });
+  };
+
+  const done = (message: string) => {
+    focusStateOnUpdate.current = true;
+    setDialog(null);
+    toast(message);
+    void qc.invalidateQueries({ queryKey: requestsKey.all });
+    void qc.invalidateQueries({ queryKey: ['audit-events'] });
+  };
+
+  // Opening the values consumes the reveal, so say so while they show.
+  const line = revealing ? { text: 'Reveal consumed', tone: 'muted' as const } : conditionLine(r, reveal);
 
   return (
     <div>
-      {/* Breadcrumb + title strip */}
-      <div className="mb-6">
-        <div className="text-muted text-xs">
-          <Link to="/requests" className="hover:text-accent">
-            Requests
-          </Link>
-          <span className="mx-1.5">·</span>
-          <span className="text-ink font-mono">{shortId(r.id)}</span>
-        </div>
-        <h1 className="text-ink text-2xl font-semibold mt-2 tracking-tight">
-          <span className="text-accent capitalize">{r.type}</span>{' '}
-          <span className="font-mono">{displayRef}</span>
-        </h1>
-        <div className="flex items-center gap-2 flex-wrap mt-3">
-          <RequestStatusPill status={r.status} />
-          <span className="text-muted text-xs">type</span>
-          <StatusPill
-            variant={r.type === 'patch' ? 'accent' : 'pending'}
-            tone="outline"
-          >
-            {r.type}
-          </StatusPill>
-          <span className="text-muted text-xs ml-2">requested by</span>
-          <span className="text-ink text-sm">{requesterLabel}</span>
-          <span className="text-muted text-xs">
-            · {formatRelativeShort(r.created_at)}
-          </span>
-        </div>
-        <p className="text-muted text-xs mt-3 max-w-3xl">
-          {displayProvider && (
-            <>
-              Provider:{' '}
-              <span className="text-ink font-mono">{displayProvider}</span>{' '}
-              ·{' '}
-            </>
-          )}
-          workflow:{' '}
-          <span className="text-ink font-mono">{workflowName}</span> · values
-          are never shown — only metadata + single-use wraps.
-        </p>
+      <Breadcrumb items={[{ label: 'Requests', to: '/requests' }, { label: requestRef(r.id), mono: true }]} />
+      <h1 id="page-title" tabIndex={-1} className="mt-3 break-words text-console-title text-ink">
+        {operationTitle(r)}
+      </h1>
+      <div className="mb-6 mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-ui">
+        <Status status={r.status} />
+        {line && <span className={line.tone === 'ok' ? 'text-ok' : 'text-muted'}>{line.text}</span>}
+        <span className="font-mono text-mono-small text-muted">status: {r.status}</span>
+        <span aria-hidden="true" className="text-muted">
+          ·
+        </span>
+        <span>
+          {display.project} {display.env && <EnvTag kind={display.envKind}>{display.env}</EnvTag>}
+        </span>
       </div>
 
-      {/* Two-column grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-6">
-        <div className="space-y-6">
-          <TimelineCard request={r} />
-          <ApprovalsCard request={r} />
-          {r.type === 'read' && <WrapsCard request={r} query={wraps} />}
+      <div className="grid grid-cols-1 gap-6 min-[1181px]:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <Panel>
+            <Situation
+              r={r}
+              me={me}
+              now={now}
+              display={display}
+              reveal={reveal}
+              workflow={workflow}
+              decisionOpen={decisionOpen}
+              myVote={myVote?.decision}
+              crossVerifying={!!crossVerify}
+              refetching={refetching}
+              revealSlot={
+                showReveal && lastDeadline ? (
+                  <Reveal
+                    request={r}
+                    deadline={lastDeadline}
+                    now={now}
+                    onActiveChange={setRevealing}
+                    onFinished={revealFinished}
+                  />
+                ) : undefined
+              }
+              onApprove={() => setDialog('approve')}
+              onReject={() => setDialog('reject')}
+              onCancel={() => setDialog('cancel')}
+              onCheck={refetch}
+              onRequestAgain={() => setDrawerOpen(true)}
+            />
+          </Panel>
+
+          {crossVerify && <CrossTeamVerifyCard request={r} actorId={me} />}
+
+          <Panel title="Timeline" aside={<span className="font-mono text-mono-small text-muted">times in UTC</span>}>
+            <Timeline entries={timeline} />
+          </Panel>
+
           <GitOpsCard query={gitops} />
         </div>
-        <div className="space-y-6">
-          <DetailsCard request={r} workflowName={workflowName} />
-          {r.status === 'pending' && <TimeToDecideCard request={r} />}
-          {r.status === 'pending' && !isMine && (
-            <ApproverActionsCard request={r} />
-          )}
-          {r.status === 'pending' && isMine && (
-            <CancelOwnCard
-              request={r}
-              onCancelled={() => navigate('/requests')}
-            />
-          )}
-          {r.type === 'cross_team' && r.status === 'pending_verification' && (
-            <CrossTeamVerifyCard request={r} actorId={me} />
-          )}
-          {r.type === 'cross_team' && r.snap_requires_security_approval && (
+
+        <div className="flex min-w-0 flex-col gap-6">
+          {r.type === 'cross_team' ? (
             <CrossTeamApprovalChainCard request={r} />
+          ) : (
+            <Panel title="Approvals" aside={workflow && <span className="text-caption text-muted">{workflow.name}</span>}>
+              <ApprovalLanes lanes={lanesFor(r, workflow, names, me)} />
+            </Panel>
           )}
-          {r.type === 'cross_team' &&
-            (r.status === 'pending_values' || r.status === 'pending_verification') &&
-            isMine && (
-              <CancelOwnCard
-                request={r}
-                onCancelled={() => navigate('/requests')}
-              />
-            )}
+          <DetailsPanel r={r} display={display} />
         </div>
       </div>
-    </div>
-  );
-}
 
-// --- Timeline -------------------------------------------------------
-
-interface TimelineNode {
-  label: string;
-  sub?: string;
-  time: string;
-  tone: 'created' | 'workflow' | 'enqueued' | 'approved' | 'rejected' | 'claimed' | 'completed' | 'failed' | 'cancelled';
-}
-
-function TimelineCard({ request: r }: { request: AccessRequest }) {
-  const nodes = buildTimeline(r);
-  return (
-    <Card className="overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-        <h3 className="text-ink font-semibold">Timeline</h3>
-        <span className="text-muted text-xs ml-auto font-mono">
-          correlation_id
-        </span>
-      </div>
-      <ul className="px-5 py-4 space-y-3">
-        {nodes.map((n, i) => (
-          <li key={i} className="flex items-start gap-3">
-            <span
-              className={`w-2.5 h-2.5 rounded-sm mt-1.5 shrink-0 ${TIMELINE_DOT[n.tone]}`}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="text-ink text-sm font-medium">{n.label}</div>
-              {n.sub && (
-                <div className="text-muted text-xs font-mono mt-0.5">
-                  {n.sub}
-                </div>
-              )}
-            </div>
-            <span className="text-muted text-xs font-mono shrink-0">
-              {n.time}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
-const TIMELINE_DOT: Record<TimelineNode['tone'], string> = {
-  created: 'bg-accent',
-  workflow: 'bg-info',
-  enqueued: 'bg-warn',
-  approved: 'bg-ok',
-  rejected: 'bg-bad',
-  claimed: 'bg-info',
-  completed: 'bg-ok',
-  failed: 'bg-bad',
-  cancelled: 'bg-muted',
-};
-
-function buildTimeline(r: AccessRequest): TimelineNode[] {
-  const out: TimelineNode[] = [];
-  out.push({
-    label: 'Created',
-    sub: r.requester_id,
-    time: formatTime(r.created_at),
-    tone: 'created',
-  });
-  if (r.workflow_id) {
-    out.push({
-      label: 'Workflow attached',
-      sub: shortId(r.workflow_id),
-      time: formatTime(r.created_at),
-      tone: 'workflow',
-    });
-  }
-  (r.approvals ?? [])
-    .slice()
-    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
-    .forEach((a) => {
-      out.push({
-        label: a.decision === 'approve' ? 'Approved' : 'Rejected',
-        sub: a.approver_id + (a.comment ? ` — ${a.comment}` : ''),
-        time: formatTime(a.created_at),
-        tone: a.decision === 'approve' ? 'approved' : 'rejected',
-      });
-    });
-  if (r.status === 'cancelled') {
-    out.push({
-      label: 'Cancelled by requester',
-      time: formatTime(r.updated_at ?? r.created_at),
-      tone: 'cancelled',
-    });
-  }
-  if (r.job_id && r.status !== 'cancelled') {
-    out.push({
-      label: 'Enqueued — awaiting agent claim',
-      sub: shortId(r.job_id),
-      time: formatTime(r.updated_at ?? r.created_at),
-      tone: 'enqueued',
-    });
-  }
-  if (r.status === 'executed') {
-    out.push({
-      label: 'Completed',
-      sub:
-        r.type === 'read'
-          ? 'single-use wrap(s) issued'
-          : 'provider write succeeded',
-      time: formatTime(r.updated_at ?? r.created_at),
-      tone: 'completed',
-    });
-  }
-  if (r.status === 'failed') {
-    out.push({
-      label: 'Failed',
-      sub: 'agent reported failure',
-      time: formatTime(r.updated_at ?? r.created_at),
-      tone: 'failed',
-    });
-  }
-  return out;
-}
-
-// --- Approvals ------------------------------------------------------
-
-function ApprovalsCard({ request: r }: { request: AccessRequest }) {
-  const approvals = r.approvals ?? [];
-  return (
-    <Card className="overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/60">
-        <h3 className="text-ink font-semibold">Approvals</h3>
-      </div>
-      {approvals.length === 0 ? (
-        <div className="px-5 py-6 text-muted text-sm">
-          No votes cast yet.
-        </div>
-      ) : (
-        <ul>
-          {approvals.map((a) => (
-            <li
-              key={a.id}
-              className="flex items-start gap-3 px-5 py-4 border-b border-border/40 last:border-0"
-            >
-              <span
-                className={`mt-1.5 w-2 h-2 rounded-sm shrink-0 ${
-                  a.decision === 'approve' ? 'bg-ok' : 'bg-bad'
-                }`}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-ink text-sm">
-                    {a.approver_id}
-                  </span>
-                  <StatusPill
-                    variant={a.decision === 'approve' ? 'approved' : 'rejected'}
-                    tone="outline"
-                  >
-                    {a.decision === 'approve' ? 'approved' : 'rejected'}
-                  </StatusPill>
-                </div>
-                {a.comment && (
-                  <p className="text-muted text-xs mt-1">
-                    &ldquo;{a.comment}&rdquo;
-                  </p>
-                )}
-              </div>
-              <span className="text-muted text-xs font-mono shrink-0">
-                {formatTime(a.created_at)}
-              </span>
-            </li>
-          ))}
-        </ul>
+      {dialog === 'approve' && (
+        <ApproveDialog request={r} display={display} lastApproval={lastApproval} onClose={() => setDialog(null)} onDone={done} />
       )}
-    </Card>
-  );
-}
+      {dialog === 'reject' && <RejectDialog request={r} display={display} onClose={() => setDialog(null)} onDone={done} />}
+      {dialog === 'cancel' && <CancelDialog request={r} onClose={() => setDialog(null)} onDone={done} />}
 
-// --- Wraps (read-flow only, single-shot UX) -------------------------
-
-function WrapsCard({
-  request: r,
-  query,
-}: {
-  request: AccessRequest;
-  query: ReturnType<typeof useRequestWraps>;
-}) {
-  const { identity } = useAuth();
-  const [reveal, setReveal] = useState<WrapSummary | null>(null);
-  const rows = query.data ?? [];
-  const ready = rows.filter((w) => !w.consumed);
-  const consumed = rows.filter((w) => w.consumed);
-  // Direct-reveal wraps are only handed out inside an open reveal
-  // session (api#201, API-S-20), so those requests go to the reveal
-  // session page. The per-wrap modal stays for approver-approved reads.
-  const sessionFlow = isRevealSessionFlow(r);
-  const isOwner = !!identity && identity.id === r.requester_id;
-  const showSessionLink =
-    sessionFlow &&
-    isOwner &&
-    (ready.length > 0 ||
-      (r.status === 'approved' && !query.isLoading && rows.length === 0));
-
-  return (
-    <Card className="overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-        <h3 className="text-ink font-semibold">Wraps</h3>
-        <span className="text-muted text-xs ml-auto">
-          single-use · reveal consumes the wrap permanently
-        </span>
-      </div>
-      <div className="px-5 py-4 space-y-3">
-        {query.isLoading && (
-          <div className="text-muted text-sm">Loading…</div>
-        )}
-        {query.error instanceof ApiError && (
-          <InlineApiError err={query.error} />
-        )}
-        {!query.isLoading && rows.length === 0 && r.status !== 'executed' && (
-          <p className="text-muted text-xs">
-            No wraps issued yet. Once approved, an agent claims the read
-            job, fetches from{' '}
-            <span className="font-mono text-ink">{r.target_provider_type}</span>
-            , and posts a single-use wrap per requested key.
-          </p>
-        )}
-        {!query.isLoading && rows.length === 0 && r.status === 'executed' && (
-          <p className="text-muted text-xs">
-            All wraps have been consumed. Submit a new request to view the
-            value again.
-          </p>
-        )}
-
-        {ready.length > 0 && (
-          <ul className="space-y-2">
-            {ready.map((w) => (
-              <li
-                key={w.id}
-                className="flex items-center justify-between gap-3 bg-bg/40 border border-border/60 rounded-md px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <div className="font-mono text-ink text-sm truncate">
-                    {w.key_name || '(default)'}
-                  </div>
-                  <div className="text-muted text-[11px]">
-                    expires {formatRelativeFuture(w.expires_at)}
-                  </div>
-                </div>
-                {sessionFlow ? (
-                  <StatusPill variant="pending" tone="outline">
-                    ready
-                  </StatusPill>
-                ) : (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => setReveal(w)}
-                  >
-                    Reveal (one-time)
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {showSessionLink && <RevealSessionLink request={r} />}
-
-        {consumed.length > 0 && (
-          <ul className="space-y-2 pt-2 border-t border-border/40">
-            {consumed.map((w) => (
-              <li
-                key={w.id}
-                className="flex items-center justify-between gap-3 bg-bg/20 border border-border/40 rounded-md px-3 py-2 opacity-60"
-              >
-                <span className="font-mono text-muted text-sm truncate line-through">
-                  {w.key_name || '(default)'}
-                </span>
-                <StatusPill variant="cancelled" tone="outline">
-                  consumed
-                </StatusPill>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div className="bg-warn-bg border border-warn-line border-l-4 border-l-warn rounded-md px-3 py-2 text-xs">
-          <div className="text-warn font-semibold">Reveal-once.</div>
-          <div className="text-muted mt-0.5">
-            {sessionFlow
-              ? 'This is a direct reveal: its values open together in a timed reveal session and clear when the session ends. Each wrap is single-use.'
-              : "Clicking Reveal calls the CP's single-shot endpoint. The value is shown in a modal, copy-then-clear. A second call returns 410 and the wrap is gone forever."}
-          </div>
-        </div>
-      </div>
-
-      {reveal && (
-        <RevealModal
-          requestId={r.id}
-          wrap={reveal}
-          onClose={() => {
-            setReveal(null);
-            query.refetch();
+      {drawerOpen && identity && (
+        <RequestAccessDrawer
+          prefill={{ projectId: requestScope(r).projectId, envName: requestScope(r).envName, secretRef: pathOf(r), keys: keysOf(r) }}
+          onClose={() => setDrawerOpen(false)}
+          onCreated={(newId) => {
+            setDrawerOpen(false);
+            toast(`Request ${requestRef(newId)} submitted.`, { to: `/requests/${newId}`, label: 'Open it' });
+            navigate(`/requests/${newId}`);
           }}
         />
       )}
-    </Card>
-  );
-}
-
-// Opens the reveal-session page for a direct-reveal request. The page
-// route needs the environment id; the request carries the project id and
-// environment name in target_scope, so resolve the id from the project's
-// environments.
-function RevealSessionLink({ request: r }: { request: AccessRequest }) {
-  const navigate = useNavigate();
-  const projectId = r.target_scope?.project_id;
-  const envName = r.target_scope?.environment;
-  const envs = useEnvironmentsForProject(projectId);
-  const envId = envs.data?.find((e) => e.name === envName)?.id;
-  const path =
-    projectId && envId ? revealSessionPath(projectId, envId, r.id) : null;
-
-  return (
-    <div className="bg-bg/40 border border-border/60 rounded-md px-3 py-2 space-y-2">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-muted text-xs">
-          Direct reveal values are shown in a reveal session.
-        </span>
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={!path}
-          onClick={() => {
-            if (path) navigate(path);
-          }}
-        >
-          Open reveal session
-        </Button>
-      </div>
-      {!path && !envs.isLoading && (
-        <p className="text-xs text-bad">
-          Couldn't find this request's environment. Open it from{' '}
-          <Link to="/projects" className="text-accent underline">
-            My Projects
-          </Link>{' '}
-          instead.
-        </p>
-      )}
     </div>
   );
 }
 
-// --- Reveal modal (single-shot retrieval + clear-on-close) ----------
+// --- the situation card ---------------------------------------------
 
-function RevealModal({
-  requestId,
-  wrap,
-  onClose,
-}: {
-  requestId: string;
-  wrap: WrapSummary;
-  onClose: () => void;
+function Situation(p: {
+  r: AccessRequest;
+  me: string;
+  now: number;
+  display: ScopeDisplay;
+  reveal?: RevealCondition;
+  workflow?: Workflow;
+  decisionOpen: boolean;
+  myVote?: 'approve' | 'reject';
+  crossVerifying: boolean;
+  refetching: boolean;
+  revealSlot?: ReactNode;
+  onApprove: () => void;
+  onReject: () => void;
+  onCancel: () => void;
+  onCheck: () => void;
+  onRequestAgain: () => void;
 }) {
-  const [phase, setPhase] = useState<
-    'confirm' | 'revealing' | 'shown' | 'expired' | 'error'
-  >('confirm');
-  const [revealed, setRevealed] = useState<RevealedWrap | null>(null);
-  const [decoded, setDecoded] = useState<string | null>(null);
-  const [err, setErr] = useState<unknown>(null);
-  const [copied, setCopied] = useState(false);
-  // The value is pinned to the modal for this many seconds after
-  // reveal. Once the timer hits 0 we clear `decoded` + `revealed`
-  // from React state and flip to the `expired` phase — the user must
-  // close + submit a new request to view again (the wrap is already
-  // consumed server-side; this is the SPA-side shoulder-surfing guard).
-  const REVEAL_TTL_SECONDS = 60;
-  const [ttlLeft, setTtlLeft] = useState<number>(REVEAL_TTL_SECONDS);
+  const { r, workflow, reveal, now } = p;
+  const isMine = r.requester_id === p.me;
+  const keys = keysOf(r);
+  const keyCount = `${keys.length || 'all'} key${keys.length === 1 ? '' : 's'}`;
+  const approves = (r.approvals ?? []).filter((a) => a.decision === 'approve').length;
+  const deadline =
+    workflow && workflow.request_ttl_seconds > 0
+      ? new Date(Date.parse(r.created_at) + workflow.request_ttl_seconds * 1000).toISOString()
+      : undefined;
+  const needed = workflow
+    ? `It needs ${workflow.min_approvers} approval${workflow.min_approvers === 1 ? '' : 's'}; ${approves} recorded so far.`
+    : 'It needs an approver to decide.';
+  const deadlineText = deadline
+    ? ` If no one decides by ${formatExact(deadline)} (${formatRemaining(deadline, now)}), it expires.`
+    : '';
+  const where = `${p.display.project}${p.display.env ? ` · ${p.display.env}` : ''}`;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  // Best-effort plaintext hygiene: drop refs on unmount. The browser
-  // GCs the backing string on its own schedule, but we don't keep it
-  // pinned in state. Closing the modal also clears a copied value from
-  // the clipboard if it's still there (UI-N-03).
-  useEffect(() => {
-    return () => {
-      setDecoded(null);
-      setRevealed(null);
-      void clearCopiedSecret();
-    };
-  }, []);
-
-  // Countdown — runs only while the value is shown. When it hits 0
-  // we clear the plaintext from state so even an open browser tab
-  // stops carrying it. The user can also "Hide now" to clear early.
-  //
-  // The clear happens in the timer callback on the tick that reaches
-  // 0, rather than in a follow-up effect run, so the effect body never
-  // sets state synchronously. `ttlLeft` is always seeded to
-  // REVEAL_TTL_SECONDS before `shown`, so 0 is only reachable by a
-  // tick; timing is the same as before (cleared 60s after reveal).
-  useEffect(() => {
-    if (phase !== 'shown') return;
-    const t = window.setTimeout(() => {
-      if (ttlLeft <= 1) {
-        setTtlLeft(0);
-        setDecoded(null);
-        setRevealed(null);
-        setPhase('expired');
-        void clearCopiedSecret();
-        return;
-      }
-      setTtlLeft(ttlLeft - 1);
-    }, 1000);
-    return () => window.clearTimeout(t);
-  }, [phase, ttlLeft]);
-
-  const doReveal = async () => {
-    setPhase('revealing');
-    try {
-      const r = await revealWrap(requestId, wrap.id);
-      const text = atob(r.value);
-      setRevealed(r);
-      setDecoded(text);
-      setTtlLeft(REVEAL_TTL_SECONDS);
-      setPhase('shown');
-    } catch (e) {
-      setErr(e);
-      setPhase('error');
-    }
-  };
-
-  const hideNow = () => {
-    setDecoded(null);
-    setRevealed(null);
-    setPhase('expired');
-    void clearCopiedSecret();
-  };
-
-  const doCopy = async () => {
-    if (!decoded) return;
-    try {
-      await copySecret(decoded);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        className="absolute inset-0 bg-scrim"
-        onClick={onClose}
-        aria-label="Close"
-      />
-      <div className="relative bg-surface border border-border rounded-md w-[520px] max-w-full p-6 space-y-4 shadow-overlay">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-ink font-semibold text-xl tracking-tight">
-              Reveal{' '}
-              <span className="font-mono text-accent">
-                {wrap.key_name || '(default)'}
-              </span>
-              ?
-            </div>
-            <div className="text-muted text-xs mt-1 font-mono">
-              wrap {wrap.id.slice(0, 8)}…
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-muted hover:text-ink text-xl leading-none w-8 h-8 rounded-sm hover:bg-bg/40 transition-colors"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-
-        {phase === 'confirm' && (
-          <>
-            <div className="bg-warn-bg border border-warn-line border-l-4 border-l-warn rounded-md px-4 py-3 text-sm">
-              <div className="text-warn font-semibold">
-                Single-use — copy it now.
-              </div>
-              <div className="text-muted text-xs mt-1">
-                Clicking <span className="text-ink">Reveal</span> consumes
-                the wrap permanently. You won't be able to retrieve this
-                value again from this request.
-              </div>
-            </div>
-            <div className="flex items-center justify-between pt-2 border-t border-border/60">
-              <Button variant="secondary" size="md" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button variant="primary" size="md" onClick={doReveal}>
-                Reveal (one-time)
-              </Button>
-            </div>
-          </>
-        )}
-
-        {phase === 'revealing' && (
-          <div className="py-6 text-center text-muted text-sm">
-            Decrypting through KMS…
-          </div>
-        )}
-
-        {phase === 'shown' && decoded !== null && revealed && (
-          <>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="block text-xs text-muted font-medium">
-                  {revealed.key_name || 'value'}
-                </label>
-                <TtlChip seconds={ttlLeft} />
-              </div>
-              <textarea
-                readOnly
-                value={decoded}
-                rows={3}
-                onFocus={(e) => e.currentTarget.select()}
-                className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono break-all focus:border-accent"
-              />
-              <div className="text-muted text-[11px] font-mono">
-                {revealed.byte_length} bytes · sha256{' '}
-                {revealed.content_hash.slice(0, 12)}… · {revealed.algorithm}
-              </div>
-            </div>
-            <div className="flex items-center justify-between pt-2 border-t border-border/60">
-              <Button variant="secondary" size="md" onClick={doCopy}>
-                {copied ? 'Copied!' : 'Copy'}
-              </Button>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="md" onClick={hideNow}>
-                  Hide now
-                </Button>
-                <Button variant="primary" size="md" onClick={onClose}>
-                  Close
-                </Button>
-              </div>
-            </div>
-            <p className="text-muted text-[11px] text-center -mt-1">
-              Auto-clears from the SPA in {ttlLeft}s · the wrap is already consumed server-side.
-              A copied value is cleared from your clipboard when this closes, so paste it first.
-            </p>
-          </>
-        )}
-
-        {phase === 'expired' && (
-          <>
-            <div className="bg-bg/40 border border-border rounded-md px-4 py-6 text-center text-sm space-y-2">
-              <div className="text-ink font-semibold">Value cleared from this tab.</div>
-              <div className="text-muted text-xs">
-                {revealed === null
-                  ? 'The 60-second window elapsed (or you clicked Hide now).'
-                  : 'Hidden early — the wrap was already consumed server-side, so a re-reveal is not possible.'}
-                <br />
-                To view this value again you'll need a new request.
-              </div>
-            </div>
-            <div className="flex items-center justify-end pt-2 border-t border-border/60">
-              <Button variant="primary" size="md" onClick={onClose}>
-                Close
-              </Button>
-            </div>
-          </>
-        )}
-
-        {phase === 'error' && (
-          <>
-            <InlineApiError err={err} />
-            <div className="flex items-center justify-end pt-2 border-t border-border/60">
-              <Button variant="primary" size="md" onClick={onClose}>
-                Close
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+  const again = (
+    <Button variant="secondary" onClick={p.onRequestAgain}>
+      Request again
+    </Button>
   );
-}
-
-function TtlChip({ seconds }: { seconds: number }) {
-  // Visually nudge the user as the window narrows:
-  //   >30s     accent  — comfortable read-and-copy window
-  //   11-30s   warning — getting close
-  //   ≤10s     danger  — last call
-  const tone =
-    seconds > 30
-      ? 'bg-accent/15 text-accent border-accent/40'
-      : seconds > 10
-        ? 'bg-warn-bg text-warn border-warn-line'
-        : 'bg-bad-bg text-bad border-bad-line';
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-[11px] font-mono ${tone}`}
-      title="Auto-hide countdown — the value is wiped from this tab when it hits 0"
-    >
-      <span className="w-1.5 h-1.5 rounded-sm bg-current animate-pulse" />
-      hides in {seconds}s
-    </span>
+  const cancel = (
+    <Button variant="danger" onClick={p.onCancel}>
+      Cancel request…
+    </Button>
   );
-}
 
-function formatRelativeFuture(iso: string | undefined): string {
-  if (!iso) return '—';
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '—';
-  const seconds = Math.round((t - Date.now()) / 1000);
-  if (seconds <= 0) return 'expired';
-  if (seconds < 60) return `in ${seconds}s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `in ${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `in ${hours}h`;
-  const days = Math.round(hours / 24);
-  return `in ${days}d`;
-}
+  if (p.revealSlot) return <>{p.revealSlot}</>;
 
-// --- GitOps observations -------------------------------------------
-
-function GitOpsCard({
-  query,
-}: {
-  query: ReturnType<typeof useRequestGitOps>;
-}) {
-  if (query.isLoading) return null;
-  if (query.error instanceof ApiError && query.error.status === 404) {
+  if (p.decisionOpen) {
     return (
-      <Card className="overflow-hidden">
-        <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-          <h3 className="text-ink font-semibold">GitOps observations</h3>
-          <StatusPill variant="warning" tone="outline">
-            disabled
-          </StatusPill>
-        </div>
-        <p className="px-5 py-4 text-muted text-xs">
-          The BRD §26 read-only ArgoCD visibility is off on this api
-          (<code className="font-mono">SB_GITOPS_ENABLED=false</code>). When
-          enabled, each app mapping bound to this secret renders its
-          observation status here.
-        </p>
+      <Card
+        heading="Your decision is needed"
+        sentence={`${r.requester_display ?? 'The requester'} asked to ${r.type === 'patch' ? 'change' : 'read'} ${keyCount} in ${where}. Check the reason and the scope before you decide.`}
+        actions={
+          <>
+            <Button variant="primary" onClick={p.onApprove}>
+              Approve…
+            </Button>
+            <Button variant="danger" onClick={p.onReject}>
+              Reject…
+            </Button>
+          </>
+        }
+        footnote="Approving records your decision. It doesn't run anything; execution is a separate agent event."
+      >
+        <Facts
+          rows={[
+            ['Requester', r.requester_display ?? '—'],
+            ['Operation', `${r.type === 'patch' ? 'Change' : 'Read'} · ${keyCount}`],
+            ['Where', `${where} · ${providerLabel(r.target_provider_type)}`],
+            ['Keys', <Keys key="k" keys={keys} variant="chips" />],
+            ['Reason', <span key="r">“{r.justification}”</span>],
+            ['Waiting', `${formatAge(r.created_at, now)} (since ${formatClock(r.created_at)})`],
+            ...(workflow ? [['Approvals', `${approves} of ${workflow.min_approvers} recorded`] as [string, ReactNode]] : []),
+            ...(deadline ? [['Expires', formatExact(deadline)] as [string, ReactNode]] : []),
+          ]}
+        />
       </Card>
     );
   }
-  const rows = query.data ?? [];
-  return (
-    <Card className="overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2">
-        <h3 className="text-ink font-semibold">GitOps observations</h3>
-        <span className="text-muted text-xs ml-auto font-mono">read-only</span>
-      </div>
-      {rows.length === 0 ? (
-        <div className="px-5 py-6 text-muted text-sm">
-          No app mappings bound to this secret — observations skipped.
-        </div>
+
+  if (p.crossVerifying) {
+    return (
+      <Card
+        heading="Verification is needed"
+        sentence="The supplying team filled the values. Check the details below and vote in your lane."
+      />
+    );
+  }
+
+  switch (r.status) {
+    case 'pending':
+      return isMine ? (
+        <Card heading="Waiting for approval" sentence={`${needed}${deadlineText} You can cancel it while it waits.`} actions={cancel} />
       ) : (
-        <ul>
-          {rows.map((o) => (
-            <li
-              key={o.id}
-              className="px-5 py-4 border-b border-border/40 last:border-0"
-            >
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-mono text-accent text-sm">
-                  {o.application_name}
-                </span>
-                <StatusPill
-                  variant={
-                    o.status === 'applied'
-                      ? 'approved'
-                      : o.status === 'failed'
-                        ? 'rejected'
-                        : o.status === 'applied_unverified'
-                          ? 'warning'
-                          : 'pending'
-                  }
-                  tone="outline"
-                >
-                  {o.status}
-                </StatusPill>
-              </div>
-              <div className="text-muted text-xs mt-1 font-mono">
-                ArgoCD project: {o.project_name ?? '—'} · cluster:{' '}
-                {o.cluster_name ?? '—'}
-              </div>
-              {o.observed_state && Object.keys(o.observed_state).length > 0 && (
-                <pre className="text-[11px] text-muted mt-2 bg-bg/40 border border-border/60 rounded-md px-3 py-2 overflow-x-auto font-mono">
-                  observed_state: {JSON.stringify(o.observed_state)}
-                </pre>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
+        <Card
+          heading={p.myVote === 'approve' ? 'You approved · waiting for other approvals' : 'Waiting for approval'}
+          sentence={`${needed}${deadlineText}`}
+        />
+      );
+    case 'pending_values':
+      return (
+        <Card
+          heading={`Waiting for ${r.target_team_name ?? 'the supplying team'} to supply values`}
+          sentence={
+            r.fill_expires_at
+              ? `They have until ${formatExact(r.fill_expires_at)} to fill or refuse it.`
+              : 'They fill the values or refuse the request.'
+          }
+          actions={isMine ? cancel : undefined}
+        />
+      );
+    case 'pending_verification':
+      return (
+        <Card
+          heading="Values supplied · waiting for verification"
+          sentence="Approvers in the requesting team check the request before the agent writes the values."
+          actions={isMine ? cancel : undefined}
+        />
+      );
+    case 'approved':
+      return (
+        <Card
+          heading="Approved · no execution event yet"
+          sentence="An agent picks up the job next. This page changes when the agent reports back."
+          actions={
+            <Button variant="secondary" onClick={p.onCheck} disabled={p.refetching} aria-busy={p.refetching}>
+              {p.refetching ? 'Checking…' : 'Check status'}
+            </Button>
+          }
+          footnote="Checking only reloads this page. It never starts or repeats anything."
+        />
+      );
+    case 'executed':
+      if (r.type !== 'read') {
+        return <Card heading="Done" sentence="The agent wrote the new values to the provider." actions={isMine ? again : undefined} />;
+      }
+      if (reveal?.state === 'consumed') {
+        return (
+          <Card
+            heading="Values were revealed"
+            sentence="They were retrieved once and can't be shown again. If you need them again, request access again."
+            actions={isMine ? again : undefined}
+          />
+        );
+      }
+      if (reveal?.state === 'expired') {
+        return (
+          <Card
+            heading="The reveal window closed"
+            sentence="Nothing was shown. Request again if you still need the values."
+            actions={isMine ? again : undefined}
+          />
+        );
+      }
+      return <Card heading="Executed" sentence="The agent read the values and stored them for the requester to reveal once." />;
+    case 'rejected':
+      return (
+        <Card
+          heading="Rejected"
+          sentence={r.reject_reason ? `“${r.reject_reason}”` : 'An approver rejected this request.'}
+          actions={isMine ? again : undefined}
+        />
+      );
+    case 'refused':
+      return (
+        <Card
+          heading={`Refused by ${r.target_team_name ?? 'the supplying team'}`}
+          sentence={r.refuse_reason ? `“${r.refuse_reason}”` : 'The supplying team refused to supply values.'}
+          actions={isMine ? again : undefined}
+        />
+      );
+    case 'failed':
+      return (
+        <Card
+          heading="Execution failed"
+          sentence={`The agent couldn't complete the ${r.type === 'patch' ? 'write' : 'read'}, so nothing was retrieved. Your platform team can look up the reason in the agent log${r.job_id ? ` for job ${r.job_id.slice(0, 8)}` : ''}.`}
+          actions={isMine ? again : undefined}
+        />
+      );
+    case 'expired':
+      return (
+        <Card
+          heading="No decision before the deadline"
+          sentence="The request expired without a decision. Nothing was approved."
+          actions={isMine ? again : undefined}
+        />
+      );
+    case 'cancelled':
+      return (
+        <Card
+          heading={isMine ? 'You cancelled this request' : 'The requester cancelled this request'}
+          sentence="Nothing was approved or retrieved."
+          actions={isMine ? again : undefined}
+        />
+      );
+    default:
+      return <Card heading={r.status} sentence="" />;
+  }
+}
+
+function Card({
+  heading,
+  sentence,
+  actions,
+  footnote,
+  children,
+}: {
+  heading: string;
+  sentence: string;
+  actions?: ReactNode;
+  footnote?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="px-5 py-[18px]">
+      <h2 id="state-heading" tabIndex={-1} className="text-[17px] font-semibold leading-[22px] text-ink">
+        {heading}
+      </h2>
+      {sentence && <p className="mt-1.5 max-w-[68ch] text-body text-muted">{sentence}</p>}
+      {children && <div className="mt-4">{children}</div>}
+      {actions && <div className="mt-4 flex flex-wrap gap-2.5 max-[600px]:[&>button]:flex-1">{actions}</div>}
+      {footnote && <p className="mt-3 text-caption text-muted">{footnote}</p>}
+    </div>
   );
 }
 
-// --- Details (right column) ----------------------------------------
+function Facts({ rows }: { rows: [string, ReactNode][] }) {
+  return (
+    <dl className="m-0 grid grid-cols-[150px_minmax(0,1fr)] gap-x-3 gap-y-2 text-ui font-normal max-[600px]:grid-cols-1 max-[600px]:gap-y-0.5">
+      {rows.map(([k, v]) => (
+        <div key={k} className="contents">
+          <dt className="text-muted max-[600px]:mt-2">{k}</dt>
+          <dd className="m-0 min-w-0 break-words text-ink">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 
-function DetailsCard({
-  request: r,
-  workflowName,
-}: {
-  request: AccessRequest;
-  workflowName: string;
-}) {
-  // cross_team requests keep their target in the destination_* fields;
-  // fall back to them so the rail never renders a blank TARGET/PROVIDER.
-  const isCrossTeam = r.type === 'cross_team';
-  const dRef = isCrossTeam
-    ? r.destination_secret_ref || '—'
-    : r.target_secret_ref || '—';
-  const dProvider = isCrossTeam
-    ? r.destination_provider_label || '—'
-    : r.target_provider_type || '—';
-  const rows: Array<[string, React.ReactNode]> = [
-    ['Type', <span key="t" className="font-mono text-ink">{r.type}</span>],
+// --- side panels ----------------------------------------------------
+
+function Panel({ title, aside, children }: { title?: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="rounded-md border border-border bg-surface">
+      {title && (
+        <div className="flex items-baseline justify-between gap-3 border-b border-rule px-5 py-3.5">
+          <h2 className="text-block-heading text-ink">{title}</h2>
+          {aside}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+// One lane per required approval from the request's workflow. The api
+// doesn't report lanes yet (api#228), so who may act on an open lane is
+// described rather than named.
+function lanesFor(r: AccessRequest, wf: Workflow | undefined, names: Map<string, string>, me: string): Lane[] {
+  const votes = [...(r.approvals ?? [])].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  const nameOf = (id: string) => (id === me ? 'You' : (names.get(id) ?? 'An approver'));
+  const required = wf ? wf.min_approvers : Math.max(votes.length, 1);
+  const open = r.status === 'pending';
+  const lanes: Lane[] = [];
+  for (let i = 0; i < Math.max(required, votes.length); i++) {
+    const v = votes[i];
+    const label = required === 1 ? 'Approval' : `Approval ${i + 1} of ${required}`;
+    if (v) {
+      lanes.push({
+        key: v.id,
+        label,
+        who: `${nameOf(v.approver_id)} · ${formatExact(v.created_at)}`,
+        state: v.decision === 'approve' ? 'approved' : 'rejected',
+        stateLabel: v.decision === 'approve' ? 'Approved' : 'Rejected',
+        note: v.comment,
+      });
+    } else if (open) {
+      const first = i === votes.length;
+      lanes.push({
+        key: `slot-${i}`,
+        label,
+        who: 'An approver with access to this project',
+        state: first ? 'waiting' : 'queued',
+        stateLabel: first ? 'Waiting' : 'After previous',
+      });
+    } else {
+      lanes.push({ key: `slot-${i}`, label, who: '—', state: 'closed', stateLabel: 'No decision' });
+    }
+  }
+  if (lanes.length === 0) {
+    lanes.push({
+      key: 'none',
+      label: 'Approval',
+      who: 'No approval was needed for this request.',
+      state: 'closed',
+      stateLabel: 'Not needed',
+    });
+  }
+  return lanes;
+}
+
+function DetailsPanel({ r, display }: { r: AccessRequest; display: ScopeDisplay }) {
+  const keys = keysOf(r);
+  const rows: [string, ReactNode][] = [
+    ['Requester', r.requester_display ?? '—'],
     [
-      'Requester',
-      <span key="r" className="text-ink">
-        {r.requester_display ?? r.requester_id}
+      'Operation',
+      `${r.type === 'patch' ? 'Change' : r.type === 'cross_team' ? 'Supply' : 'Read'} · ${keys.length || 'all'} key${keys.length === 1 ? '' : 's'}`,
+    ],
+    ['Project', display.project],
+    [
+      'Environment',
+      display.env ? (
+        <span key="e">
+          <EnvTag kind={display.envKind}>{display.env}</EnvTag>{' '}
+          <span className="text-muted">{display.envKind === 'prod' ? 'production' : 'non-production'}</span>
+        </span>
+      ) : (
+        '—'
+      ),
+    ],
+    ['Provider', r.type === 'cross_team' ? (r.destination_provider_label ?? '—') : providerLabel(r.target_provider_type)],
+    [
+      'Secret path',
+      <span key="p" className="break-all font-mono text-mono">
+        {pathOf(r) || '—'}
       </span>,
     ],
-    [
-      'Target',
-      <span key="g" className="font-mono text-accent break-all">
-        {dRef}
-      </span>,
-    ],
-    [
-      'Provider',
-      <span key="p" className="font-mono text-ink">
-        {dProvider}
-      </span>,
-    ],
-    [
-      'Workflow',
-      <span key="w" className="font-mono text-ink">
-        {workflowName}
-      </span>,
-    ],
-    ['Created', <span key="c" className="font-mono text-muted">{formatTime(r.created_at)}</span>],
-    ...(r.job_id
-      ? [
-          [
-            'Job',
-            <span key="j" className="font-mono text-muted text-xs">
-              {shortId(r.job_id)}
-            </span>,
-          ] as [string, React.ReactNode],
-        ]
-      : []),
-    ...(r.reject_reason
-      ? [
-          [
-            'Reject reason',
-            <span key="rr" className="text-bad">
-              {r.reject_reason}
-            </span>,
-          ] as [string, React.ReactNode],
-        ]
-      : []),
+    ['Keys', <Keys key="k" keys={keys} variant="chips" />],
+    ['Reason', <span key="r">“{r.justification}”</span>],
+    ['Created', formatExact(r.created_at, true)],
+  ];
+  const tech: [string, string | null | undefined][] = [
+    ['Request id', r.id],
+    ['Correlation id', r.id],
+    ['Type', r.type],
+    ['Workflow id', r.workflow_id],
+    ['Job id', r.job_id],
+    ['Provider connection id', r.destination_provider_connection_id],
   ];
   return (
-    <Card className="overflow-hidden">
-      <div className="px-5 py-4 border-b border-border/60">
-        <h3 className="text-ink font-semibold">Details</h3>
-      </div>
-      <dl className="px-5 py-4 space-y-2.5 text-sm">
+    <Panel title="Details">
+      <dl className="m-0 px-5 py-1">
         {rows.map(([k, v]) => (
-          <div key={k} className="grid grid-cols-[110px_1fr] gap-3 items-baseline">
-            <dt className="text-muted text-xs">{k}</dt>
-            <dd>{v}</dd>
+          <div key={k} className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 border-b border-rule py-2.5 text-ui font-normal last:border-0">
+            <dt className="text-muted">{k}</dt>
+            <dd className="m-0 min-w-0 break-words text-ink">{v}</dd>
           </div>
         ))}
       </dl>
-    </Card>
-  );
-}
-
-// --- Time to decide ------------------------------------------------
-
-function TimeToDecideCard({ request: _r }: { request: AccessRequest }) {
-  // TTL math requires the workflow's wrap_ttl_created_seconds; deriving
-  // it accurately from the client needs both the workflow row and a
-  // synced clock. Until the next slice plumbs that through, surface the
-  // placement with a clear preview chip — the api still enforces the
-  // TTL server-side regardless of what we render here.
-  return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="text-muted text-xs font-medium">
-          Time to decide
-        </div>
-        <StatusPill variant="neutral" tone="outline">
-          preview
-        </StatusPill>
-      </div>
-      <div className="text-warn text-3xl font-semibold tracking-tight">
-        3h 48m
-      </div>
-      <div className="text-muted text-xs mt-2">
-        auto-rejects when the request TTL expires
-      </div>
-    </Card>
-  );
-}
-
-// --- Approver actions ----------------------------------------------
-
-function ApproverActionsCard({ request: r }: { request: AccessRequest }) {
-  const approve = useApproveRequest(r.id);
-  const reject = useRejectRequest(r.id);
-  const [showReason, setShowReason] = useState(false);
-  const [reason, setReason] = useState('');
-
-  return (
-    <Card className="p-5">
-      <div className="text-muted text-xs font-medium mb-3">
-        Approver actions
-      </div>
-      <p className="text-muted text-xs mb-4">
-        You hold <span className="text-ink font-mono">secret.approve</span>{' '}
-        for this target.
-      </p>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="primary"
-          size="md"
-          disabled={approve.isPending}
-          onClick={() => approve.mutate({})}
-        >
-          {approve.isPending ? 'Working…' : 'Approve'}
-        </Button>
-        <Button
-          variant="danger"
-          size="md"
-          disabled={reject.isPending}
-          onClick={() => setShowReason((v) => !v)}
-        >
-          Reject
-        </Button>
-      </div>
-
-      {showReason && (
-        <div className="mt-4 pt-4 border-t border-border/60 space-y-2">
-          <label className="block text-xs text-muted font-medium">
-            Reject reason
-          </label>
-          <textarea
-            rows={3}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. wrong target / use the read flow instead"
-            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
-          />
-          <div className="flex items-center justify-between pt-1">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setShowReason(false);
-                setReason('');
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={!reason.trim() || reject.isPending}
-              onClick={() =>
-                reject.mutate({ reason: reason.trim() })
-              }
-            >
-              {reject.isPending ? 'Working…' : 'Confirm reject'}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <p className="text-muted text-[11px] mt-4">
-        Rejecting requires a reason. Self-approval is blocked unless the
-        workflow allows it.
-      </p>
-
-      {(approve.error || reject.error) && (
-        <InlineApiError err={(approve.error ?? reject.error) as unknown} />
-      )}
-    </Card>
-  );
-}
-
-function CancelOwnCard({
-  request: r,
-  onCancelled,
-}: {
-  request: AccessRequest;
-  onCancelled: () => void;
-}) {
-  const cancel = useCancelRequest(r.id);
-  const [confirming, setConfirming] = useState(false);
-  return (
-    <Card className="p-5">
-      <div className="text-muted text-xs font-medium mb-3">
-        Your request
-      </div>
-      <p className="text-muted text-xs mb-4">
-        You can withdraw this request before it's approved.
-      </p>
-      {!confirming ? (
-        <Button
-          variant="secondary"
-          size="md"
-          onClick={() => setConfirming(true)}
-        >
-          Cancel request
-        </Button>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-ink text-sm">Cancel this request?</p>
-          <div className="flex items-center justify-between">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setConfirming(false)}
-            >
-              Keep it
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={cancel.isPending}
-              onClick={() => {
-                cancel.mutate(undefined, {
-                  onSuccess: onCancelled,
-                });
-              }}
-            >
-              {cancel.isPending ? 'Working…' : 'Confirm cancel'}
-            </Button>
-          </div>
-        </div>
-      )}
-      {cancel.error && <InlineApiError err={cancel.error} />}
-    </Card>
-  );
-}
-
-// --- shared bits ----------------------------------------------------
-
-function InlineApiError({ err }: { err: unknown }) {
-  if (!(err instanceof ApiError)) return null;
-  return (
-    <div className="mt-3 text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
-      {describeRevealError(err)}
-    </div>
-  );
-}
-
-function stringifyError(e: unknown): string {
-  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
-  if (e instanceof Error) return e.message;
-  return String(e);
-}
-
-// --- Slice N5 — cross-team verify + approval-chain cards ------------
-
-function CrossTeamVerifyCard({
-  request: r,
-  actorId,
-}: {
-  request: AccessRequest;
-  actorId: string;
-}) {
-  const { identity } = useAuth();
-  const verify = useVerifyCrossTeam(r.id);
-  const teams = useTeams();
-  const teamName = teams.data?.find((t) => t.id === r.target_team_id)?.name;
-  const [comment, setComment] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-
-  // Lane order + separation of duties (API-N-01). Cosmetic: the api
-  // checks the lane permission against the request's source project.
-  const {
-    sourceVoted,
-    showSourceLane,
-    canSourceApprove,
-    showSecurityLane,
-    canSecurityApprove,
-    sodReason: sod,
-  } = crossTeamVerifyCapability(r, actorId, identity?.permissions);
-  const sodReason =
-    sod === 'requester'
-      ? 'You are the requester.'
-      : sod === 'filler'
-        ? 'You provided the values for this request.'
-        : sod === 'already_voted'
-          ? 'You already voted on this request; a different approver casts the next vote.'
-          : null;
-
-  const run = async (
-    decision: 'approve' | 'reject',
-    votedAs: 'source' | 'security',
-  ) => {
-    setError(null);
-    setToast(null);
-    try {
-      const resp = await verify.mutateAsync({
-        decision,
-        voted_as: votedAs,
-        comment: comment.trim() || undefined,
-      });
-      setComment('');
-      if (
-        resp.voted_as === 'source' &&
-        resp.security_approval_required &&
-        !resp.security_vote_present
-      ) {
-        setToast(
-          'Your source vote was recorded. Security approval is still pending.',
-        );
-      } else if (resp.vote_recorded) {
-        setToast('Vote recorded.');
-      }
-    } catch (err) {
-      if (err instanceof ApiError) {
-        const code = extractErrorCodeFromApiErr(err);
-        setError(
-          `${err.status} · ${crossTeamErrorMessage(code) ?? err.message}`,
-        );
-      } else if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError(String(err));
-      }
-    }
-  };
-
-  return (
-    <Card>
-      <div className="px-5 py-4 border-b border-border/60">
-        <h3 className="text-ink font-semibold">Verify cross-team request</h3>
-      </div>
-      <div className="px-5 py-4 space-y-3 text-sm">
-        {/* Full approver context so nobody approves blind (ui#87). All
-            metadata — key NAMES, refs, ids, timestamps, the frozen
-            approval requirement. Never a value, hash, or wrapped body. */}
-        <div className="space-y-1 text-muted">
-          <p>
-            Requester:{' '}
-            <span className="text-ink">
-              {r.requester_display ?? r.requester_id}
-            </span>
-          </p>
-          <p>
-            Target team:{' '}
-            <span className="text-ink">
-              {r.target_team_name ?? teamName ?? r.target_team_id ?? '—'}
-            </span>
-          </p>
-          <p>
-            Target project · env:{' '}
-            <span className="font-mono text-ink">
-              {r.target_project_name ??
-                (r.target_project_id ? shortId(r.target_project_id) : '—')}
-              {' · '}
-              {r.target_environment_name ??
-                (r.target_environment_id ? shortId(r.target_environment_id) : '—')}
-            </span>
-          </p>
-          <p>
-            Destination:{' '}
-            <span className="font-mono text-ink">
-              {r.destination_provider_label ??
-                (r.destination_provider_connection_id
-                  ? `connection ${shortId(r.destination_provider_connection_id)}`
-                  : r.target_provider_type || '—')}
-              {r.destination_secret_ref ? ` · ${r.destination_secret_ref}` : ''}
-            </span>
-          </p>
-          <p>
-            Keys ({(r.destination_keys ?? r.target_keys ?? []).length}):{' '}
-            <span className="font-mono text-ink">
-              {(r.destination_keys ?? r.target_keys ?? []).join(', ') || '—'}
-            </span>
-          </p>
-          <p>
-            Filled by:{' '}
-            <span className="text-ink">
-              {r.filled_by_display ?? r.filled_by_user_id ?? '—'}
-            </span>
-            {r.filled_at && (
-              <span className="text-muted text-xs"> · {r.filled_at}</span>
-            )}
-          </p>
-          {r.fill_comment && (
-            <p>
-              Filler comment:{' '}
-              <span className="text-ink">{r.fill_comment}</span>
-            </p>
-          )}
-          {r.justification && (
-            <p>
-              Justification:{' '}
-              <span className="text-ink">{r.justification}</span>
-            </p>
-          )}
-          <p>
-            Approval required:{' '}
-            <span className="text-ink">
-              {r.snap_requires_security_approval
-                ? 'Source + Security'
-                : 'Source'}
-            </span>
-          </p>
-          {/* Per §5 design correction: NO content_hash, NO byte_length,
-              NO values here. The verify card shows only what an approver
-              needs to make a decision — key names, not their contents. */}
-          <p className="text-[11px] text-muted/70 pt-1">
-            Values provided: {r.filled_by_user_id ? 'yes' : 'no'} · key names
-            only — filled values are never shown.
-          </p>
-        </div>
-
-        {(showSourceLane || showSecurityLane) && (
-          <div className="space-y-2 pt-2 border-t border-border/60">
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              placeholder="Optional comment (visible in audit + to requester)"
-              rows={2}
-              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
-            />
-            {showSourceLane && (
-              <div className="flex items-center justify-end gap-2">
-                {sourceVoted && (
-                  <span className="text-muted text-xs mr-auto">
-                    Source vote recorded.
-                  </span>
-                )}
-                <Button
-                  variant="danger"
-                  size="sm"
-                  disabled={verify.isPending}
-                  onClick={() => void run('reject', 'source')}
-                >
-                  Reject (source)
-                </Button>
-                {canSourceApprove && (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    disabled={verify.isPending}
-                    onClick={() => void run('approve', 'source')}
-                  >
-                    Approve (source)
-                  </Button>
-                )}
+      <details className="border-t border-rule px-5 py-3 text-ui">
+        <summary className="cursor-pointer text-muted hover:text-ink">Technical details</summary>
+        <dl className="m-0 mt-2">
+          {tech
+            .filter(([, v]) => !!v)
+            .map(([k, v]) => (
+              <div key={k} className="grid grid-cols-[150px_minmax(0,1fr)] gap-3 py-1">
+                <dt className="font-normal text-muted">{k}</dt>
+                <dd className="m-0 break-all font-mono text-mono-small text-ink">{v}</dd>
               </div>
-            )}
-            {showSecurityLane && (
-              <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/40">
-                {!sourceVoted && (
-                  <span className="text-muted text-xs mr-auto">
-                    Security approval opens after the source vote.
-                  </span>
-                )}
-                <Button
-                  variant="danger"
-                  size="sm"
-                  disabled={verify.isPending}
-                  onClick={() => void run('reject', 'security')}
-                >
-                  Reject (security)
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={verify.isPending || !canSecurityApprove}
-                  title={
-                    canSecurityApprove
-                      ? undefined
-                      : 'Waiting for the source vote'
-                  }
-                  onClick={() => void run('approve', 'security')}
-                >
-                  Approve (security)
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {!showSourceLane && !showSecurityLane && sodReason && (
-          <div className="bg-bg/40 border border-border/60 rounded-md px-3 py-2 text-muted text-xs">
-            You cannot approve this request: {sodReason}
-          </div>
-        )}
-
-        {toast && (
-          <div className="text-accent text-xs bg-accent/10 border border-accent/30 rounded-md px-3 py-2">
-            {toast}
-          </div>
-        )}
-        {error && (
-          <div className="text-bad text-xs bg-bad-bg border border-bad-line rounded-md px-3 py-2">
-            {error}
-          </div>
-        )}
-      </div>
-    </Card>
+            ))}
+        </dl>
+      </details>
+    </Panel>
   );
-}
-
-function CrossTeamApprovalChainCard({ request: r }: { request: AccessRequest }) {
-  // Source side: at least one approve vote on a cross_team request
-  // counts as source-approved (v1 supports min_approvers ∈ {0, 1}).
-  const sourceVoted =
-    (r.approvals ?? []).some((a) => a.decision === 'approve');
-  const securityRequired = !!r.snap_requires_security_approval;
-  // V1 heuristic: security vote is inferred by status crossing into
-  // approved (not pending_verification) when security_required=true.
-  // RequestDetail flips into other cards then; here we show progress.
-  const securityVoted = r.status === 'approved' || r.status === 'executed';
-
-  return (
-    <Card>
-      <div className="px-5 py-4 border-b border-border/60">
-        <h3 className="text-ink font-semibold">Approval chain</h3>
-      </div>
-      <div className="px-5 py-4 space-y-2 text-sm">
-        <ChainRow label="Source approval" done={sourceVoted} />
-        {securityRequired && (
-          <ChainRow label="Security approval" done={securityVoted} />
-        )}
-        {!securityRequired && (
-          <p className="text-muted text-xs">
-            Workflow policy does not require security approval.
-          </p>
-        )}
-      </div>
-    </Card>
-  );
-}
-
-function ChainRow({ label, done }: { label: string; done: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-ink">{label}</span>
-      <StatusPill
-        variant={done ? 'approved' : 'pending'}
-        tone="outline"
-      >
-        {done ? 'done' : 'pending'}
-      </StatusPill>
-    </div>
-  );
-}
-
-// Same reading as extractCrossTeamErrorCode in api/crossTeam.ts: the
-// api renders cross-team errors as `{"error": "<code>"}`.
-function extractErrorCodeFromApiErr(err: ApiError): string | undefined {
-  if (err.body && typeof err.body === 'object') {
-    const obj = err.body as { code?: unknown; error_code?: unknown; error?: unknown };
-    if (typeof obj.code === 'string') return obj.code;
-    if (typeof obj.error_code === 'string') return obj.error_code;
-    if (typeof obj.error === 'string') return obj.error;
-  }
-  return undefined;
-}
-
-function formatTime(iso?: string): string {
-  if (!iso) return '—';
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '—';
-  const d = new Date(t);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
 }
