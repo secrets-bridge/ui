@@ -92,8 +92,9 @@ export function useUpdateWorkflow(id: string) {
 
 // Deleting a workflow that policy rules route to deletes those rules
 // too, but only when asked: without delete_policy_rules=true the api
-// answers 409 workflow_in_use. A workflow any request used can't be
-// deleted at all (409 as well).
+// answers 409 workflow_in_use. Asking also needs policy.edit (403
+// without it). A workflow any request used can't be deleted at all
+// (409 as well).
 export function useDeleteWorkflow() {
   const qc = useQueryClient();
   return useMutation({
