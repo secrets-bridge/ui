@@ -5,9 +5,11 @@
  *    it runs in and how long the token lives (15 minutes to 24 hours).
  *    The cluster name is bound into the token, so an agent that reports
  *    another cluster is refused.
- * 2. The one-time token, shown once, inside the command that stores it
- *    as a Kubernetes Secret, and the helm command that installs the
- *    agent chart in enrollment mode. The chart reads the token from that
+ * 2. The one-time token, shown once, the command that stores it as a
+ *    Kubernetes Secret and the helm command that installs the agent
+ *    chart in enrollment mode. The token is never part of a command
+ *    (ui#151): the command reads it at a silent prompt, so it stays out
+ *    of shell history and the process list. The chart reads the token from that
  *    Secret and never takes it as a chart value. The drawer then watches
  *    the agent list until the agent enrolls and heartbeats.
  *
@@ -26,7 +28,7 @@ import { useProviderConnectionsAdmin } from '../../api/providerConnections';
 import type { ProviderConnection } from '../../api/types';
 import {
   AGENT_NAMESPACE as NAMESPACE,
-  AGENT_TOKEN_SECRET as TOKEN_SECRET,
+  enrollSecretCommand,
   helmInstallCommand,
   isInstallSafe,
 } from '../../lib/agentInstall';
@@ -226,10 +228,10 @@ function TokenSteps({ issued, copied, onCopied, closeWarned }: { issued: Issued;
   const [showToken, setShowToken] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [helmCopied, setHelmCopied] = useState(false);
+  const [secretCmdCopied, setSecretCmdCopied] = useState(false);
   const agents = useAdminAgents();
 
-  const secretCmd = (token: string) =>
-    [`kubectl -n ${NAMESPACE} create secret generic ${TOKEN_SECRET} \\`, `  --from-literal=enrollment_token=${token}`].join('\n');
+  const secretCmd = enrollSecretCommand();
   const endpoint = window.location.origin;
   const helm = helmInstallCommand(issued.connection, issued.cluster, endpoint);
   const expired = Date.parse(issued.expiresAt) <= now;
@@ -264,23 +266,51 @@ function TokenSteps({ issued, copied, onCopied, closeWarned }: { issued: Issued;
           1. Store the token in the workload cluster
         </h3>
         <pre className="overflow-x-auto rounded-md border border-border bg-sunken px-3 py-2.5 font-mono text-mono-small leading-relaxed text-ink">
-          {secretCmd(showToken ? issued.token : MASK)}
+          {secretCmd}
         </pre>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="secondary"
             size="sm"
             onClick={async () => {
+              try {
+                // No secret in the command: it reads the token at a prompt.
+                await navigator.clipboard.writeText(secretCmd);
+                setSecretCmdCopied(true);
+              } catch {
+                setSecretCmdCopied(false);
+              }
+            }}
+          >
+            {secretCmdCopied ? 'Copied' : 'Copy command'}
+          </Button>
+        </div>
+        <p className="text-caption text-muted">
+          Run it in bash or zsh. It waits at a silent prompt: paste the token below and press Enter. The token never
+          appears on the command line, in your shell history or in the process list. Create the {NAMESPACE} namespace
+          first if it doesn't exist.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <code
+            aria-label="Enrollment token"
+            className="min-w-0 break-all rounded-md border border-border bg-sunken px-3 py-1.5 font-mono text-mono-small text-ink"
+          >
+            {showToken ? issued.token : MASK}
+          </code>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={async () => {
               setCopyError(null);
               try {
-                await copySecret(secretCmd(issued.token));
+                await copySecret(issued.token);
                 onCopied();
               } catch {
                 setCopyError("Couldn't copy. Show the token and copy it by hand.");
               }
             }}
           >
-            {copied ? 'Copied' : 'Copy command'}
+            {copied ? 'Copied' : 'Copy token'}
           </Button>
           <Button variant="quiet" size="sm" onClick={() => setShowToken((s) => !s)} aria-pressed={showToken}>
             {showToken ? 'Hide token' : 'Show token'}
@@ -289,8 +319,8 @@ function TokenSteps({ issued, copied, onCopied, closeWarned }: { issued: Issued;
         <p className="text-caption text-muted" aria-live="polite">
           {copyError ??
             (copied
-              ? "Copied. Run it before you close this panel: closing clears the clipboard if it still holds the command. Don't rely on that, and remember the token stays in your shell history until it is spent."
-              : `Create the ${NAMESPACE} namespace first if it doesn't exist.`)}
+              ? 'Copied. Paste it at the prompt before you close this panel: closing clears the clipboard if it still holds the token.'
+              : 'The token works once. Copy it when the command is waiting for it.')}
         </p>
       </section>
 

@@ -14,6 +14,21 @@ import type { ProviderConnection } from '../api/types';
 export const AGENT_NAMESPACE = 'secrets-bridge';
 export const AGENT_TOKEN_SECRET = 'secrets-bridge-agent-enroll';
 
+/**
+ * Stores the enrollment token as the Secret the agent chart reads, without
+ * putting it on a command line (ui#151). `read -rs` takes it at a silent
+ * prompt, the `printf` builtin hands it to kubectl on stdin, so it never
+ * reaches shell history or the process arguments. bash or zsh.
+ */
+export function enrollSecretCommand(): string {
+  return [
+    'read -rs SB_ENROLL_TOKEN',
+    `printf '%s' "$SB_ENROLL_TOKEN" | kubectl -n ${AGENT_NAMESPACE} create secret generic ${AGENT_TOKEN_SECRET} \\`,
+    '  --from-file=enrollment_token=/dev/stdin',
+    'unset SB_ENROLL_TOKEN',
+  ].join('\n');
+}
+
 const SAFE_VALUE = /^[A-Za-z0-9._:/@%+-]+$/;
 
 /** True when `v` can go into the command as typed. */
