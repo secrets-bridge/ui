@@ -216,10 +216,14 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
       <div className="mb-4 mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-ui">
         <Status status={r.status} />
         {line && <span className={line.tone === 'ok' ? 'text-ok' : 'text-muted'}>{line.text}</span>}
-        <span aria-hidden="true" className="text-muted">
-          ·
+        {/* The separator travels with the scope, so it never dangles at
+            the end of a line when the scope wraps on a phone. */}
+        <span className="inline-flex max-w-full items-center gap-x-2.5">
+          <span aria-hidden="true" className="text-muted">
+            ·
+          </span>
+          <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} logo={display.logo} />
         </span>
-        <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} logo={display.logo} />
       </div>
       <Lifecycle steps={steps} now={now} />
 

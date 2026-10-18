@@ -57,7 +57,16 @@ export function MyProjects() {
           <span className="text-muted">Non-production</span>
         ),
     },
-    { key: 'risk', header: 'Risk level', align: 'right', render: (r) => <span className="font-mono text-mono">{r.env.risk_level}</span> },
+    {
+      key: 'risk',
+      header: 'Risk level',
+      // On its 0 to 4 scale, so the number means something on its own.
+      render: (r) => (
+        <span className="whitespace-nowrap">
+          <span className="font-mono text-mono">{r.env.risk_level}</span> <span className="text-muted">of 4</span>
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -84,7 +93,7 @@ export function MyProjects() {
                   <EnvTag kind={r.env.kind}>{r.env.name}</EnvTag>
                 </p>
                 <p className="text-caption text-muted">
-                  {r.env.kind === 'prod' ? 'Production · approved reads only' : 'Non-production'} · risk level {r.env.risk_level}
+                  {r.env.kind === 'prod' ? 'Production · approved reads only' : 'Non-production'} · risk level {r.env.risk_level} of 4
                 </p>
               </div>
             )}

@@ -151,7 +151,7 @@ export function ProjectEnv() {
               : canReveal
                 ? 'Non-production. Reveal a value directly when policy allows it, or request access for an approver to review.'
                 : 'Non-production. Request access and an approver reviews it.'}{' '}
-            Risk level {env.risk_level}.
+            Risk level {env.risk_level} of 4.
           </p>
         </div>
         {canRequest && (
