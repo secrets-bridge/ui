@@ -34,6 +34,7 @@ import { requestRef } from '../lib/requestRef';
 import { formatAge, formatExact, formatRemaining } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { conditionLine, keysOf, operationTitle, pathOf } from '../requests/describe';
+import { lifecycleSteps } from '../requests/lifecycle';
 import { useRevealConditions, type RevealCondition } from '../requests/revealState';
 import { requestScope, useScopeDisplay, type ScopeDisplay } from '../requests/scope';
 import { timelineFromAudit, timelineFromRequest, voterNames } from '../requests/timeline';
@@ -46,6 +47,7 @@ import { Keys } from '../ui/Keys';
 import { Path } from '../ui/Path';
 import { ScopeLabel } from '../ui/ScopeLabel';
 import { Status } from '../ui/Status';
+import { Lifecycle } from '../ui/Lifecycle';
 import { Timeline } from '../ui/Timeline';
 import { useToast } from '../ui/toastContext';
 import { CrossTeamApprovalChainCard, CrossTeamVerifyCard } from './request/CrossTeamVerify';
@@ -198,6 +200,12 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
 
   // Opening the values consumes the reveal, so say so while they show.
   const line = revealing ? { text: 'Reveal consumed', tone: 'muted' as const } : conditionLine(r, reveal);
+  const steps = lifecycleSteps(r, {
+    minApprovers: workflow?.min_approvers,
+    reveal: revealing || revealDone ? { state: 'consumed' } : reveal,
+    timeline,
+    isMine,
+  });
 
   return (
     <div>
@@ -205,7 +213,7 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
       <h1 id="page-title" tabIndex={-1} className="mt-3 break-words text-console-title text-ink">
         {operationTitle(r)}
       </h1>
-      <div className="mb-6 mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-ui">
+      <div className="mb-4 mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-ui">
         <Status status={r.status} />
         {line && <span className={line.tone === 'ok' ? 'text-ok' : 'text-muted'}>{line.text}</span>}
         <span aria-hidden="true" className="text-muted">
@@ -213,6 +221,7 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
         </span>
         <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} logo={display.logo} />
       </div>
+      <Lifecycle steps={steps} now={now} />
 
       <div className="grid grid-cols-1 gap-6 min-[1181px]:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-6">
