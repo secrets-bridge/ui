@@ -10,17 +10,25 @@
  *
  * The form renders no buttons: the drawer footer holds them and submits
  * through `form={formId}`. Stable api error codes map through
- * `providerConnectionErrorMessage` into an inline banner; never alert().
+ * `providerConnectionErrorMessage`. Codes about one field (name, cluster
+ * name, scope) show under that field; the rest show in an inline banner.
+ * Never alert().
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { ApiError } from '../../api/client';
 import { authMethodLabel, authMethodsFor, defaultAuthMethodFor } from '../../api/providerAuthMethods';
-import { extractProviderConnectionErrorCode, providerConnectionErrorMessage } from '../../api/providerConnections';
+import {
+  CONNECTION_NAME_PATTERN,
+  CONNECTION_NAME_RULE,
+  extractProviderConnectionErrorCode,
+  providerConnectionErrorMessage,
+  scopeErrorMessage,
+} from '../../api/providerConnections';
 import type { ProviderConnection, ProviderConnectionInput } from '../../api/types';
 import { providerLabel } from '../../lib/providers';
 import { Banner } from '../../ui/Banner';
@@ -29,25 +37,57 @@ import { Field, Input, Select, Textarea } from '../../ui/Field';
 const PROVIDER_TYPES = ['vault', 'aws-sm', 'azure-kv', 'gcp-sm', 'kubernetes'] as const;
 
 /**
- * Advisory scope-key hints. These MIRROR `scopeShapes` in the api's
- * internal/services/provider_connections.go: required keys first, then
- * optional. The backend rejects unknown keys outright, so a hint that
- * drifts from the validator sends operators straight into a 400. Keys
- * are case-sensitive server-side (projectID, tenantID).
+ * Scope keys per provider type. These MIRROR `scopeShapes` in the api's
+ * internal/services/provider_connections.go. The backend rejects unknown
+ * keys outright, so a list that drifts from the validator sends
+ * operators straight into a 400. Keys are case-sensitive server-side
+ * (projectID, tenantID).
  */
-const SCOPE_HINTS: Record<string, string[]> = {
-  vault: ['address', 'mount', 'namespace (optional)', 'kvPrefix (optional)'],
-  'aws-sm': ['region', 'roleArn (optional)', 'endpoint (optional)'],
-  'azure-kv': ['vaultName', 'tenantID (optional)'],
-  'gcp-sm': ['projectID', 'endpoint (optional)'],
-  kubernetes: ['context', 'namespace (optional)'],
+const SCOPE_KEYS: Record<string, { required: string[]; optional: string[] }> = {
+  vault: { required: ['address', 'mount'], optional: ['namespace', 'kvPrefix'] },
+  'aws-sm': { required: ['region'], optional: ['roleArn', 'endpoint'] },
+  'azure-kv': { required: ['vaultName'], optional: ['tenantID'] },
+  'gcp-sm': { required: ['projectID'], optional: ['endpoint'] },
+  kubernetes: { required: ['context'], optional: ['namespace'] },
 };
+
+function scopeHint(type: string): string {
+  const keys = SCOPE_KEYS[type];
+  if (!keys) return 'A JSON object of connection details for this provider.';
+  const all = [...keys.required, ...keys.optional.map((k) => `${k} (optional)`)];
+  return `Keys for ${providerLabel(type)}: ${all.join(', ')}.`;
+}
+
+/** Scope JSON with the required keys for `type`, empty values. */
+function scopeTemplate(type: string): string {
+  const required = SCOPE_KEYS[type]?.required ?? [];
+  return JSON.stringify(Object.fromEntries(required.map((k) => [k, ''])), null, 2);
+}
+
+/** True when the scope text is still blank, `{}` or an untouched template. */
+function isUntouchedScope(text: string): boolean {
+  if (text.trim() === '' || text.trim() === '{}') return true;
+  return Object.keys(SCOPE_KEYS).some((t) => scopeTemplate(t) === text);
+}
+
+/** Api error codes that belong to one form field. */
+const FIELD_ERROR_CODES: Record<string, 'name' | 'cluster_name' | 'scope_json'> = {
+  invalid_name: 'name',
+  invalid_cluster_name: 'cluster_name',
+  invalid_scope: 'scope_json',
+  credential_in_scope: 'scope_json',
+  secret_in_scope: 'scope_json',
+  invalid_provider_url: 'scope_json',
+  invalid_role_arn: 'scope_json',
+};
+
+const FIELD_LABELS = { name: 'name', cluster_name: 'cluster name', scope_json: 'scope' } as const;
 
 const inputSchema = z
   .object({
-    name: z.string().trim().min(1, 'Enter a name.').max(120, 'Use at most 120 characters.'),
+    name: z.string().trim().min(1, 'Enter a name.').regex(CONNECTION_NAME_PATTERN, CONNECTION_NAME_RULE),
     type: z.string().min(1, 'Choose a provider.'),
-    cluster_name: z.string().max(120, 'Use at most 120 characters.').optional().or(z.literal('')),
+    cluster_name: z.string().trim().regex(CONNECTION_NAME_PATTERN, CONNECTION_NAME_RULE).optional().or(z.literal('')),
     description: z.string().max(500, 'Use at most 500 characters.').optional().or(z.literal('')),
     status: z.enum(['active', 'disabled']),
     scope_json: z
@@ -100,6 +140,7 @@ export function ProviderConnectionForm({ formId, initial, submitError, onSubmit 
     watch,
     setValue,
     getValues,
+    setError,
     formState: { errors },
   } = useForm<FormShape>({
     resolver: zodResolver(inputSchema),
@@ -109,7 +150,7 @@ export function ProviderConnectionForm({ formId, initial, submitError, onSubmit 
       cluster_name: initial?.cluster_name ?? '',
       description: initial?.description ?? '',
       status: initial?.status ?? 'active',
-      scope_json: JSON.stringify(initial?.scope ?? {}, null, 2),
+      scope_json: initial ? JSON.stringify(initial.scope ?? {}, null, 2) : scopeTemplate('vault'),
       auth_method: initial?.auth_method ?? defaultAuthMethodFor(initial?.type ?? 'vault'),
       discover_enabled: initial?.discover_enabled ?? false,
       discover_interval_seconds: initial?.discover_interval_seconds ?? 3600,
@@ -127,10 +168,36 @@ export function ProviderConnectionForm({ formId, initial, submitError, onSubmit 
     }
   }, [type, getValues, setValue]);
 
+  // On create, fill the scope with the required keys for the chosen
+  // provider. Only replace text the operator has not edited yet.
+  const lastType = useRef(type);
+  useEffect(() => {
+    if (editing || lastType.current === type) return;
+    lastType.current = type;
+    if (isUntouchedScope(getValues('scope_json'))) {
+      setValue('scope_json', scopeTemplate(type));
+    }
+  }, [editing, type, getValues, setValue]);
+
+  const errorCode = submitError instanceof ApiError ? extractProviderConnectionErrorCode(submitError) : undefined;
+  const errorField = errorCode ? FIELD_ERROR_CODES[errorCode] : undefined;
+
+  // Api errors about one field go under that field. The next submit
+  // or a valid edit of the field clears them.
+  useEffect(() => {
+    if (!(submitError instanceof ApiError) || !errorCode || !errorField) return;
+    const message =
+      errorCode === 'invalid_scope'
+        ? scopeErrorMessage(submitError)
+        : (providerConnectionErrorMessage(errorCode) ?? submitError.message);
+    setError(errorField, { type: 'server', message }, { shouldFocus: true });
+  }, [submitError, errorCode, errorField, setError]);
+
   const stableErr =
     submitError instanceof ApiError
-      ? (providerConnectionErrorMessage(extractProviderConnectionErrorCode(submitError)) ??
-        `${submitError.status}: ${submitError.message}`)
+      ? errorField
+        ? `Fix the ${FIELD_LABELS[errorField]} field above.`
+        : (providerConnectionErrorMessage(errorCode) ?? `${submitError.status}: ${submitError.message}`)
       : submitError instanceof Error
         ? submitError.message
         : undefined;
@@ -167,7 +234,7 @@ export function ProviderConnectionForm({ formId, initial, submitError, onSubmit 
     >
       <fieldset className="flex min-w-0 flex-col gap-3.5">
         <legend className="mb-1 text-body font-semibold text-ink">Connection</legend>
-        <Field id="pc-name" label="Name" error={errors.name?.message}>
+        <Field id="pc-name" label="Name" hint={CONNECTION_NAME_RULE} error={errors.name?.message}>
           {(p) => <Input {...p} {...register('name')} placeholder="vault-prod-eu" autoComplete="off" data-autofocus />}
         </Field>
         <Field
@@ -186,7 +253,7 @@ export function ProviderConnectionForm({ formId, initial, submitError, onSubmit 
             </Select>
           )}
         </Field>
-        <Field id="pc-cluster" label="Cluster name" hint="Needed for discovery. Agents for this connection report the same name." error={errors.cluster_name?.message}>
+        <Field id="pc-cluster" label="Cluster name" hint={`Needed for discovery. Agents for this connection report the same name. ${CONNECTION_NAME_RULE}`} error={errors.cluster_name?.message}>
           {(p) => <Input {...p} {...register('cluster_name')} placeholder="prod-eu" className="font-mono" autoComplete="off" spellCheck={false} />}
         </Field>
         <Field id="pc-description" label="Description (optional)" error={errors.description?.message}>
@@ -202,7 +269,7 @@ export function ProviderConnectionForm({ formId, initial, submitError, onSubmit 
         <Field
           id="pc-scope"
           label="Scope (JSON)"
-          hint={SCOPE_HINTS[type] ? `Keys for ${providerLabel(type)}: ${SCOPE_HINTS[type].join(', ')}.` : 'A JSON object of connection details for this provider.'}
+          hint={scopeHint(type)}
           error={errors.scope_json?.message}
         >
           {(p) => <Textarea {...p} {...register('scope_json')} rows={7} className="font-mono text-mono" spellCheck={false} />}
