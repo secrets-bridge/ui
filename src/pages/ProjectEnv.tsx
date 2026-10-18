@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { useEnvSecrets } from '../api/devSecrets';
+import { logoUrl } from '../api/logos';
 import { useMe } from '../api/me';
 import { useAuth } from '../auth/AuthContext';
 import { groupBoundSecrets, type BoundSecret } from '../lib/boundSecrets';
@@ -27,6 +28,7 @@ import { Banner } from '../ui/Banner';
 import { Breadcrumb } from '../ui/Breadcrumb';
 import { Button } from '../ui/Button';
 import { DataTable, type Column } from '../ui/DataTable';
+import { EntityMark } from '../ui/EntityMark';
 import { EnvTag } from '../ui/EnvTag';
 import { Keys } from '../ui/Keys';
 import { Path } from '../ui/Path';
@@ -139,8 +141,9 @@ export function ProjectEnv() {
       <Breadcrumb items={[{ label: 'My projects', to: '/projects' }, { label: project.name }, { label: env.name }]} />
       <div className="mb-6 mt-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="min-w-0">
-          <h1 id="page-title" tabIndex={-1} className="break-words text-console-title text-ink">
-            {project.name} <EnvTag kind={env.kind}>{env.name}</EnvTag>
+          <h1 id="page-title" tabIndex={-1} className="flex flex-wrap items-center gap-x-3 gap-y-1 break-words text-console-title text-ink">
+            <EntityMark name={project.name} size="lg" src={logoUrl('project', project.id, project.logo_version)} />
+            <span>{project.name}</span> <EnvTag kind={env.kind}>{env.name}</EnvTag>
           </h1>
           <p className="mt-[3px] max-w-3xl text-ui font-normal text-muted">
             {prod
@@ -148,7 +151,7 @@ export function ProjectEnv() {
               : canReveal
                 ? 'Non-production. Reveal a value directly when policy allows it, or request access for an approver to review.'
                 : 'Non-production. Request access and an approver reviews it.'}{' '}
-            Risk level {env.risk_level}.
+            Risk level {env.risk_level} of 4.
           </p>
         </div>
         {canRequest && (

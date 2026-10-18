@@ -34,6 +34,7 @@ import { requestRef } from '../lib/requestRef';
 import { formatAge, formatExact, formatRemaining } from '../lib/time';
 import { useNow } from '../lib/useNow';
 import { conditionLine, keysOf, operationTitle, pathOf } from '../requests/describe';
+import { lifecycleSteps } from '../requests/lifecycle';
 import { useRevealConditions, type RevealCondition } from '../requests/revealState';
 import { requestScope, useScopeDisplay, type ScopeDisplay } from '../requests/scope';
 import { timelineFromAudit, timelineFromRequest, voterNames } from '../requests/timeline';
@@ -42,10 +43,11 @@ import { Banner } from '../ui/Banner';
 import { Breadcrumb } from '../ui/Breadcrumb';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
-import { EnvTag } from '../ui/EnvTag';
 import { Keys } from '../ui/Keys';
 import { Path } from '../ui/Path';
+import { ScopeLabel } from '../ui/ScopeLabel';
 import { Status } from '../ui/Status';
+import { Lifecycle } from '../ui/Lifecycle';
 import { Timeline } from '../ui/Timeline';
 import { useToast } from '../ui/toastContext';
 import { CrossTeamApprovalChainCard, CrossTeamVerifyCard } from './request/CrossTeamVerify';
@@ -198,6 +200,12 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
 
   // Opening the values consumes the reveal, so say so while they show.
   const line = revealing ? { text: 'Reveal consumed', tone: 'muted' as const } : conditionLine(r, reveal);
+  const steps = lifecycleSteps(r, {
+    minApprovers: workflow?.min_approvers,
+    reveal: revealing || revealDone ? { state: 'consumed' } : reveal,
+    timeline,
+    isMine,
+  });
 
   return (
     <div>
@@ -205,16 +213,19 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
       <h1 id="page-title" tabIndex={-1} className="mt-3 break-words text-console-title text-ink">
         {operationTitle(r)}
       </h1>
-      <div className="mb-6 mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-ui">
+      <div className="mb-4 mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-ui">
         <Status status={r.status} />
         {line && <span className={line.tone === 'ok' ? 'text-ok' : 'text-muted'}>{line.text}</span>}
-        <span aria-hidden="true" className="text-muted">
-          ·
-        </span>
-        <span>
-          {display.project} {display.env && <EnvTag kind={display.envKind}>{display.env}</EnvTag>}
+        {/* The separator travels with the scope, so it never dangles at
+            the end of a line when the scope wraps on a phone. */}
+        <span className="inline-flex max-w-full items-center gap-x-2.5">
+          <span aria-hidden="true" className="text-muted">
+            ·
+          </span>
+          <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} logo={display.logo} />
         </span>
       </div>
+      <Lifecycle steps={steps} now={now} />
 
       <div className="grid grid-cols-1 gap-6 min-[1181px]:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-6">
@@ -613,15 +624,9 @@ function DetailsPanel({ r, display, reasonShown }: { r: AccessRequest; display: 
     ],
     [
       'Where',
-      <span key="w">
-        {display.project}
-        {display.env && (
-          <>
-            {' '}
-            <EnvTag kind={display.envKind}>{display.env}</EnvTag>
-            <span className="sr-only">{display.envKind === 'prod' ? ' (production)' : ' (non-production)'}</span>
-          </>
-        )}
+      <span key="w" className="inline-flex flex-wrap items-center gap-x-1">
+        <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} logo={display.logo} />
+        {display.env && <span className="sr-only">{display.envKind === 'prod' ? ' (production)' : ' (non-production)'}</span>}
       </span>,
     ],
     ['Provider', r.type === 'cross_team' ? (r.destination_provider_label ?? '—') : providerLabel(r.target_provider_type)],

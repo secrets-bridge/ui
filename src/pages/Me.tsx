@@ -7,8 +7,10 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+import { logoUrl } from '../api/logos';
 import { useAuth } from '../auth/AuthContext';
 import { Banner } from '../ui/Banner';
+import { EntityMark } from '../ui/EntityMark';
 import { EnvTag } from '../ui/EnvTag';
 import { PageHeader } from '../ui/PageHeader';
 
@@ -85,9 +87,10 @@ export function Me() {
             <ul className="m-0 list-none p-0">
               {projects.map((p) => (
                 <li key={p.id} className="border-t border-rule px-5 py-3 first:border-t-0">
-                  <p className="text-body font-medium text-ink">
+                  <p className="flex items-center gap-2 text-body font-medium text-ink">
+                    <EntityMark name={p.name} src={logoUrl('project', p.id, p.logo_version)} />
                     {p.name}
-                    {p.status === 'archived' && <span className="ml-2 text-caption font-normal text-muted">archived</span>}
+                    {p.status === 'archived' && <span className="text-caption font-normal text-muted">archived</span>}
                   </p>
                   {(p.environments ?? []).length > 0 && (
                     <p className="mt-1 flex flex-wrap gap-1.5">
@@ -114,9 +117,10 @@ export function Me() {
             <ul className="m-0 list-none p-0">
               {teams.map((t) => (
                 <li key={t.id} className="border-t border-rule px-5 py-3 first:border-t-0">
-                  <p className="text-body font-medium text-ink">
+                  <p className="flex items-center gap-2 text-body font-medium text-ink">
+                    <EntityMark name={t.name} kind="team" src={logoUrl('team', t.id, t.logo_version)} />
                     {t.name}
-                    {t.status === 'archived' && <span className="ml-2 text-caption font-normal text-muted">archived</span>}
+                    {t.status === 'archived' && <span className="text-caption font-normal text-muted">archived</span>}
                   </p>
                   {t.parent_team_id && teamName(t.parent_team_id) && (
                     <p className="text-caption text-muted">Part of {teamName(t.parent_team_id)}</p>

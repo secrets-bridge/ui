@@ -15,6 +15,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 
 import { ApiError } from '../../../api/client';
+import { logoUrl } from '../../../api/logos';
 import type { Team } from '../../../api/teams';
 import {
   useCreateEnvironment,
@@ -32,12 +33,14 @@ import { ConfirmModal } from '../../../ui/ConfirmModal';
 import { DataTable, type Column } from '../../../ui/DataTable';
 import { Drawer } from '../../../ui/Drawer';
 import { EmptyState } from '../../../ui/EmptyState';
+import { EntityMark } from '../../../ui/EntityMark';
 import { EnvTag } from '../../../ui/EnvTag';
 import { Field, Input, Select } from '../../../ui/Field';
 import { PageHeader } from '../../../ui/PageHeader';
 import { TabPanel, Tabs } from '../../../ui/Tabs';
 import { useToast } from '../../../ui/toastContext';
 import { ProjectSecretsPanel } from '../ProjectSecretsPanel';
+import { LogoDialog } from './LogoDialog';
 import { projectTeamLabel } from './projectTeam';
 
 const TYPE_LABEL: Record<Environment['type'], string> = {
@@ -126,6 +129,7 @@ export function ProjectDetail({
 
 function Header({ project, teams }: { project: Project; teams: Team[] }) {
   const status = useUpdateProjectStatus(project.id);
+  const [logo, setLogo] = useState(false);
   const toast = useToast();
   const archived = project.status === 'archived';
 
@@ -148,13 +152,23 @@ function Header({ project, teams }: { project: Project; teams: Team[] }) {
     <>
       <PageHeader
         title={project.name}
+        mark={<EntityMark name={project.name} size="lg" src={logoUrl('project', project.id, project.logo_version)} />}
         description={facts.join(' · ')}
         actions={
-          <Button variant="secondary" onClick={() => void toggle()} disabled={status.isPending} aria-busy={status.isPending}>
-            {status.isPending ? 'Working…' : archived ? 'Restore project' : 'Archive project'}
-          </Button>
+          <>
+            {/* Only when this api stores logos (its bodies carry logo_version). */}
+            {'logo_version' in project && (
+              <Button variant="secondary" onClick={() => setLogo(true)}>
+                Change logo
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => void toggle()} disabled={status.isPending} aria-busy={status.isPending}>
+              {status.isPending ? 'Working…' : archived ? 'Restore project' : 'Archive project'}
+            </Button>
+          </>
         }
       />
+      {logo && <LogoDialog kind="project" id={project.id} name={project.name} logoVersion={project.logo_version} onClose={() => setLogo(false)} />}
       {status.isError && (
         <Banner tone="error" title={archived ? 'Not restored.' : 'Not archived.'} className="mb-4">
           {errorText(status.error)}

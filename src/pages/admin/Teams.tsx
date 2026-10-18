@@ -20,11 +20,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { ApiError } from '../../api/client';
+import { logoUrl } from '../../api/logos';
 import { buildTeamTree, useTeams, type Team, type TeamNode } from '../../api/teams';
 import { Banner } from '../../ui/Banner';
 import { Button } from '../../ui/Button';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { EmptyState } from '../../ui/EmptyState';
+import { EntityMark } from '../../ui/EntityMark';
 import { PageHeader } from '../../ui/PageHeader';
 import { ToneStatus } from '../../ui/Status';
 import { useToast } from '../../ui/toastContext';
@@ -79,6 +81,7 @@ export function Teams() {
           └
         </span>
       )}
+      <EntityMark name={r.team.name} kind="team" size={r.depth > 0 ? 'sm' : 'md'} src={logoUrl('team', r.team.id, r.team.logo_version)} />
       <button type="button" onClick={() => open(r.team.id)} className="text-left font-medium text-accent hover:underline">
         {r.team.name}
       </button>

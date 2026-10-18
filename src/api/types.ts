@@ -39,6 +39,8 @@ export interface Project {
   team_id?: string | null;
   owner_team_id?: string;
   status: 'active' | 'archived';
+  /** Version of the uploaded logo, or null when there is none (the initials tile shows). */
+  logo_version?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -76,6 +78,8 @@ export interface MyProject {
   id: string;
   name: string;
   status: 'active' | 'archived';
+  /** Version of the uploaded logo, or null when there is none (the initials tile shows). */
+  logo_version?: string | null;
   environments?: MyEnvironment[];
 }
 
@@ -90,6 +94,8 @@ export interface MeTeam {
   name: string;
   parent_team_id: string | null;
   status: 'active' | 'archived';
+  /** Version of the uploaded logo, or null when there is none (the initials tile shows). */
+  logo_version?: string | null;
 }
 
 /**

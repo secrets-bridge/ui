@@ -43,11 +43,11 @@ import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { DataTable, type Column } from '../ui/DataTable';
 import { EmptyState } from '../ui/EmptyState';
-import { EnvTag } from '../ui/EnvTag';
 import { Keys } from '../ui/Keys';
 import { NeedsYou, type NeedsYouItem } from '../ui/NeedsYou';
 import { PageHeader } from '../ui/PageHeader';
 import { Select } from '../ui/Field';
+import { ScopeLabel } from '../ui/ScopeLabel';
 import { Status } from '../ui/Status';
 import { useToast } from '../ui/toastContext';
 import { RequestAccessDrawer } from './RequestAccessDrawer';
@@ -162,7 +162,10 @@ export function Overview() {
         project: d.project,
         env: d.env,
         envKind: d.envKind,
-        note: `Reveal closes ${formatShort(c.deadline, now)} UTC · ${formatRemaining(c.deadline, now)}`,
+        logo: d.logo,
+        // Short, so the keys keep their room; the exact deadline is on hover.
+        note: `Reveal within ${formatRemaining(c.deadline, now).replace(/ left$/, '')}`,
+        noteTitle: `The reveal window closes ${formatExact(c.deadline)}`,
         tone: 'ok' as const,
         action: (
           <Button variant="secondary" size="sm" onClick={() => navigate(`/requests/${r.id}`)}>
@@ -181,6 +184,7 @@ export function Overview() {
         project: d.project,
         env: d.env,
         envKind: d.envKind,
+        logo: d.logo,
         note: `Agent read failed ${formatShort(r.updated_at, now)}`,
         tone: 'bad' as const,
         action: (
@@ -386,9 +390,7 @@ function Section({
 
 function ScopeCell({ d }: { d: ScopeDisplay }) {
   return (
-    <span className="whitespace-nowrap">
-      {d.project} {d.env && <EnvTag kind={d.envKind}>{d.env}</EnvTag>}
-    </span>
+    <ScopeLabel project={d.project} env={d.env} envKind={d.envKind} logo={d.logo} />
   );
 }
 
@@ -614,7 +616,7 @@ function Rail({
               <ul className="m-0 list-none p-0">
                 {scopes.map((s) => (
                   <li key={s.value} className="border-b border-rule py-2.5 text-ui font-normal">
-                    {s.projectName} <EnvTag kind={s.envKind}>{s.envName}</EnvTag>
+                    <ScopeLabel project={s.projectName} env={s.envName} envKind={s.envKind} logo={s.logo} />
                   </li>
                 ))}
               </ul>

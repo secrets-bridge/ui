@@ -38,8 +38,8 @@ import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { DataTable, type Column } from '../ui/DataTable';
 import { EmptyState } from '../ui/EmptyState';
-import { EnvTag } from '../ui/EnvTag';
 import { Input, Select } from '../ui/Field';
+import { ScopeLabel } from '../ui/ScopeLabel';
 import { SearchIcon } from '../ui/icons';
 import { PageHeader } from '../ui/PageHeader';
 import { Status } from '../ui/Status';
@@ -381,9 +381,7 @@ function RequestTable({
       render: (r) => {
         const d = display(r);
         return (
-          <span className="whitespace-nowrap">
-            {d.project} {d.env && <EnvTag kind={d.envKind}>{d.env}</EnvTag>}
-          </span>
+          <ScopeLabel project={d.project} env={d.env} envKind={d.envKind} logo={d.logo} />
         );
       },
     },
@@ -459,6 +457,29 @@ function RequestTable({
       onRowClick={open}
       minWidth={860}
       alignTop
+      stacked={(r) => {
+        // On phones a row is a block, so the state and the next step stay
+        // in view instead of sitting off to the right of a scrolled table.
+        const cell = (key: string) => columns.find((c) => c.key === key)?.render(r);
+        return (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 [&>div]:min-w-0">{cell('request')}</div>
+              {cell('age')}
+            </div>
+            {cell('scope')}
+            {showRequester && (
+              <p className="m-0 text-caption text-muted">
+                Requested by {r.requester_id === me ? 'you' : (r.requester_display ?? 'someone')}
+              </p>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+              {cell('state')}
+              {cell('next')}
+            </div>
+          </div>
+        );
+      }}
     />
   );
 }

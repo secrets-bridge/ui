@@ -21,6 +21,7 @@ import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { DataTable, type Column } from '../ui/DataTable';
 import { EmptyState } from '../ui/EmptyState';
+import { EntityMark } from '../ui/EntityMark';
 import { Keys } from '../ui/Keys';
 import { PageHeader } from '../ui/PageHeader';
 import { keysOf } from '../requests/crossTeam';
@@ -54,9 +55,12 @@ function InboxView() {
       key: 'from',
       header: 'From',
       render: (r) => (
-        <span>
-          {r.requester_display ?? 'Someone'}
-          {r.source_project_name && <span className="block text-caption text-muted">{r.source_project_name}</span>}
+        <span className="flex items-start gap-2.5">
+          {r.source_project_name && <EntityMark name={r.source_project_name} size="md" />}
+          <span>
+            {r.requester_display ?? 'Someone'}
+            {r.source_project_name && <span className="block text-caption text-muted">{r.source_project_name}</span>}
+          </span>
         </span>
       ),
     },
@@ -65,13 +69,16 @@ function InboxView() {
       key: 'for',
       header: 'Your team and project',
       render: (r) => (
-        <span>
+        <span className="flex items-start gap-2.5">
+          <EntityMark name={r.target_team_name ?? 'Your team'} kind="team" size="md" />
+          <span>
           {r.target_team_name ?? 'Your team'}
           {(r.target_project_name || r.target_environment_name) && (
             <span className="block text-caption text-muted">
               {[r.target_project_name, r.target_environment_name].filter(Boolean).join(' · ')}
             </span>
           )}
+          </span>
         </span>
       ),
     },

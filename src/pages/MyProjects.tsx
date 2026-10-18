@@ -7,11 +7,13 @@
 
 import { useNavigate, Link } from 'react-router-dom';
 
+import { logoUrl } from '../api/logos';
 import { useMe } from '../api/me';
 import type { MyEnvironment, MyProject } from '../api/types';
 import { Banner } from '../ui/Banner';
 import { DataTable, type Column } from '../ui/DataTable';
 import { EmptyState } from '../ui/EmptyState';
+import { EntityMark } from '../ui/EntityMark';
 import { EnvTag } from '../ui/EnvTag';
 import { PageHeader } from '../ui/PageHeader';
 
@@ -35,10 +37,13 @@ export function MyProjects() {
       key: 'project',
       header: 'Project',
       render: (r) => (
-        <Link to={to(r)} className="font-medium text-accent hover:underline">
-          {r.project.name}
-          {r.project.status === 'archived' && <span className="ml-2 text-caption font-normal text-muted">archived</span>}
-        </Link>
+        <span className="inline-flex items-center gap-2.5">
+          <EntityMark name={r.project.name} size="md" src={logoUrl('project', r.project.id, r.project.logo_version)} />
+          <Link to={to(r)} className="font-medium text-accent hover:underline">
+            {r.project.name}
+          </Link>
+          {r.project.status === 'archived' && <span className="text-caption font-normal text-muted">archived</span>}
+        </span>
       ),
     },
     { key: 'env', header: 'Environment', render: (r) => <EnvTag kind={r.env.kind}>{r.env.name}</EnvTag> },
@@ -52,7 +57,16 @@ export function MyProjects() {
           <span className="text-muted">Non-production</span>
         ),
     },
-    { key: 'risk', header: 'Risk level', align: 'right', render: (r) => <span className="font-mono text-mono">{r.env.risk_level}</span> },
+    {
+      key: 'risk',
+      header: 'Risk level',
+      // On its 0 to 4 scale, so the number means something on its own.
+      render: (r) => (
+        <span className="whitespace-nowrap">
+          <span className="font-mono text-mono">{r.env.risk_level}</span> <span className="text-muted">of 4</span>
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -71,14 +85,15 @@ export function MyProjects() {
             minWidth={560}
             stacked={(r) => (
               <div className="flex flex-col gap-1">
-                <p>
+                <p className="flex items-center gap-2">
+                  <EntityMark name={r.project.name} src={logoUrl('project', r.project.id, r.project.logo_version)} />
                   <Link to={to(r)} className="font-medium text-accent hover:underline">
                     {r.project.name}
-                  </Link>{' '}
+                  </Link>
                   <EnvTag kind={r.env.kind}>{r.env.name}</EnvTag>
                 </p>
                 <p className="text-caption text-muted">
-                  {r.env.kind === 'prod' ? 'Production · approved reads only' : 'Non-production'} · risk level {r.env.risk_level}
+                  {r.env.kind === 'prod' ? 'Production · approved reads only' : 'Non-production'} · risk level {r.env.risk_level} of 4
                 </p>
               </div>
             )}

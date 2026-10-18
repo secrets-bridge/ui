@@ -21,6 +21,7 @@ import { useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 
 import { ApiError } from '../../api/client';
+import { logoUrl } from '../../api/logos';
 import { useTeams } from '../../api/teams';
 import { useCreateProject, useProjects } from '../../api/tenancy';
 import type { Project, ProjectInput } from '../../api/types';
@@ -30,6 +31,7 @@ import { Button } from '../../ui/Button';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { Drawer } from '../../ui/Drawer';
 import { EmptyState } from '../../ui/EmptyState';
+import { EntityMark } from '../../ui/EntityMark';
 import { Field, Input } from '../../ui/Field';
 import { PageHeader } from '../../ui/PageHeader';
 import { ToneStatus } from '../../ui/Status';
@@ -78,9 +80,12 @@ export function Projects() {
       key: 'name',
       header: 'Project',
       render: (p) => (
-        <button type="button" onClick={() => open(p.id)} className="text-left font-medium text-accent hover:underline">
-          {p.name}
-        </button>
+        <span className="inline-flex items-center gap-2.5">
+          <EntityMark name={p.name} size="md" src={logoUrl('project', p.id, p.logo_version)} />
+          <button type="button" onClick={() => open(p.id)} className="text-left font-medium text-accent hover:underline">
+            {p.name}
+          </button>
+        </span>
       ),
     },
     { key: 'team', header: 'Team', render: (p) => teamOf(p) },
@@ -149,9 +154,12 @@ export function Projects() {
             stacked={(p) => (
               <div className="flex flex-col gap-1">
                 <p className="flex items-center justify-between gap-3">
-                  <button type="button" onClick={() => open(p.id)} className="text-left font-medium text-accent hover:underline">
-                    {p.name}
-                  </button>
+                  <span className="inline-flex items-center gap-2">
+                    <EntityMark name={p.name} src={logoUrl('project', p.id, p.logo_version)} />
+                    <button type="button" onClick={() => open(p.id)} className="text-left font-medium text-accent hover:underline">
+                      {p.name}
+                    </button>
+                  </span>
                   <ToneStatus tone={p.status === 'active' ? 'ok' : 'neutral'}>{p.status === 'active' ? 'Active' : 'Archived'}</ToneStatus>
                 </p>
                 <p className="text-caption text-muted">
