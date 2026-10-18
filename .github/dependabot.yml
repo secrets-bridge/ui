@@ -14,6 +14,13 @@ updates:
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # TypeScript 7 is the native port and drops the compiler API that
+      # typescript-eslint needs; every typescript-eslint release still
+      # declares typescript <6.1.0 (typescript-eslint#10940). Remove this
+      # once a typescript-eslint release supports TS 7. See ui#125.
+      - dependency-name: typescript
+        versions: [">=7.0.0"]
 
   # Dockerfile base images are pinned as tag@digest; dependabot keeps
   # the digest fresh, which is how alpine CVE fixes land.
