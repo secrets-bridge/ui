@@ -1,290 +1,267 @@
 /**
- * Workflows admin page. Visual layout matches the Roles + Policies
- * pattern landed in ui#13 — PageHeader + Card-wrapped table + shared
- * Drawer + ConfirmModal from `src/ui/`.
+ * Workflows (`/admin/workflows`): the approval templates a policy
+ * points requests at. Each row shows how many approvals it needs (and
+ * from which role, when one is set), how long values stay available,
+ * when undecided requests expire, its rules and whether it is enabled.
+ * The name opens it in a drawer.
  *
- * System workflows (the seed `standard` row) are editable but the
- * Delete action is disabled — the api returns 409 on DELETE for them.
- *
- * Mutation invariants (unchanged from the original page):
- * - Every successful create/update/delete invalidates the list query
- *   so the table re-renders without a manual refetch.
- * - The form drawer disappears immediately on successful submit; the
- *   refreshed row appears in the table once Query refetches.
+ * Built-in workflows (the seeded `standard`) can be edited but not
+ * deleted: the api answers 409 on DELETE, so the page offers no Delete.
+ * Every create, update and delete invalidates the list query.
  */
 
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '../../api/client';
+import { policiesKey, usePolicies } from '../../api/policies';
+import { useRoles } from '../../api/roles';
 import type { Workflow, WorkflowInput } from '../../api/types';
-import {
-  useCreateWorkflow,
-  useDeleteWorkflow,
-  useUpdateWorkflow,
-  useWorkflows,
-} from '../../api/workflows';
+import { useCreateWorkflow, useDeleteWorkflow, useUpdateWorkflow, useWorkflows } from '../../api/workflows';
+import { Banner } from '../../ui/Banner';
 import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card';
 import { ConfirmModal } from '../../ui/ConfirmModal';
-import { Drawer } from '../../ui/Drawer';
+import { DataTable, type Column } from '../../ui/DataTable';
+import { EmptyState } from '../../ui/EmptyState';
 import { PageHeader } from '../../ui/PageHeader';
-import { StatusPill } from '../../ui/StatusPill';
+import { ToneStatus } from '../../ui/Status';
+import { useToast } from '../../ui/toastContext';
+import { errorText, formatDuration } from './roles/format';
 import { WorkflowForm } from './WorkflowForm';
 
 export function Workflows() {
   const list = useWorkflows();
+  const roles = useRoles();
   const create = useCreateWorkflow();
-  const del = useDeleteWorkflow();
+  const toast = useToast();
 
   const [editing, setEditing] = useState<Workflow | null>(null);
   const [creating, setCreating] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<Workflow | null>(null);
 
+  const rows = [...(list.data ?? [])].sort(
+    (a, b) => Number(!!b.is_default) - Number(!!a.is_default) || a.name.localeCompare(b.name),
+  );
+  const fallback = rows.find((w) => w.is_default);
+  const roleName = (id?: string | null) => (id ? roles.data?.find((r) => r.id === id)?.name : undefined);
+  const open = (w: Workflow) => {
+    setCreating(false);
+    setEditing(w);
+  };
+
+  const nameCell = (w: Workflow) => (
+    <span className="flex flex-col gap-0.5">
+      <span className="flex flex-wrap items-baseline gap-x-2">
+        <button type="button" onClick={() => open(w)} className="text-left font-mono text-mono font-medium text-accent hover:underline">
+          {w.name}
+        </button>
+        <Tags w={w} />
+      </span>
+      {w.description && <span className="text-caption text-muted">{w.description}</span>}
+    </span>
+  );
+  const approvals = (w: Workflow) => {
+    const role = roleName(w.approver_role_id);
+    const n = w.min_approvers;
+    return (
+      <span>
+        {n === 0 ? 'None' : `${n} ${n === 1 ? 'approval' : 'approvals'}`}
+        {role && <span className="block text-caption text-muted">from {role}</span>}
+      </span>
+    );
+  };
+  const rules = (w: Workflow) =>
+    [w.require_justification ? 'Reason required' : 'Reason optional', w.allow_self_approval ? 'Self-approval allowed' : 'No self-approval'].join(' · ');
+  const deleteButton = (w: Workflow) =>
+    w.is_system ? null : (
+      <Button
+        variant="danger"
+        size="sm"
+        onClick={() => setConfirmDelete(w)}
+        aria-label={`Delete ${w.name}`}
+      >
+        Delete…
+      </Button>
+    );
+
+  const columns: Column<Workflow>[] = [
+    { key: 'name', header: 'Workflow', render: nameCell, className: 'max-w-[320px]' },
+    { key: 'approvals', header: 'Approvals', render: approvals, className: 'whitespace-nowrap' },
+    { key: 'values', header: 'Values available', render: (w) => formatDuration(w.wrap_ttl_approved_seconds), className: 'whitespace-nowrap' },
+    { key: 'expiry', header: 'Requests expire', render: (w) => formatDuration(w.request_ttl_seconds), className: 'whitespace-nowrap' },
+    { key: 'rules', header: 'Rules', render: (w) => <span className="text-muted">{rules(w)}</span> },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (w) => (w.enabled ? <ToneStatus tone="ok">Enabled</ToneStatus> : <ToneStatus tone="neutral">Disabled</ToneStatus>),
+    },
+    { key: 'actions', header: 'Actions', hiddenHeader: true, align: 'right', render: deleteButton },
+  ];
+
   return (
     <div>
       <PageHeader
         title="Workflows"
-        description="Approval templates resolved at request submit time. System seeds are editable but cannot be deleted."
+        description={
+          list.data
+            ? `${rows.length} ${rows.length === 1 ? 'workflow' : 'workflows'}${fallback ? `; ${fallback.name} is the default` : ''}. Policies decide which workflow a request follows.`
+            : 'Policies decide which workflow a request follows.'
+        }
         actions={
           <Button
             variant="primary"
             onClick={() => {
+              create.reset();
               setEditing(null);
               setCreating(true);
             }}
           >
-            + New workflow
+            Create workflow
           </Button>
         }
       />
 
+      {list.isLoading && <p className="text-muted">Loading workflows…</p>}
       {list.isError && (
-        <Card className="border-bad-line p-5 text-sm mb-4">
-          <div className="text-bad font-medium">Failed to load workflows</div>
-          <div className="text-muted mt-1">{stringifyError(list.error)}</div>
-        </Card>
+        <Banner
+          tone="error"
+          title="Couldn't load the workflows."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void list.refetch()}>
+              Try again
+            </Button>
+          }
+        >
+          {errorText(list.error)}
+        </Banner>
       )}
-
-      {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
-
-      {list.data && list.data.length === 0 && (
-        <Card className="p-10 text-center text-muted text-sm">
-          No workflows defined yet. The api seeds one named{' '}
-          <code className="font-mono">standard</code> on first boot.
-        </Card>
-      )}
-
-      {list.data && list.data.length > 0 && (
-        <>
-          <Card className="overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="text-left text-muted text-[11px]">
-                <tr className="border-b border-border/60">
-                  <Th>Name</Th>
-                  <Th>Approvers</Th>
-                  <Th>Justification</Th>
-                  <Th>Self-approval</Th>
-                  <Th>Status</Th>
-                  <Th className="text-right">Actions</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.data.map((w) => (
-                  <WorkflowRow
-                    key={w.id}
-                    workflow={w}
-                    onEdit={() => {
-                      setCreating(false);
-                      setEditing(w);
-                    }}
-                    onDelete={() => setConfirmDelete(w)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </Card>
-
-          <p className="text-muted text-xs mt-3">
-            System seed workflows can't be deleted — delete is disabled
-            (muted) with a tooltip <em>"System seed — not deletable"</em>.
-          </p>
-        </>
-      )}
+      {list.data &&
+        (rows.length === 0 ? (
+          <EmptyState title="No workflows yet.">The api creates a built-in workflow named standard when it first starts.</EmptyState>
+        ) : (
+          <>
+            <DataTable
+              label="Workflows"
+              columns={columns}
+              rows={rows}
+              rowKey={(w) => w.id}
+              onRowClick={open}
+              minWidth={900}
+              stacked={(w) => (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-start justify-between gap-3">
+                    {nameCell(w)}
+                    {w.enabled ? <ToneStatus tone="ok">Enabled</ToneStatus> : <ToneStatus tone="neutral">Disabled</ToneStatus>}
+                  </div>
+                  <p className="text-caption">
+                    {w.min_approvers === 0 ? 'No approvals' : `${w.min_approvers} ${w.min_approvers === 1 ? 'approval' : 'approvals'}`}
+                    {roleName(w.approver_role_id) ? ` from ${roleName(w.approver_role_id)}` : ''} · values {formatDuration(w.wrap_ttl_approved_seconds)} ·
+                    requests expire after {formatDuration(w.request_ttl_seconds)}
+                  </p>
+                  <p className="text-caption text-muted">{rules(w)}</p>
+                  {!w.is_system && <div className="mt-1">{deleteButton(w)}</div>}
+                </div>
+              )}
+            />
+            <p className="mt-2 text-caption text-muted">Built-in workflows can be edited but not deleted.</p>
+          </>
+        ))}
 
       {creating && (
-        <Drawer title="New workflow" onClose={() => setCreating(false)}>
-          <WorkflowForm
-            onSubmit={async (body: WorkflowInput) => {
-              await create.mutateAsync(body);
-              setCreating(false);
-            }}
-            onCancel={() => setCreating(false)}
-            submitting={create.isPending}
-            submitError={create.error}
-          />
-        </Drawer>
+        <WorkflowForm
+          onSubmit={async (body: WorkflowInput) => {
+            await create.mutateAsync(body);
+            setCreating(false);
+            toast(`Created workflow ${body.name}.`);
+          }}
+          onCancel={() => setCreating(false)}
+          submitting={create.isPending}
+          submitError={create.error}
+        />
       )}
 
-      {editing && (
-        <EditDrawer workflow={editing} onClose={() => setEditing(null)} />
-      )}
+      {editing && <EditWorkflow workflow={editing} onClose={() => setEditing(null)} />}
 
       {confirmDelete && (
-        <ConfirmModal
-          title={`Delete workflow "${confirmDelete.name}"?`}
-          body="This cannot be undone. Requests already pinned to this workflow at submit time keep using it; new requests will fall back to the default."
-          confirmText="Delete"
-          danger
-          onCancel={() => setConfirmDelete(null)}
-          onConfirm={async () => {
-            await del.mutateAsync(confirmDelete.id);
+        <DeleteWorkflow
+          workflow={confirmDelete}
+          onClose={() => setConfirmDelete(null)}
+          onDeleted={() => {
+            toast(`Deleted workflow ${confirmDelete.name}.`);
             setConfirmDelete(null);
           }}
-          loading={del.isPending}
-          error={del.error}
         />
       )}
     </div>
   );
 }
 
-// --- row + cell bits ------------------------------------------------
-
-function WorkflowRow({
-  workflow: w,
-  onEdit,
-  onDelete,
-}: {
-  workflow: Workflow;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const sys = !!w.is_system;
+// Deleting a workflow also deletes every policy that points to it
+// (policy_rules.workflow_id ON DELETE CASCADE), and the api refuses it
+// while any request references the workflow (no ON DELETE on
+// access_requests.workflow_id). The dialog says both and counts the
+// policies first.
+function DeleteWorkflow({ workflow, onClose, onDeleted }: { workflow: Workflow; onClose: () => void; onDeleted: () => void }) {
+  const del = useDeleteWorkflow();
+  const policies = usePolicies();
+  const qc = useQueryClient();
+  const n = (policies.data ?? []).filter((p) => p.workflow_id === workflow.id).length;
+  const policyLine = policies.isLoading
+    ? 'Checking which policies use it…'
+    : policies.isError
+      ? "Couldn't check which policies use it. Any policy that points to it is deleted too."
+      : n === 0
+        ? 'No policy points to it.'
+        : `${n} ${n === 1 ? 'policy points' : 'policies point'} to it and will be deleted too.`;
   return (
-    <tr className="border-b border-border/40 last:border-0 hover:bg-bg/20 align-top">
-      <Td>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-mono text-accent text-sm">{w.name}</span>
-          {w.is_default && (
-            <StatusPill variant="accent" tone="outline">
-              default
-            </StatusPill>
-          )}
-          {sys && (
-            <StatusPill variant="system" tone="outline">
-              system
-            </StatusPill>
-          )}
-          {/* R-follow-up #1 (api#118) — visibility chip for the
-              scoped policy author surface. Operators see at a glance
-              which workflows are exposed to /projects/:id/policies
-              without opening every drawer. */}
-          {w.scoped_policy_authorable && (
-            <StatusPill variant="accent" tone="outline">
-              scoped
-            </StatusPill>
-          )}
-        </div>
-        {w.description && (
-          <div className="text-muted text-xs mt-1">{w.description}</div>
-        )}
-      </Td>
-      <Td>
-        <span className="text-ink">
-          min <span className="font-mono text-accent">{w.min_approvers}</span>
+    <ConfirmModal
+      title={`Delete workflow ${workflow.name}?`}
+      body={`${policyLine} A workflow that any request has used can't be deleted; disable it instead. This can't be undone.`}
+      confirmText="Delete workflow"
+      danger
+      onCancel={onClose}
+      onConfirm={async () => {
+        try {
+          await del.mutateAsync(workflow.id);
+          void qc.invalidateQueries({ queryKey: policiesKey.all });
+          onDeleted();
+        } catch {
+          // Shown in the dialog.
+        }
+      }}
+      loading={del.isPending}
+      error={del.error}
+    />
+  );
+}
+
+function Tags({ w }: { w: Workflow }) {
+  const tags = [w.is_default && 'Default', w.is_system && 'Built in', w.scoped_policy_authorable && 'For project policies'].filter(Boolean) as string[];
+  if (tags.length === 0) return null;
+  return (
+    <span className="flex flex-wrap gap-1.5">
+      {tags.map((t) => (
+        <span key={t} className="inline-flex h-[18px] items-center rounded-sm border border-border px-[5px] text-[11px] font-medium text-muted">
+          {t}
         </span>
-      </Td>
-      <Td className="text-muted">
-        {w.require_justification ? 'required' : 'optional'}
-      </Td>
-      <Td className="text-muted">
-        {w.allow_self_approval ? 'allowed' : 'blocked'}
-      </Td>
-      <Td>
-        {w.enabled ? (
-          <StatusPill variant="success" tone="outline">
-            enabled
-          </StatusPill>
-        ) : (
-          <StatusPill variant="error" tone="outline">
-            disabled
-          </StatusPill>
-        )}
-      </Td>
-      <Td className="text-right">
-        <div className="flex items-center justify-end gap-3">
-          <button
-            onClick={onEdit}
-            className="text-accent hover:underline text-sm font-medium"
-          >
-            Edit
-          </button>
-          <button
-            onClick={onDelete}
-            disabled={sys}
-            title={sys ? 'System seed — not deletable' : undefined}
-            className={
-              sys
-                ? 'text-muted/50 cursor-not-allowed text-sm font-medium'
-                : 'text-bad hover:underline text-sm font-medium'
-            }
-          >
-            Delete
-          </button>
-        </div>
-      </Td>
-    </tr>
+      ))}
+    </span>
   );
 }
 
-function Th({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
-}
-
-function Td({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <td className={`px-5 py-3.5 align-top ${className}`}>{children}</td>;
-}
-
-// --- edit drawer ----------------------------------------------------
-
-function EditDrawer({
-  workflow,
-  onClose,
-}: {
-  workflow: Workflow;
-  onClose: () => void;
-}) {
+function EditWorkflow({ workflow, onClose }: { workflow: Workflow; onClose: () => void }) {
   const update = useUpdateWorkflow(workflow.id);
+  const toast = useToast();
   return (
-    <Drawer title={`Edit ${workflow.name}`} onClose={onClose}>
-      <WorkflowForm
-        initial={workflow}
-        onSubmit={async (body) => {
-          await update.mutateAsync(body);
-          onClose();
-        }}
-        onCancel={onClose}
-        submitting={update.isPending}
-        submitError={update.error}
-      />
-    </Drawer>
+    <WorkflowForm
+      initial={workflow}
+      onSubmit={async (body) => {
+        await update.mutateAsync(body);
+        onClose();
+        toast(`Saved workflow ${body.name}.`);
+      }}
+      onCancel={onClose}
+      submitting={update.isPending}
+      submitError={update.error}
+    />
   );
-}
-
-function stringifyError(e: unknown): string {
-  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
-  if (e instanceof Error) return e.message;
-  return String(e);
 }

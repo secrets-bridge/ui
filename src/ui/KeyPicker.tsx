@@ -13,6 +13,8 @@ interface Props {
   legend?: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
+  /** Focus the first key when the drawer or dialog opens. */
+  autoFocus?: boolean;
 }
 
 export function KeyPicker({
@@ -23,6 +25,7 @@ export function KeyPicker({
   legend = 'Keys',
   hint = 'Pick only the keys this task needs.',
   error,
+  autoFocus,
 }: Props) {
   const hintId = hint ? `${id}-hint` : undefined;
   const errorId = error ? `${id}-error` : undefined;
@@ -40,7 +43,7 @@ export function KeyPicker({
         </p>
       )}
       <div className="flex flex-col gap-1.5">
-        {keys.map((k) => {
+        {keys.map((k, i) => {
           const checked = selected.includes(k);
           return (
             <label
@@ -51,6 +54,7 @@ export function KeyPicker({
                 type="checkbox"
                 checked={checked}
                 onChange={() => onToggle(k)}
+                data-autofocus={autoFocus && i === 0 ? true : undefined}
                 className="m-0 h-4 w-4 accent-accent"
               />
               {k}

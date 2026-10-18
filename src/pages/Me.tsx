@@ -1,15 +1,18 @@
 /**
- * /me — caller's profile page. Renders identity + team memberships +
- * accessible projects + the live permission set. Data is read from
- * AuthContext (auto-hydrated by AuthProvider's /users/me query).
+ * /me — the signed-in person's profile: who they are, their second
+ * factor, the projects and environments they can work in, their direct
+ * teams and their permissions. Read from AuthContext (/users/me).
  */
 
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
+import { logoUrl } from '../api/logos';
 import { useAuth } from '../auth/AuthContext';
-import { Card } from '../ui/Card';
+import { Banner } from '../ui/Banner';
+import { EntityMark } from '../ui/EntityMark';
+import { EnvTag } from '../ui/EnvTag';
 import { PageHeader } from '../ui/PageHeader';
-import { StatusPill } from '../ui/StatusPill';
 
 export function Me() {
   const { identity, me, meStatus } = useAuth();
@@ -17,130 +20,167 @@ export function Me() {
   if (!identity) {
     return (
       <div>
-        <PageHeader title="Profile" description="" />
-        <Card className="p-10 text-center text-muted text-sm">
-          You're not signed in. <Link to="/login" className="text-accent underline">Go to login</Link>.
-        </Card>
+        <PageHeader title="Profile" />
+        <p className="text-muted">
+          You're not signed in.{' '}
+          <Link to="/login" className="text-accent hover:underline">
+            Sign in
+          </Link>
+          .
+        </p>
       </div>
     );
   }
 
+  const teams = me?.teams ?? [];
+  const teamName = (id: string | null) => teams.find((t) => t.id === id)?.name;
+  const projects = me?.projects ?? [];
+
   return (
-    <div className="space-y-4">
+    <div>
       <PageHeader
         title="Profile"
-        description={
-          meStatus === 'loading'
-            ? 'Hydrating profile from /users/me…'
-            : meStatus === 'error'
-              ? 'Could not hydrate /users/me. Try signing out and back in.'
-              : 'Who you are, which teams you belong to, and what you can do in this install.'
-        }
+        description="Who you are, where you can work and what you can do here."
       />
+      {meStatus === 'error' && (
+        <Banner tone="error" title="Couldn't load your profile." className="mb-6">
+          Try signing out and back in.
+        </Banner>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-4">
-        {/* identity */}
-        <Card className="p-5 space-y-3">
-          <h3 className="text-ink font-semibold">Identity</h3>
-          <ProfileRow label="Display name" value={identity.display_name} />
-          <ProfileRow label="Email" value={identity.email} mono />
-          <ProfileRow label="User ID" value={identity.id} mono />
-        </Card>
+      <div className="grid grid-cols-1 gap-6 min-[1100px]:grid-cols-2">
+        <Panel title="You">
+          <Rows
+            rows={[
+              ['Name', identity.display_name],
+              ['Email', identity.email],
+              ['User id', <span key="id" className="break-all font-mono text-mono">{identity.id}</span>],
+            ]}
+          />
+        </Panel>
 
-        {/* permissions */}
-        <Card className="p-5 space-y-3">
-          <h3 className="text-ink font-semibold">
-            Permissions <span className="text-muted text-xs font-normal">({identity.permissions.length})</span>
-          </h3>
-          {identity.permissions.length === 0 ? (
-            <div className="text-muted text-sm">
-              {meStatus === 'loading' ? 'Loading…' : 'No permissions granted on this account.'}
-            </div>
+        <Panel title="Second factor">
+          <div className="px-5 py-4">
+            <p className="text-body">
+              {identity.mfa_enrolled
+                ? 'You have a second factor. Approving, rejecting and revealing ask for it.'
+                : "You haven't added a second factor yet. You need one to approve, reject or reveal."}
+            </p>
+            <Link
+              to="/me/mfa"
+              className={
+                'mt-3 inline-flex h-(--control-md) items-center rounded-md border px-3 text-ui font-medium max-md:h-(--control-touch) ' +
+                (identity.mfa_enrolled
+                  ? 'border-edge bg-surface text-ink hover:bg-sunken'
+                  : 'border-accent bg-accent font-semibold text-on-accent hover:brightness-110')
+              }
+            >
+              {identity.mfa_enrolled ? 'Manage factors' : 'Add a second factor'}
+            </Link>
+          </div>
+        </Panel>
+
+        <Panel title="Projects you can work in" count={projects.length}>
+          {projects.length === 0 ? (
+            <p className="px-5 py-4 text-muted">No project access yet. Ask an administrator for access.</p>
           ) : (
-            <div className="flex flex-wrap gap-1">
-              {identity.permissions.map((p) => (
-                <StatusPill key={p} variant="accent" tone="outline">
-                  <span className="font-mono">{p}</span>
-                </StatusPill>
-              ))}
-            </div>
-          )}
-          <p className="text-muted text-xs">
-            Sidebar items + action buttons are gated by membership in this list.
-          </p>
-        </Card>
-
-        {/* teams */}
-        <Card className="p-5 space-y-3">
-          <h3 className="text-ink font-semibold">
-            Teams <span className="text-muted text-xs font-normal">({me?.teams.length ?? 0})</span>
-          </h3>
-          {(me?.teams ?? []).length === 0 ? (
-            <div className="text-muted text-sm">No direct team memberships.</div>
-          ) : (
-            <ul className="divide-y divide-border/40">
-              {me!.teams.map((t) => (
-                <li key={t.id} className="py-2 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-ink font-mono text-sm truncate">{t.name}</div>
-                    {t.parent_team_id && (
-                      <div className="text-muted text-[11px] truncate">
-                        under {t.parent_team_id}
-                      </div>
-                    )}
-                  </div>
-                  {t.status === 'archived' ? (
-                    <StatusPill variant="warning" tone="outline">archived</StatusPill>
-                  ) : (
-                    <StatusPill variant="success" tone="outline">active</StatusPill>
+            <ul className="m-0 list-none p-0">
+              {projects.map((p) => (
+                <li key={p.id} className="border-t border-rule px-5 py-3 first:border-t-0">
+                  <p className="flex items-center gap-2 text-body font-medium text-ink">
+                    <EntityMark name={p.name} src={logoUrl('project', p.id, p.logo_version)} />
+                    {p.name}
+                    {p.status === 'archived' && <span className="text-caption font-normal text-muted">archived</span>}
+                  </p>
+                  {(p.environments ?? []).length > 0 && (
+                    <p className="mt-1 flex flex-wrap gap-1.5">
+                      {(p.environments ?? []).map((e) => (
+                        <Link key={e.id} to={`/projects/${p.id}/env/${e.id}`} className="hover:underline" title={`Open ${p.name} · ${e.name}`}>
+                          <EnvTag kind={e.kind}>{e.name}</EnvTag>
+                        </Link>
+                      ))}
+                    </p>
                   )}
                 </li>
               ))}
             </ul>
           )}
-          <p className="text-muted text-xs">
-            Direct memberships only. Section heads see reports' work via team-scoped role grants; that subtree is computed server-side and not listed here.
+          <p className="border-t border-rule px-5 py-3 text-caption text-muted">
+            Projects granted to you directly, and projects under any team your role covers.
           </p>
-        </Card>
+        </Panel>
 
-        {/* projects */}
-        <Card className="p-5 space-y-3">
-          <h3 className="text-ink font-semibold">
-            Accessible projects <span className="text-muted text-xs font-normal">({me?.projects.length ?? 0})</span>
-          </h3>
-          {(me?.projects ?? []).length === 0 ? (
-            <div className="text-muted text-sm">No project access granted.</div>
+        <Panel title="Teams" count={teams.length}>
+          {teams.length === 0 ? (
+            <p className="px-5 py-4 text-muted">You aren't a direct member of any team.</p>
           ) : (
-            <ul className="divide-y divide-border/40">
-              {me!.projects.map((p) => (
-                <li key={p.id} className="py-2 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-ink font-mono text-sm truncate">{p.name}</div>
-                    <div className="text-muted text-[11px] truncate">{p.id}</div>
-                  </div>
-                  {p.status === 'archived' ? (
-                    <StatusPill variant="warning" tone="outline">archived</StatusPill>
-                  ) : (
-                    <StatusPill variant="success" tone="outline">active</StatusPill>
+            <ul className="m-0 list-none p-0">
+              {teams.map((t) => (
+                <li key={t.id} className="border-t border-rule px-5 py-3 first:border-t-0">
+                  <p className="flex items-center gap-2 text-body font-medium text-ink">
+                    <EntityMark name={t.name} kind="team" src={logoUrl('team', t.id, t.logo_version)} />
+                    {t.name}
+                    {t.status === 'archived' && <span className="text-caption font-normal text-muted">archived</span>}
+                  </p>
+                  {t.parent_team_id && teamName(t.parent_team_id) && (
+                    <p className="text-caption text-muted">Part of {teamName(t.parent_team_id)}</p>
                   )}
                 </li>
               ))}
             </ul>
           )}
-          <p className="text-muted text-xs">
-            Includes projects directly granted to you AND projects under any team subtree your role scope covers.
+          <p className="border-t border-rule px-5 py-3 text-caption text-muted">
+            Direct memberships only. Access through a parent team comes from team-scoped grants.
           </p>
-        </Card>
+        </Panel>
+
+        <div className="min-[1100px]:col-span-2">
+          <Panel title="Permissions" count={identity.permissions.length}>
+            <div className="px-5 py-4">
+              {identity.permissions.length === 0 ? (
+                <p className="text-muted">{meStatus === 'loading' ? 'Loading…' : 'No permissions on this account yet.'}</p>
+              ) : (
+                <p className="flex flex-wrap gap-1.5">
+                  {[...identity.permissions].sort().map((p) => (
+                    <span key={p} className="inline-flex h-[22px] items-center rounded-sm border border-border bg-sunken px-[7px] font-mono text-[12px]">
+                      {p}
+                    </span>
+                  ))}
+                </p>
+              )}
+              <p className="mt-3 text-caption text-muted">
+                The sidebar and buttons follow this list. The api still checks every action, and a permission may only
+                apply to some projects.
+              </p>
+            </div>
+          </Panel>
+        </div>
       </div>
     </div>
   );
 }
 
-function ProfileRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Panel({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return (
-    <div>
-      <div className="text-muted text-xs">{label}</div>
-      <div className={'text-ink text-sm mt-0.5 break-all ' + (mono ? 'font-mono' : '')}>{value}</div>
-    </div>
+    <section className="rounded-md border border-border bg-surface">
+      <h2 className="border-b border-rule px-5 py-3.5 text-block-heading text-ink">
+        {title}
+        {count !== undefined && <span className="ml-2 font-mono text-mono-small font-normal text-muted">{count}</span>}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function Rows({ rows }: { rows: [string, ReactNode][] }) {
+  return (
+    <dl className="m-0 px-5 py-1">
+      {rows.map(([k, v]) => (
+        <div key={k} className="grid grid-cols-[90px_minmax(0,1fr)] gap-3 border-b border-rule py-2.5 text-ui font-normal last:border-0">
+          <dt className="text-muted">{k}</dt>
+          <dd className="m-0 min-w-0 break-words text-ink">{v}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }

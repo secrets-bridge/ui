@@ -32,6 +32,8 @@ interface Props<T> {
   /** Phone layout for the row at 700px and below. */
   stacked?: (row: T) => ReactNode;
   minWidth?: number;
+  /** Align cells to the top, for rows whose first cell runs to two lines. */
+  alignTop?: boolean;
 }
 
 // A click on a control inside the row belongs to that control.
@@ -39,7 +41,7 @@ function fromControl(e: MouseEvent): boolean {
   return !!(e.target as HTMLElement).closest('a,button,input,select,textarea,label,summary');
 }
 
-export function DataTable<T>({ columns, rows, rowKey, label, onRowClick, stacked, minWidth = 640 }: Props<T>) {
+export function DataTable<T>({ columns, rows, rowKey, label, onRowClick, stacked, minWidth = 640, alignTop }: Props<T>) {
   return (
     <>
       <div
@@ -82,7 +84,8 @@ export function DataTable<T>({ columns, rows, rowKey, label, onRowClick, stacked
                   <td
                     key={c.key}
                     className={
-                      'px-2.5 py-[9px] align-middle text-ui font-normal ' +
+                      'px-2.5 py-[9px] text-ui font-normal ' +
+                      (alignTop ? 'align-top ' : 'align-middle ') +
                       (c.align === 'right' ? 'text-right ' : '') +
                       (c.className ?? '')
                     }

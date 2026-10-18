@@ -1,361 +1,309 @@
 /**
- * R-follow-up #5 §5 D4-D6 — Shared timeline component for the policy
- * rule audit history view. Used by all 3 Detail pages
- * (project / team / admin).
+ * R-follow-up #5 §5 D4-D6 — the audit history of one policy rule, shared
+ * by the three rule detail pages (project, team, admin).
  *
- * Renders one card per `PolicyRuleHistoryEntry`:
- *   - Header line: actor_display · occurred_at · action pill
- *   - Permission badge (`via policy.author` | `via policy.edit`)
- *   - Scope badge (only when ruleScope='platform' — i.e. admin context
- *     looking at a per-anchor rule)
- *   - Changes block (only on update events)
- *   - Collapsed snapshot expander
- *   - Correlation footer with copy-clipboard
+ * One entry per change, laid out like the request timeline: who did it
+ * and with which permission, the exact UTC time, what changed, the
+ * state after the change (collapsed), and the correlation id with a
+ * copy button. Admin pages also show which kind of rule changed.
  *
- * `policy.delete` → terminal "Deleted on T by X" row with the prior
- * snapshot inlined (services.PolicyHistoryService already carries the
- * last-known snapshot for delete events per §3 D3 step 5).
- *
- * `reconstructed` entries (the synthesized initial snapshot for rules
- * with zero audit events — M6/api#143) → "Initial snapshot observed" UX.
- * Gated on the `reconstructed` flag, NOT on chain-head position, so a
- * genuine `policy.create` event keeps its normal "created" copy (L7).
- *
- * §6 selector lock preserved — `selector_keys` rendered as set-diff
- * chips; values NEVER displayed.
+ *   - `policy.delete` reads "deleted the rule" and keeps the last state.
+ *   - `reconstructed` entries (a rule with no recorded create event,
+ *     M6/api#143) read as an initial state, gated on the flag, not on
+ *     being the oldest entry (L7).
+ *   - Selector keys show as an added/removed set; values never (§6).
  */
 
 import { useState } from 'react';
+import type { UseQueryResult } from '@tanstack/react-query';
 
+import { ApiError } from '../api/client';
 import type {
   PolicyRuleFieldChange,
   PolicyRuleHistoryEntry,
+  PolicyRuleHistoryResponse,
   PolicyRuleSnapshot,
 } from '../api/types';
-import { Card, CardBody } from '../ui/Card';
+import { formatExact } from '../lib/time';
+import { Banner } from '../ui/Banner';
+import { Button } from '../ui/Button';
+import { AuditIcon } from '../ui/icons';
+import { ANCHOR_LABEL, selectorKeyLabel } from './policies/labels';
 
 interface Props {
   entries: readonly PolicyRuleHistoryEntry[];
   hasMore: boolean;
   limit: number;
   onLoadMore: () => void;
-  /** Anchor of the page rendering this timeline. Drives whether the
-   *  per-entry `scope` badge is shown (admin needs it; scoped pages
-   *  already know the anchor from their URL). */
+  /** Anchor of the page showing the timeline. Only the admin page
+   *  ('platform') labels each entry with the kind of rule. */
   pageScope: 'platform' | 'project' | 'team';
+  loadingMore?: boolean;
 }
 
-export function PolicyHistoryTimeline({
-  entries,
-  hasMore,
-  limit,
-  onLoadMore,
-  pageScope,
-}: Props) {
+export function PolicyHistoryTimeline({ entries, hasMore, limit, onLoadMore, pageScope, loadingMore }: Props) {
   if (entries.length === 0) {
     return (
-      <Card>
-        <CardBody>
-          <p className="text-sm text-muted">
-            No recorded history. Audit events for this rule will appear
-            here after future mutations.
-          </p>
-        </CardBody>
-      </Card>
+      <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">
+        No changes recorded yet. Each change to this rule will show here.
+      </p>
     );
   }
-
   return (
-    <div className="space-y-3">
-      <ol className="space-y-3">
-        {entries.map((e) => (
-          <HistoryRow
-            key={e.event_id}
-            entry={e}
-            showScopeBadge={pageScope === 'platform'}
-          />
-        ))}
-      </ol>
-      {hasMore && (
-        <button
-          type="button"
-          onClick={onLoadMore}
-          className="w-full text-sm text-accent hover:underline border border-border rounded-sm px-3 py-2"
-        >
-          Load more (currently showing {limit})
-        </button>
-      )}
+    <div>
+      <section className="rounded-md border border-border bg-surface" aria-label="Rule history">
+        <ol className="m-0 list-none px-4 pb-3 pt-2">
+          {entries.map((e, i) => (
+            <HistoryRow key={e.event_id} entry={e} showScope={pageScope === 'platform'} last={i === entries.length - 1} />
+          ))}
+        </ol>
+      </section>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        {hasMore ? (
+          <Button variant="secondary" onClick={onLoadMore} disabled={loadingMore} aria-busy={loadingMore}>
+            {loadingMore ? 'Loading…' : 'Load older changes'}
+          </Button>
+        ) : null}
+        <span className="text-caption text-muted">
+          {hasMore ? `Showing the latest ${limit}.` : `${entries.length} ${entries.length === 1 ? 'change' : 'changes'}, oldest included.`}
+        </span>
+      </div>
     </div>
   );
 }
 
-interface RowProps {
-  entry: PolicyRuleHistoryEntry;
-  showScopeBadge: boolean;
+/** A history query on a detail page: loading, error with retry, or the timeline. */
+export function PolicyHistoryView({
+  query,
+  onLoadMore,
+  pageScope,
+}: {
+  query: UseQueryResult<PolicyRuleHistoryResponse>;
+  onLoadMore: () => void;
+  pageScope: 'platform' | 'project' | 'team';
+}) {
+  if (query.isLoading) return <p className="text-muted">Loading history…</p>;
+  if (query.isError || !query.data) {
+    return (
+      <Banner
+        tone="error"
+        title="Couldn't load the history."
+        action={
+          <Button variant="secondary" size="sm" onClick={() => void query.refetch()}>
+            Try again
+          </Button>
+        }
+      >
+        {query.error instanceof ApiError ? `${query.error.status}: ${query.error.message}` : 'Network error.'}
+      </Banner>
+    );
+  }
+  const d = query.data;
+  return (
+    <PolicyHistoryTimeline
+      entries={d.entries}
+      hasMore={d.has_more}
+      limit={d.limit}
+      onLoadMore={onLoadMore}
+      pageScope={pageScope}
+      loadingMore={query.isFetching}
+    />
+  );
 }
 
-function HistoryRow({ entry, showScopeBadge }: RowProps) {
-  const [snapshotOpen, setSnapshotOpen] = useState(false);
+const TONE: Record<PolicyRuleHistoryEntry['action'], string> = {
+  'policy.create': 'text-ok',
+  'policy.update': 'text-accent',
+  'policy.delete': 'text-bad',
+};
+
+function verb(e: PolicyRuleHistoryEntry): string {
+  if (e.action === 'policy.create') return 'created the rule';
+  if (e.action === 'policy.delete') return 'deleted the rule';
+  return 'changed the rule';
+}
+
+function HistoryRow({ entry: e, showScope, last }: { entry: PolicyRuleHistoryEntry; showScope: boolean; last: boolean }) {
   return (
-    <Card>
-      <CardBody className="space-y-3">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2 flex-wrap">
-            <ActionPill action={entry.action} />
-            <span className="text-sm text-ink">{entry.actor_display}</span>
-            <span className="text-[11px] text-muted">·</span>
-            <time className="text-[11px] text-muted" dateTime={entry.occurred_at}>
-              {formatOccurredAt(entry.occurred_at)}
-            </time>
-            {entry.actor_permission_used && (
-              <PermissionChip via={entry.actor_permission_used} />
-            )}
-            {showScopeBadge && entry.scope && <ScopeBadge scope={entry.scope} />}
-          </div>
-        </div>
+    <li className="relative grid grid-cols-[22px_minmax(0,1fr)] gap-3 py-2.5">
+      {!last && <span aria-hidden="true" className="absolute bottom-[-10px] left-[10px] top-[32px] w-px bg-border" />}
+      <span className="bg-surface pt-0.5">
+        <AuditIcon size={20} className={TONE[e.action]} />
+      </span>
+      <div className="min-w-0">
+        <p className="m-0 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-body font-medium text-ink">
+          {e.reconstructed ? (
+            <span>Initial state</span>
+          ) : (
+            <span>
+              {e.actor_display} <span className="font-normal">{verb(e)}</span>
+            </span>
+          )}
+          {e.actor_permission_used && (
+            <span className="font-mono text-mono-small font-normal text-muted">with {e.actor_permission_used}</span>
+          )}
+          {showScope && e.scope && (
+            <span className="inline-flex h-[18px] items-center rounded-sm border border-border px-[5px] text-[11px] font-medium text-muted">
+              {ANCHOR_LABEL[e.scope]} rule
+            </span>
+          )}
+        </p>
+        <time dateTime={e.occurred_at} className="mt-0.5 block font-mono text-mono-small text-muted">
+          {formatExact(e.occurred_at, true)}
+        </time>
 
-        {entry.action === 'policy.delete' && (
-          <p className="text-[12px] text-muted">
-            Rule deleted at this point. Snapshot below is the last-known
-            state before deletion.
+        {e.action === 'policy.delete' && (
+          <p className="mt-1.5 text-ui font-normal text-muted">The state below is the last one before it was deleted.</p>
+        )}
+        {e.reconstructed && (
+          <p className="mt-1.5 text-ui font-normal text-muted">
+            No create event was recorded for this rule (it was seeded or predates the audit trail), so this state comes
+            from the rule as it is now.
           </p>
         )}
-        {entry.reconstructed && (
-          <p className="text-[12px] text-muted">
-            Initial snapshot observed. This rule has no recorded create
-            event (migration-seeded or pre-cutover); the state below is
-            reconstructed from the current rule.
-          </p>
-        )}
 
-        {entry.changes.length > 0 && (
-          <ul className="space-y-1.5 text-[12px]">
-            {entry.changes.map((c) => (
+        {e.changes.length > 0 && (
+          <ul className="m-0 mt-2 flex list-none flex-col gap-1.5 p-0 text-ui font-normal">
+            {e.changes.map((c) => (
               <ChangeLine key={c.key} change={c} />
             ))}
           </ul>
         )}
 
-        <details
-          open={snapshotOpen}
-          onToggle={(ev) => setSnapshotOpen((ev.target as HTMLDetailsElement).open)}
-          className="text-[11px]"
-        >
-          <summary className="cursor-pointer text-muted hover:text-ink">
-            Snapshot after this event
-          </summary>
-          <SnapshotBlock snapshot={entry.snapshot_after} />
+        <details className="mt-2 text-ui font-normal">
+          <summary className="cursor-pointer text-accent hover:underline">State after this change</summary>
+          <Snapshot snapshot={e.snapshot_after} />
         </details>
 
-        <CorrelationFooter correlationID={entry.correlation_id} />
-      </CardBody>
-    </Card>
-  );
-}
-
-function ActionPill({ action }: { action: PolicyRuleHistoryEntry['action'] }) {
-  const label =
-    action === 'policy.create' ? 'created' : action === 'policy.update' ? 'updated' : 'deleted';
-  const cls =
-    action === 'policy.create'
-      ? 'bg-ok-bg border-ok-line text-ok'
-      : action === 'policy.update'
-        ? 'bg-info-bg border-info-line text-info'
-        : 'bg-bad-bg border-bad-line text-bad';
-  return (
-    <span
-      className={`inline-flex items-center rounded-sm border px-2 py-0.5 text-[10px] ${cls}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-function PermissionChip({ via }: { via: 'policy.author' | 'policy.edit' }) {
-  return (
-    <span className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono text-muted">
-      via {via}
-    </span>
-  );
-}
-
-function ScopeBadge({ scope }: { scope: 'platform' | 'project' | 'team' }) {
-  return (
-    <span className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] text-muted">
-      {scope}
-    </span>
+        <CopyCorrelation id={e.correlation_id} />
+      </div>
+    </li>
   );
 }
 
 function ChangeLine({ change }: { change: PolicyRuleFieldChange }) {
   switch (change.key) {
     case 'priority':
-      return (
-        <ScalarChangeRow
-          label="Priority"
-          before={change.before}
-          after={change.after}
-        />
-      );
+      return <Scalar label="Priority" before={str(change.before)} after={str(change.after)} mono />;
     case 'enabled':
-      return (
-        <ScalarChangeRow
-          label="Enabled"
-          before={renderBool(change.before)}
-          after={renderBool(change.after)}
-        />
-      );
+      return <Scalar label="Enabled" before={yesNo(change.before)} after={yesNo(change.after)} />;
     case 'name':
+      return <Scalar label="Name" before={str(change.before)} after={str(change.after)} />;
+    case 'workflow_id':
       return (
-        <ScalarChangeRow
-          label="Name"
-          before={renderStr(change.before)}
-          after={renderStr(change.after)}
+        <Scalar
+          label="Workflow"
+          before={(change.before_workflow_name as string | undefined) ?? 'a deleted workflow'}
+          after={(change.after_workflow_name as string | undefined) ?? 'a deleted workflow'}
         />
       );
-    case 'workflow_id':
-      return <WorkflowChangeRow change={change} />;
     case 'selector_keys':
-      return <SelectorKeysChangeRow change={change} />;
+      return <SelectorKeysChange change={change} />;
   }
 }
 
-function ScalarChangeRow({
-  label,
-  before,
-  after,
-}: {
-  label: string;
-  before: unknown;
-  after: unknown;
-}) {
+function Scalar({ label, before, after, mono }: { label: string; before: string; after: string; mono?: boolean }) {
   return (
-    <li className="flex items-center gap-2 text-ink">
-      <span className="text-muted w-24 shrink-0">{label}:</span>
-      <span className="font-mono text-bad line-through">
-        {String(before ?? '(unknown)')}
+    <li className="grid grid-cols-[110px_minmax(0,1fr)] gap-3">
+      <span className="text-muted">{label}</span>
+      <span className="min-w-0 break-words">
+        <del className={'text-muted ' + (mono ? 'font-mono' : '')}>{before}</del>
+        <span aria-hidden="true" className="mx-1.5 text-muted">
+          →
+        </span>
+        <span className="sr-only"> changed to </span>
+        <span className={'font-medium text-ink ' + (mono ? 'font-mono' : '')}>{after}</span>
       </span>
-      <span className="text-muted">→</span>
-      <span className="font-mono text-ok">{String(after ?? '(unknown)')}</span>
     </li>
   );
 }
 
-function WorkflowChangeRow({ change }: { change: PolicyRuleFieldChange }) {
-  const before = (change.before_workflow_name as string | undefined) ?? '(deleted)';
-  const after = (change.after_workflow_name as string | undefined) ?? '(deleted)';
-  return (
-    <li className="flex items-center gap-2 text-ink">
-      <span className="text-muted w-24 shrink-0">Workflow:</span>
-      <span className="font-mono text-bad line-through">{before}</span>
-      <span className="text-muted">→</span>
-      <span className="font-mono text-ok">{after}</span>
-    </li>
-  );
-}
-
-function SelectorKeysChangeRow({ change }: { change: PolicyRuleFieldChange }) {
+function SelectorKeysChange({ change }: { change: PolicyRuleFieldChange }) {
   const before = Array.isArray(change.before) ? (change.before as string[]) : [];
   const after = Array.isArray(change.after) ? (change.after as string[]) : [];
   const removed = before.filter((k) => !after.includes(k));
   const added = after.filter((k) => !before.includes(k));
   const kept = before.filter((k) => after.includes(k));
+  const chip = 'inline-flex h-[22px] items-center rounded-sm border px-[7px] text-[12px]';
   return (
-    <li className="flex items-start gap-2 text-ink">
-      <span className="text-muted w-24 shrink-0">Selector keys:</span>
-      <div className="flex flex-wrap gap-1">
+    <li className="grid grid-cols-[110px_minmax(0,1fr)] gap-3">
+      <span className="text-muted">Matches on</span>
+      <span className="flex flex-wrap gap-1.5">
         {kept.map((k) => (
-          <span
-            key={`k-${k}`}
-            className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono text-muted"
-          >
-            {k}
-          </span>
-        ))}
-        {removed.map((k) => (
-          <span
-            key={`r-${k}`}
-            className="inline-flex items-center rounded-sm bg-bad-bg border border-bad-line px-2 py-0.5 text-[10px] font-mono text-bad line-through"
-          >
-            {k}
+          <span key={`k-${k}`} title={k} className={chip + ' border-border bg-sunken text-ink'}>
+            {selectorKeyLabel(k)}
           </span>
         ))}
         {added.map((k) => (
-          <span
-            key={`a-${k}`}
-            className="inline-flex items-center rounded-sm bg-ok-bg border border-ok-line px-2 py-0.5 text-[10px] font-mono text-ok"
-          >
-            +{k}
+          <span key={`a-${k}`} title={k} className={chip + ' border-ok-line bg-ok-bg text-ok'}>
+            <span className="sr-only">Added: </span>+ {selectorKeyLabel(k)}
           </span>
         ))}
-      </div>
+        {removed.map((k) => (
+          <span key={`r-${k}`} title={k} className={chip + ' border-bad-line bg-bad-bg text-bad line-through'}>
+            <span className="sr-only">Removed: </span>
+            {selectorKeyLabel(k)}
+          </span>
+        ))}
+        {kept.length + added.length + removed.length === 0 && <span className="text-muted">Every request</span>}
+      </span>
     </li>
   );
 }
 
-function SnapshotBlock({ snapshot }: { snapshot: PolicyRuleSnapshot }) {
+function Snapshot({ snapshot: s }: { snapshot: PolicyRuleSnapshot }) {
+  const rows: [string, string][] = [
+    ['Name', s.name ?? 'Not recorded'],
+    ['Enabled', s.enabled === undefined ? 'Not recorded' : s.enabled ? 'Yes' : 'No'],
+    ['Priority', String(s.priority)],
+    ['Workflow', s.workflow_name ?? 'A deleted workflow'],
+    ['Matches on', s.selector_keys.length ? s.selector_keys.map(selectorKeyLabel).join(', ') : 'Every request'],
+  ];
   return (
-    <dl className="mt-2 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 text-[11px]">
-      <dt className="text-muted">Name:</dt>
-      <dd className="font-mono text-ink">{snapshot.name ?? '(unknown)'}</dd>
-      <dt className="text-muted">Enabled:</dt>
-      <dd className="font-mono text-ink">
-        {snapshot.enabled === undefined ? '(unknown)' : String(snapshot.enabled)}
-      </dd>
-      <dt className="text-muted">Priority:</dt>
-      <dd className="font-mono text-ink">{snapshot.priority}</dd>
-      <dt className="text-muted">Workflow:</dt>
-      <dd className="font-mono text-ink">
-        {snapshot.workflow_name ?? '(deleted)'}
-      </dd>
-      <dt className="text-muted">Selector keys:</dt>
-      <dd className="flex flex-wrap gap-1">
-        {snapshot.selector_keys.length === 0 ? (
-          <span className="text-muted">none</span>
-        ) : (
-          snapshot.selector_keys.map((k) => (
-            <span
-              key={k}
-              className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono"
-            >
-              {k}
-            </span>
-          ))
-        )}
-      </dd>
+    <dl className="m-0 mt-2 rounded-md border border-border bg-sunken px-3 py-1">
+      {rows.map(([k, v]) => (
+        <div key={k} className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 border-b border-rule py-1.5 last:border-0">
+          <dt className="text-muted">{k}</dt>
+          <dd className="m-0 min-w-0 break-words text-ink">{v}</dd>
+        </div>
+      ))}
     </dl>
   );
 }
 
-function CorrelationFooter({ correlationID }: { correlationID: string }) {
-  const short = correlationID.slice(0, 8) + '…';
+function CopyCorrelation({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
   return (
-    <button
-      type="button"
-      onClick={() => navigator.clipboard?.writeText(correlationID)}
-      title="Click to copy full correlation ID"
-      className="text-[10px] text-muted hover:text-ink font-mono"
-    >
-      Correlation: {short} (copy)
-    </button>
+    <p className="mt-2 flex flex-wrap items-center gap-2 text-caption text-muted">
+      <span>
+        Correlation <span className="font-mono">{id.slice(0, 8)}</span>
+      </span>
+      <Button
+        variant="quiet"
+        size="sm"
+        aria-label={`Copy correlation id ${id}`}
+        onClick={async () => {
+          // A correlation id, not a secret: the plain clipboard is fine.
+          try {
+            await navigator.clipboard.writeText(id);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 2000);
+          } catch {
+            setCopied(false);
+          }
+        }}
+      >
+        {copied ? 'Copied' : 'Copy id'}
+      </Button>
+    </p>
   );
 }
 
-function renderBool(v: unknown): string {
-  if (v === undefined || v === null) return '(unknown)';
-  return String(v);
+function str(v: unknown): string {
+  return v === undefined || v === null ? 'not recorded' : String(v);
 }
 
-function renderStr(v: unknown): string {
-  if (v === undefined || v === null) return '(unknown)';
-  return String(v);
-}
-
-function formatOccurredAt(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString();
-  } catch {
-    return iso;
-  }
+function yesNo(v: unknown): string {
+  if (v === undefined || v === null) return 'not recorded';
+  return v ? 'Yes' : 'No';
 }

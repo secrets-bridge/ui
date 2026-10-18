@@ -30,7 +30,10 @@ import { useLogin } from '../api/auth';
 import { useOidcAvailable } from '../api/oidc';
 import { useAuth } from '../auth/AuthContext';
 import { loginReturnTarget } from '../auth/sessionExpiry';
+import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
+import { Field, Input } from '../ui/Field';
+import { AgentIcon, ApprovalIcon, AuditIcon, RequestIcon } from '../ui/icons';
 import { Logo } from '../ui/Logo';
 
 // We intentionally DON'T use z.email() — its regex rejects bare-host
@@ -40,12 +43,12 @@ import { Logo } from '../ui/Logo';
 const schema = z.object({
   email: z
     .string()
-    .min(3, 'enter your email or user id')
+    .min(3, 'Enter your email address.')
     .max(255)
     .refine((v) => v.includes('@'), {
-      message: 'must contain an @',
+      message: 'Enter your email address, with an @.',
     }),
-  password: z.string().min(1, 'password required').max(255),
+  password: z.string().min(1, 'Enter your password.').max(255),
 });
 
 type FormShape = z.infer<typeof schema>;
@@ -113,12 +116,15 @@ export function Login() {
       navigate(returnTo, { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
-        // The api always returns generic "invalid credentials" on
-        // any failure — no need for status-coded branches.
+        // The api answers a generic 401 for any wrong email or
+        // password, and 429 while an account or address is locked out
+        // after repeated failures.
         setServerError(
           err.status === 401
-            ? 'Invalid email or password.'
-            : `${err.status}: ${err.message}`,
+            ? "That email and password didn't match. Check them and try again."
+            : err.status === 429
+              ? 'Too many attempts. Wait 15 minutes before you try again, or ask an administrator.'
+              : `${err.status}: ${err.message}`,
         );
       } else {
         setServerError(err instanceof Error ? err.message : String(err));
@@ -132,103 +138,139 @@ export function Login() {
     }
   };
 
+  // A session that ended (expired, revoked, signed out elsewhere) sends
+  // the tab here with ?return_to=, so say why.
+  const sessionEnded = new URLSearchParams(location.search).has('return_to');
+
+  useEffect(() => {
+    document.title = 'Sign in · Secrets Bridge';
+  }, []);
+
   return (
-    <div className="h-full bg-bg flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        {/* Brand mark */}
-        <div className="flex justify-center mb-8">
-          <Logo size={24} />
-        </div>
-
-        <form
-          onSubmit={handleSubmit(onValid)}
-          className="bg-surface border border-border rounded-md p-6 space-y-5"
-        >
-          <div>
-            <h1 className="text-ink text-lg font-semibold">Sign in</h1>
-            <p className="text-muted text-xs mt-1">
-              {oidc.enabled
-                ? 'Use single sign-on or the local-admin form below.'
-                : 'Local-admin login.'}
-            </p>
+    <div className="grid min-h-full bg-bg min-[1000px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <BrandPanel />
+      <div className="flex items-center justify-center px-4 py-10">
+        <div className="w-full max-w-[400px]">
+          <div className="mb-8 flex justify-center min-[1000px]:hidden">
+            <Logo size={24} product="Console" />
           </div>
 
-          {oidc.enabled && (
-            <>
-              <a
-                href={`/api/v1/auth/oidc/start?return_to=${encodeURIComponent(returnTo)}`}
-                className="block w-full text-center bg-accent hover:bg-accent/90 text-bg font-semibold text-sm rounded-md px-4 py-2.5"
-              >
-                Sign in with SSO
-              </a>
-              <div className="flex items-center gap-3 text-[10px] text-muted/80">
-                <div className="flex-1 h-px bg-border" />
-                <span>or local admin</span>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-            </>
-          )}
-
-          <div className="space-y-1">
-            <label className="block text-xs text-muted font-medium">
-              Email
-            </label>
-            <input
-              type="email"
-              {...register('email')}
-              autoComplete="email"
-              spellCheck={false}
-              autoCapitalize="off"
-              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
-              placeholder="admin@example.com"
-              disabled={login.isPending}
-            />
-            {errors.email && (
-              <div className="text-xs text-bad">{errors.email.message}</div>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="block text-xs text-muted font-medium">
-              Password
-            </label>
-            <input
-              type="password"
-              {...register('password')}
-              autoComplete="current-password"
-              spellCheck={false}
-              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
-              disabled={login.isPending}
-            />
-            {errors.password && (
-              <div className="text-xs text-bad">
-                {errors.password.message}
-              </div>
-            )}
-          </div>
-
-          {serverError && (
-            <div className="text-xs text-bad bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2">
-              {serverError}
-            </div>
-          )}
-
-          <Button
-            type="submit"
-            variant="primary"
-            size="md"
-            className="w-full"
-            disabled={login.isPending}
+          <form
+            onSubmit={handleSubmit(onValid)}
+            noValidate
+            className="flex flex-col gap-[18px] rounded-md border border-border bg-surface px-6 py-6"
           >
-            {login.isPending ? 'Signing in…' : 'Sign in'}
-          </Button>
+            <div>
+              <h1 id="page-title" className="text-console-title text-ink">
+                Sign in
+              </h1>
+              <p className="mt-1 text-body text-muted">
+                {oidc.enabled
+                  ? "Use your organization's single sign-on, or a local account."
+                  : 'Use the local account an administrator gave you.'}
+              </p>
+            </div>
 
-          <p className="text-[11px] text-muted/80 text-center pt-3 border-t border-border/60">
-            Sessions are server-side. The cookie is HttpOnly + SameSite=Strict.
-            No token ever lives in JS storage.
-          </p>
-        </form>
+            {sessionEnded && !serverError && (
+              <Banner>Your session ended. Sign in to continue where you were.</Banner>
+            )}
+
+            {oidc.enabled && (
+              <>
+                <a
+                  href={`/api/v1/auth/oidc/start?return_to=${encodeURIComponent(returnTo)}`}
+                  className="inline-flex h-(--control-touch) items-center justify-center rounded-md border border-accent bg-accent px-3 text-ui font-semibold text-on-accent hover:brightness-110"
+                >
+                  Sign in with single sign-on
+                </a>
+                <div className="flex items-center gap-3 text-caption text-muted">
+                  <div className="h-px flex-1 bg-rule" />
+                  <span>or with a local account</span>
+                  <div className="h-px flex-1 bg-rule" />
+                </div>
+              </>
+            )}
+
+            <Field id="login-email" label="Email" error={errors.email?.message}>
+              {(p) => (
+                <Input
+                  {...p}
+                  type="email"
+                  {...register('email')}
+                  autoComplete="email"
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  placeholder="you@example.com"
+                  disabled={login.isPending}
+                  className="w-full"
+                />
+              )}
+            </Field>
+
+            <Field id="login-password" label="Password" error={errors.password?.message}>
+              {(p) => (
+                <Input
+                  {...p}
+                  type="password"
+                  {...register('password')}
+                  autoComplete="current-password"
+                  spellCheck={false}
+                  disabled={login.isPending}
+                  className="w-full"
+                />
+              )}
+            </Field>
+
+            {serverError && <Banner tone="error">{serverError}</Banner>}
+
+            <Button
+              type="submit"
+              variant={oidc.enabled ? 'secondary' : 'primary'}
+              className="h-(--control-touch) w-full"
+              disabled={login.isPending}
+              aria-busy={login.isPending}
+            >
+              {login.isPending ? 'Signing in…' : 'Sign in'}
+            </Button>
+
+            <p className="border-t border-rule pt-3 text-center text-caption text-muted">
+              Your session lives on the server. This page never stores a token or a secret value.
+            </p>
+          </form>
+        </div>
       </div>
     </div>
+  );
+}
+
+const FLOW = [
+  { icon: RequestIcon, title: 'Ask for access', line: 'Name the secret, the keys and why. Never a value.' },
+  { icon: ApprovalIcon, title: 'Someone approves', line: 'The policy decides how many approvals, and from whom.' },
+  { icon: AgentIcon, title: 'The agent reads it', line: 'Inside your boundary. It only ever calls out.' },
+  { icon: AuditIcon, title: 'Reveal once', line: 'Behind your second factor, and on the record.' },
+];
+
+/** What the console is for, beside the form on wide screens. */
+function BrandPanel() {
+  return (
+    <aside className="hidden flex-col justify-between border-r border-border bg-surface px-14 py-12 min-[1000px]:flex">
+      <Logo size={24} product="Console" />
+      <div className="max-w-[520px]">
+        <p className="text-[44px] font-semibold leading-[48px] tracking-[-0.025em] text-ink">Govern who uses your secrets.</p>
+        <p className="mt-4 text-[17px] leading-[27px] text-muted">
+          We keep requests, approvals and audit metadata. Your secret values stay in your provider.
+        </p>
+        <ol className="mt-10 grid list-none grid-cols-2 gap-px overflow-hidden rounded-md border border-border bg-border p-0">
+          {FLOW.map(({ icon: Icon, title, line }) => (
+            <li key={title} className="bg-surface px-4 py-4">
+              <Icon size={20} className="text-accent" />
+              <p className="mt-3 text-body font-semibold text-ink">{title}</p>
+              <p className="mt-1 text-caption text-muted">{line}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <p className="text-caption text-muted">Values never pass through this page. Each one is revealed once, on the request it belongs to.</p>
+    </aside>
   );
 }

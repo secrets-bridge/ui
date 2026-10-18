@@ -1,235 +1,187 @@
 /**
- * Trigger discovery drawer (`Discover` button on /secrets).
+ * Run discovery (Secrets page, job.enqueue): queues a `discover` job
+ * through POST /jobs. An agent for that provider type claims it, lists
+ * the secrets' metadata and posts it to the catalog.
  *
- * Wraps POST /api/v1/jobs with a `discover` job_type. The agent picks
- * the job up within ~5s, calls provider.ListMetadata(scope), POSTs
- * results to /agents/:id/secrets/bulk; the CP upserts into the
- * catalog. After ~5s the secrets query auto-invalidates so the user
- * sees the refreshed totals.
+ * The job carries the provider type, an optional label selector and,
+ * for Vault, an optional KV mount. The agent takes its address, region
+ * and credentials from its own configuration (the api strips those keys
+ * from a job at claim, api#207). A KV mount, when given, has to equal
+ * the agent's SB_VAULT_KV_MOUNT (default kv) or the agent refuses the
+ * job, so the field is blank by default and blank means the agent's own
+ * mount (same behaviour as ui#127). The old form defaulted the mount to
+ * `secret`, which agents refused out of the box.
  *
- * The payload carries only what the agent accepts from a job:
- *
- *   {
- *     "job_type": "discover",
- *     "payload": {
- *       "target_provider_type": "vault",
- *       "target_provider_config": {"kvMount": "kv"},
- *       "label_selector": {"Environment": "production"}
- *     }
- *   }
- *
- * The agent takes its provider address, region and credentials from its
- * own env (SB_VAULT_ADDR, SB_AWS_REGION, ...), and the api strips any
- * other provider config at claim, so the drawer doesn't ask for them.
- * A Vault kvMount has to equal the agent's SB_VAULT_KV_MOUNT (default
- * "kv") or the agent refuses the job, so it defaults to blank, which
- * means the agent's own mount.
- *
- * Label selector entries are entered as `key:value`, comma-separated,
- * matching the /secrets filter strip's existing chip convention.
+ * Most people don't hold job.enqueue; scheduled discovery per provider
+ * connection is the usual path.
  */
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { Link } from 'react-router-dom';
 
-import {
-  type DiscoverJobInput,
-  useTriggerDiscovery,
-} from '../api/secrets';
 import { ApiError } from '../api/client';
+import { useTriggerDiscovery } from '../api/secrets';
+import { providerLabel } from '../lib/providers';
+import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
+import { Field, Input, Select } from '../ui/Field';
 
-const PROVIDER_TYPES = [
-  { value: 'aws-sm', label: 'AWS Secrets Manager' },
-  { value: 'vault', label: 'HashiCorp Vault' },
-  { value: 'gcp-sm', label: 'GCP Secret Manager' },
-  { value: 'azure-kv', label: 'Azure Key Vault' },
-];
-
-const schema = z.object({
-  target_provider_type: z.string().min(1, 'pick a provider'),
-  vault_kv_mount: z.string().optional(),
-  label_selector: z.string().optional(),
-});
-
-type Values = z.infer<typeof schema>;
+const PROVIDER_TYPES = ['vault', 'aws-sm', 'gcp-sm', 'azure-kv'];
+const PAIR = /^[^\s:,]+:[^\s,]+$/;
 
 export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
   const trigger = useTriggerDiscovery();
-  const [enqueuedId, setEnqueuedId] = useState<string | null>(null);
+  const [provider, setProvider] = useState('');
+  const [labels, setLabels] = useState('');
+  const [kvMount, setKvMount] = useState('');
+  const [tried, setTried] = useState(false);
+  const [queued, setQueued] = useState<{ id: string; correlation_id: string } | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    formState: { errors, isSubmitting },
-    setError,
-  } = useForm<Values>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      target_provider_type: 'aws-sm',
-      vault_kv_mount: '',
-      label_selector: '',
-    },
-  });
+  const pairs = labels.split(',').map((s) => s.trim()).filter(Boolean);
+  const badPair = pairs.find((p) => !PAIR.test(p));
+  const errors: Record<string, string> = {};
+  if (!provider) errors.provider = 'Choose the provider to discover.';
+  if (badPair) errors.labels = `Write each label as key:value. "${badPair}" isn't.`;
+  const show = (k: string) => (tried ? errors[k] : undefined);
 
-  const providerType = watch('target_provider_type');
-
-  const onSubmit = async (v: Values) => {
-    const config: Record<string, unknown> = {};
-    const kvMount = (v.vault_kv_mount ?? '').trim();
-    if (providerType === 'vault' && kvMount) config.kvMount = kvMount;
-
-    let label_selector: Record<string, string> | undefined;
-    const csv = (v.label_selector ?? '').trim();
-    if (csv) {
-      label_selector = {};
-      for (const pair of csv.split(',').map((s) => s.trim()).filter(Boolean)) {
-        const [k, val] = pair.split(':');
-        if (k && val) label_selector[k.trim()] = val.trim();
-      }
+  const submit = async () => {
+    setTried(true);
+    const first = ['provider', 'labels'].find((k) => errors[k]);
+    if (first) {
+      document.getElementById(`discover-${first}`)?.focus();
+      return;
     }
-
-    const input: DiscoverJobInput = {
-      target_provider_type: v.target_provider_type,
-      target_provider_config: Object.keys(config).length > 0 ? config : undefined,
-      label_selector,
-    };
+    const label_selector = pairs.length
+      ? Object.fromEntries(pairs.map((p) => [p.slice(0, p.indexOf(':')), p.slice(p.indexOf(':') + 1)]))
+      : undefined;
     try {
-      const job = await trigger.mutateAsync(input);
-      setEnqueuedId(job.id);
-    } catch (e) {
-      setError('root', {
-        message: e instanceof ApiError ? e.message : (e as Error).message,
+      const mount = kvMount.trim();
+      const job = await trigger.mutateAsync({
+        target_provider_type: provider,
+        target_provider_config: provider === 'vault' && mount ? { kvMount: mount } : undefined,
+        label_selector,
       });
+      setQueued(job);
+    } catch {
+      // Shown below.
     }
   };
 
-  if (enqueuedId) {
+  if (queued) {
     return (
-      <Drawer title="Discovery queued" onClose={onClose}>
-        <div className="space-y-3 text-sm">
-          <p className="text-ink">
-            Job{' '}
-            <span className="font-mono text-accent text-xs">{enqueuedId}</span>{' '}
-            queued. An agent claims within about 5 seconds, calls the
-            provider, and posts results back. The catalog will refresh
-            automatically.
+      <Drawer
+        title="Discovery queued"
+        onClose={onClose}
+        footer={
+          <Button variant="primary" onClick={onClose}>
+            Done
+          </Button>
+        }
+      >
+        <div className="flex flex-col gap-3 text-body">
+          <p>
+            An agent for {providerLabel(provider)} picks the job up within a few seconds, lists the secrets' metadata and
+            posts it to the catalog. The catalog refreshes on its own.
           </p>
-          <p className="text-muted text-xs">
-            If nothing changes within a minute, check that the agent
-            pod has the provider's permissions configured (IRSA / Vault
-            kubernetes auth).
+          <p className="text-muted">
+            Nothing after a minute? Check that an agent for this provider is active and that its role can list secrets.
           </p>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="primary" onClick={onClose}>
-              Close
-            </Button>
-          </div>
+          <p>
+            <Link to={`/audit?correlation_id=${queued.correlation_id}`} className="font-medium text-accent hover:underline">
+              Follow the job in the audit log
+            </Link>
+          </p>
         </div>
       </Drawer>
     );
   }
 
   return (
-    <Drawer title="Trigger discovery" onClose={onClose}>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <p className="text-xs text-muted">
-          Enqueues a <span className="font-mono">discover</span> job. The
-          first agent online that recognises the provider type picks it
-          up and uses its own provider address, region and credentials.
-        </p>
-
-        <Field label="Provider type" error={errors.target_provider_type?.message}>
-          <select
-            {...register('target_provider_type')}
-            className={inputCls}
-          >
-            {PROVIDER_TYPES.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+    <Drawer
+      title="Run discovery"
+      subtitle="Asks an agent to list secret metadata into the catalog. Values are never read."
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={trigger.isPending}>
+            Cancel
+          </Button>
+          <Button type="submit" form="discover" variant="primary" disabled={trigger.isPending} aria-busy={trigger.isPending}>
+            {trigger.isPending ? 'Queuing…' : 'Run discovery'}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="discover"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+        className="flex flex-col gap-[18px]"
+      >
+        <Field
+          id="discover-provider"
+          label="Provider"
+          hint="The first active agent for this provider type runs it, with its own address, region and credentials."
+          error={show('provider')}
+        >
+          {(p) => (
+            <Select {...p} value={provider} onChange={(e) => setProvider(e.target.value)} data-autofocus>
+              <option value="">Choose a provider</option>
+              {PROVIDER_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {providerLabel(t)}
+                </option>
+              ))}
+            </Select>
+          )}
         </Field>
-
-        {providerType === 'vault' && (
+        {provider === 'vault' && (
           <Field
-            label="KV v2 mount"
-            hint="Leave blank to use the agent's own mount. If set, it has to match the agent's SB_VAULT_KV_MOUNT (default kv) or the agent refuses the job."
+            id="discover-mount"
+            label="KV v2 mount (optional)"
+            hint="Leave blank to use the agent's own mount. If set, it has to match the agent's SB_VAULT_KV_MOUNT (default kv), or the agent refuses the job."
           >
-            <input
-              type="text"
-              {...register('vault_kv_mount')}
-              className={inputCls + ' font-mono'}
-              placeholder="agent's mount"
+            {(p) => (
+              <Input
+                {...p}
+                value={kvMount}
+                onChange={(e) => setKvMount(e.target.value)}
+                placeholder="the agent's mount"
+                className="font-mono"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            )}
+          </Field>
+        )}
+        <Field
+          id="discover-labels"
+          label="Only secrets with these labels (optional)"
+          hint="Comma-separated key:value pairs, matched against provider tags or Vault custom metadata. A secret must have every one."
+          error={show('labels')}
+        >
+          {(p) => (
+            <Input
+              {...p}
+              value={labels}
+              onChange={(e) => setLabels(e.target.value)}
+              placeholder="env:uat, team:payments"
+              className="font-mono"
               autoComplete="off"
               spellCheck={false}
             />
-          </Field>
-        )}
-
-        <Field
-          label="Label selector"
-          hint="Comma-separated key:value pairs. Maps to provider tags (AWS Tags, Vault custom_metadata). The agent's runtime filter drops anything that doesn't match every k:v."
-        >
-          <input
-            type="text"
-            {...register('label_selector')}
-            className={inputCls + ' font-mono'}
-            placeholder="Environment:production, Team:team-alpha"
-            autoComplete="off"
-            spellCheck={false}
-          />
+          )}
         </Field>
-
-        {errors.root?.message && (
-          <div className="text-sm text-bad bg-bad-bg border border-bad-line rounded-sm px-3 py-2">
-            {errors.root.message}
-          </div>
+        {trigger.isError && (
+          <Banner tone="error" title="Not queued.">
+            {trigger.error instanceof ApiError ? `${trigger.error.status}: ${trigger.error.message}` : 'Network error.'}
+          </Banner>
         )}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" disabled={isSubmitting}>
-            {isSubmitting ? 'Queuing…' : 'Trigger discovery'}
-          </Button>
-        </div>
       </form>
     </Drawer>
-  );
-}
-
-// Local helpers — kept out of src/ui/ because they're trivial and
-// only used here.
-
-const inputCls =
-  'w-full bg-bg/40 border border-border/60 rounded-sm px-3 py-2 text-sm';
-
-function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-[11px] text-muted font-medium">
-        {label}
-      </label>
-      {hint && <p className="text-xs text-muted mb-1">{hint}</p>}
-      {children}
-      {error && <p className="text-xs text-bad mt-1">{error}</p>}
-    </div>
   );
 }

@@ -1,214 +1,104 @@
 /**
- * R-follow-up #5 §5 D7 — Project policy rule Detail page.
+ * R-follow-up #5 §5 D7 — a project policy rule's page.
  *
  *   /projects/:id/policies/:ruleID
  *
- * Tab bar `Overview | History`. List page still owns Create + Edit +
- * Delete drawers (per OQ5-2); this page is primarily a History carrier
- * for triage / deep-linking.
- *
- * `canViewPolicyRuleHistory` gates the History tab on the SAME perms
- * as the parent list page (per OQ5-1).
+ * Overview and History tabs. Creating and deleting stay on the project's
+ * policies page (OQ5-2); this page is for reading and deep links.
+ * History is gated by `canViewPolicyRuleHistory`, the same permission as
+ * the list page (OQ5-1).
  */
 
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
+import { useMe } from '../api/me';
+import { useProjectPolicyRuleHistory } from '../api/policyRuleHistory';
+import { useProjectPolicyRule } from '../api/projectPolicyRules';
 import { useAuth } from '../auth/AuthContext';
 import { canViewPolicyRuleHistory } from '../auth/capabilities';
-import { useProjectPolicyRule } from '../api/projectPolicyRules';
-import { Card, CardBody } from '../ui/Card';
-import { PageHeader } from '../ui/PageHeader';
-import { StatusPill } from '../ui/StatusPill';
-import { useProjectPolicyRuleHistory } from '../api/policyRuleHistory';
-import { PolicyHistoryTimeline } from './PolicyHistoryTimeline';
-
-type Tab = 'overview' | 'history';
+import { formatExact } from '../lib/time';
+import { Banner } from '../ui/Banner';
+import { PolicyHistoryView } from './PolicyHistoryTimeline';
+import type { SelectorNames } from './policies/labels';
+import { DetailRows, Loading, Panel, RuleDetailFrame, RuleLoadProblem, RuleStatus, Selector, type RuleTab } from './policies/parts';
 
 export function ProjectPolicyDetail() {
   const { id: projectID, ruleID } = useParams<{ id: string; ruleID: string }>();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<RuleTab>('overview');
   const rule = useProjectPolicyRule(projectID, ruleID);
+  const me = useMe();
   const auth = useAuth();
 
-  const historyAllowed = canViewPolicyRuleHistory(
-    { kind: 'project', projectID: projectID ?? '' },
-    { permissions: auth.identity?.permissions },
-  );
+  const historyAllowed = canViewPolicyRuleHistory({ kind: 'project', projectID: projectID ?? '' }, { permissions: auth.identity?.permissions });
+  const project = me.data?.projects.find((p) => p.id === projectID);
+  const listPath = `/projects/${projectID}/policies`;
+  const base = [
+    { label: 'Project policies', to: '/projects/policies' },
+    { label: project?.name ?? 'Project', to: listPath },
+  ];
 
-  if (rule.isLoading) {
-    return (
-      <div className="max-w-4xl mx-auto p-6">
-        <Card><CardBody><p className="text-sm text-muted">Loading rule…</p></CardBody></Card>
-      </div>
-    );
-  }
+  if (rule.isLoading) return <Loading>Loading the rule…</Loading>;
   if (rule.isError || !rule.data) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
-        <Card className="border-bad-line">
-          <CardBody>
-            <h3 className="text-bad font-medium text-sm">Failed to load rule</h3>
-            <p className="text-muted text-xs mt-1">
-              {String(rule.error ?? 'Unknown error')}
-            </p>
-            <Link
-              to={`/projects/${projectID}/policies`}
-              className="text-accent text-xs hover:underline inline-block mt-2"
-            >
-              ← Back to project policies
-            </Link>
-          </CardBody>
-        </Card>
-      </div>
+      <RuleLoadProblem
+        crumbs={[...base, { label: 'Rule' }]}
+        error={rule.error}
+        back={{ to: listPath, label: "Back to the project's policies" }}
+        onRetry={() => void rule.refetch()}
+      />
     );
   }
 
   const r = rule.data;
+  const inherited = r.is_platform_inherited || !!r.is_team_inherited;
+  const names: SelectorNames = {
+    project: (id) => (id === project?.id ? project?.name : undefined),
+    environment: (id) => project?.environments?.find((e) => e.id === id)?.name,
+  };
+  const workflow = r.workflow_name ?? r.workflow_id.slice(0, 8);
+  const kind = r.is_platform_inherited ? 'Platform rule' : r.is_team_inherited ? `Team rule${r.team_name ? ` from ${r.team_name}` : ''}` : 'Project rule';
+
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-4">
-      <PageHeader
-        title={r.name}
-        description={`Project rule · workflow ${r.workflow_name ?? r.workflow_id.slice(0, 8) + '…'} · priority ${r.priority}`}
-        actions={
-          <Link
-            to={`/projects/${projectID}/policies`}
-            className="text-accent text-xs hover:underline"
-          >
-            ← Back
-          </Link>
-        }
-      />
-
-      <TabBar
-        tab={tab}
-        onTab={setTab}
-        historyDisabled={!historyAllowed.allowed}
-      />
-
-      {tab === 'overview' && <OverviewBlock rule={r} />}
-      {tab === 'history' && historyAllowed.allowed && (
-        <ProjectHistoryTabBody projectID={projectID!} ruleID={ruleID!} />
-      )}
-    </div>
-  );
-}
-
-function TabBar({
-  tab,
-  onTab,
-  historyDisabled,
-}: {
-  tab: Tab;
-  onTab: (t: Tab) => void;
-  historyDisabled: boolean;
-}) {
-  return (
-    <div className="border-b border-border flex gap-4 text-sm">
-      <button
-        type="button"
-        onClick={() => onTab('overview')}
-        className={
-          tab === 'overview'
-            ? 'pb-2 border-b-2 border-accent text-ink'
-            : 'pb-2 text-muted hover:text-ink'
-        }
-      >
-        Overview
-      </button>
-      <button
-        type="button"
-        onClick={() => onTab('history')}
-        disabled={historyDisabled}
-        title={historyDisabled ? 'You need policy.author on this project to view history' : undefined}
-        className={
-          historyDisabled
-            ? 'pb-2 text-muted/50 cursor-not-allowed'
-            : tab === 'history'
-              ? 'pb-2 border-b-2 border-accent text-ink'
-              : 'pb-2 text-muted hover:text-ink'
-        }
-      >
-        History
-      </button>
-    </div>
-  );
-}
-
-function OverviewBlock({ rule }: { rule: { name: string; selector_keys?: string[]; selector?: Record<string, unknown>; enabled: boolean; is_system?: boolean } }) {
-  return (
-    <Card>
-      <CardBody className="space-y-3 text-sm">
-        <div className="flex items-center gap-2">
-          {rule.enabled ? (
-            <StatusPill variant="success" tone="outline">enabled</StatusPill>
-          ) : (
-            <StatusPill variant="error" tone="outline">disabled</StatusPill>
-          )}
-          {rule.is_system && (
-            <StatusPill variant="system" tone="outline">system</StatusPill>
-          )}
-        </div>
-        <dl className="grid grid-cols-[10rem_1fr] gap-x-3 gap-y-1 text-[12px]">
-          <dt className="text-muted">Selector keys:</dt>
-          <dd className="flex flex-wrap gap-1">
-            {(rule.selector_keys ?? Object.keys(rule.selector ?? {})).map((k) => (
-              <span
-                key={k}
-                className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono"
-              >
-                {k}
-              </span>
-            ))}
-          </dd>
-        </dl>
-        <p className="text-[11px] text-muted">
-          Edit / delete via the parent list page's drawer. Detail page is
-          read-only by design (R-follow-up #5 §5 OQ5-2).
-        </p>
-      </CardBody>
-    </Card>
-  );
-}
-
-function ProjectHistoryTabBody({
-  projectID,
-  ruleID,
-}: {
-  projectID: string;
-  ruleID: string;
-}) {
-  const [limit, setLimit] = useState(50);
-  const q = useProjectPolicyRuleHistory(projectID, ruleID, limit);
-  if (q.isLoading) {
-    return (
-      <Card><CardBody><p className="text-sm text-muted">Loading history…</p></CardBody></Card>
-    );
-  }
-  if (q.isError) {
-    return (
-      <Card className="border-bad-line">
-        <CardBody>
-          <p className="text-sm text-bad">Failed to load history.</p>
-          <button
-            type="button"
-            onClick={() => q.refetch()}
-            className="text-accent text-xs hover:underline mt-1"
-          >
-            Retry
-          </button>
-        </CardBody>
-      </Card>
-    );
-  }
-  const data = q.data!;
-  return (
-    <PolicyHistoryTimeline
-      entries={data.entries}
-      hasMore={data.has_more}
-      limit={data.limit}
-      onLoadMore={() => setLimit((n) => Math.min(n + 50, 500))}
-      pageScope="project"
+    <RuleDetailFrame
+      crumbs={[...base, { label: r.name }]}
+      title={r.name}
+      fact={`${kind} · priority ${r.priority} · workflow ${workflow}`}
+      tab={tab}
+      onTab={setTab}
+      overview={
+        <Panel>
+          <DetailRows
+            rows={[
+              ['Status', <RuleStatus key="s" enabled={r.enabled} />],
+              ['Applies to', inherited ? `${kind}, inherited by this project` : `This project${project ? ` · ${project.name}` : ''}`],
+              [
+                inherited ? 'Matches on' : 'Matches',
+                inherited ? <Selector key="m" keys={r.selector_keys} /> : <Selector key="m" selector={r.selector ?? {}} names={names} />,
+              ],
+              ['Workflow', workflow],
+              ['Priority', <span key="p" className="font-mono text-mono">{r.priority}</span>],
+              ...(r.updated_at ? ([['Last changed', formatExact(r.updated_at)]] as [string, string][]) : []),
+            ]}
+          />
+          <p className="border-t border-rule px-5 py-3 text-caption text-muted">
+            {inherited ? "Read-only here. Its selector values aren't shown." : "Create or delete rules from the project's policies page."}
+          </p>
+        </Panel>
+      }
+      history={
+        historyAllowed.allowed ? (
+          <ProjectHistory projectID={projectID!} ruleID={ruleID!} />
+        ) : (
+          <Banner title="History needs the policy.author permission for this project.">Ask an administrator if you need to see who changed this rule.</Banner>
+        )
+      }
     />
   );
+}
+
+function ProjectHistory({ projectID, ruleID }: { projectID: string; ruleID: string }) {
+  const [limit, setLimit] = useState(50);
+  const q = useProjectPolicyRuleHistory(projectID, ruleID, limit);
+  return <PolicyHistoryView query={q} onLoadMore={() => setLimit((n) => Math.min(n + 50, 500))} pageScope="project" />;
 }

@@ -1,308 +1,226 @@
 /**
- * Slice L5 — env detail page rooted at /projects/:id/env/:env_id.
+ * Environment page (`/projects/:id/env/:env_id`): the secrets bound to
+ * one project environment, and the provider connections that serve it.
  *
- * Lists the secret keys bound to this (project, env) pair via
- * project_secrets.environment_id (Slice L3). Per-row CTAs:
+ * Each secret row offers what the person can do with it:
+ *   - Reveal: non-production only, for holders of secret.reveal.direct.
+ *     Opens the direct reveal drawer; policy approves it at once and
+ *     the request page reveals the values behind the second factor.
+ *   - Request: the Request access drawer, pre-filled with this secret.
+ * The page header has one primary action, Request access, and a
+ * secondary one for asking another team for a value (cross-team).
  *
- *   non_prod env + caller has secret.reveal.direct + policy allows
- *     → "Reveal" (POST /direct-reveal); returns auto-approved request
- *       id; UI polls for wraps (Slice M will replace this with the
- *       bulk reveal session page)
- *   otherwise
- *     → "Request access" (POST /request); standard approval lifecycle
- *
- * The page doesn't pre-fetch the policy decision per row — instead
- * it sends BOTH attempts and surfaces the api's 403 with a useful
- * message when direct-reveal is denied (env.kind=prod, policy not
- * opt-in, or perm missing).
+ * Reads `/users/me` for the project and environment, and the
+ * value-free env-secrets list (key names only).
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import {
-  useDirectReveal,
-  useEnvSecrets,
-  useSubmitEnvRequest,
-  type EnvSecretKey,
-} from '../api/devSecrets';
+import { useEnvSecrets } from '../api/devSecrets';
+import { logoUrl } from '../api/logos';
 import { useMe } from '../api/me';
-import { describeRevealError } from '../api/revealErrors';
 import { useAuth } from '../auth/AuthContext';
-import type { MyEnvironment, MyProject } from '../api/types';
+import { groupBoundSecrets, type BoundSecret } from '../lib/boundSecrets';
+import { providerLabel } from '../lib/providers';
+import { requestRef } from '../lib/requestRef';
+import { Banner } from '../ui/Banner';
+import { Breadcrumb } from '../ui/Breadcrumb';
 import { Button } from '../ui/Button';
-import { Card, CardBody, CardHeader } from '../ui/Card';
-import { PageHeader } from '../ui/PageHeader';
-import { StatusPill } from '../ui/StatusPill';
+import { DataTable, type Column } from '../ui/DataTable';
+import { EntityMark } from '../ui/EntityMark';
+import { EnvTag } from '../ui/EnvTag';
+import { Keys } from '../ui/Keys';
+import { Path } from '../ui/Path';
+import { useToast } from '../ui/toastContext';
 import { CrossTeamSubmitDrawer } from './CrossTeamSubmitDrawer';
-import { ProviderConnectionsCard } from './ProviderConnectionsCard';
+import { DirectRevealDrawer } from './project/DirectRevealDrawer';
+import { ProviderConnections } from './project/ProviderConnections';
+import { RequestAccessDrawer, type RequestPrefill } from './RequestAccessDrawer';
+
+type Open = { kind: 'reveal'; secret: BoundSecret } | { kind: 'request'; prefill: RequestPrefill } | { kind: 'cross-team' } | null;
+
+const OPS: Record<string, string> = { read: 'Read', patch: 'Change' };
 
 export function ProjectEnv() {
   const { id: projectId, env_id: envId } = useParams<{ id: string; env_id: string }>();
   const me = useMe();
   const secrets = useEnvSecrets(projectId, envId);
   const { hasPermission } = useAuth();
-  const [crossTeamOpen, setCrossTeamOpen] = useState(false);
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [open, setOpen] = useState<Open>(null);
 
   const project = me.data?.projects.find((p) => p.id === projectId);
   const env = project?.environments?.find((e) => e.id === envId);
+  const title = project && env ? `${project.name} · ${env.name}` : 'Environment';
 
-  // Slice N5 — third CTA shows when the caller can submit cross-team
-  // requests. The permission is independent of the per-row Reveal /
-  // Request access perms.
-  const showCrossTeamCTA = hasPermission('secret.request');
+  // The h1 here carries an environment tag, so the page builds its own
+  // header instead of PageHeader; keep the document title in step.
+  useEffect(() => {
+    document.title = `${title} · Secrets Bridge`;
+  }, [title]);
 
   if (me.isLoading) {
     return (
-      <div className="max-w-5xl mx-auto p-6">
-        <Card>
-          <CardBody>
-            <p className="text-muted text-sm">Loading…</p>
-          </CardBody>
-        </Card>
+      <div>
+        <Breadcrumb items={[{ label: 'My projects', to: '/projects' }, { label: 'Environment' }]} />
+        <p className="mt-4 text-muted">Loading…</p>
       </div>
     );
   }
 
   if (!project || !env) {
     return (
-      <div className="max-w-5xl mx-auto p-6 space-y-4">
-        <PageHeader title="Environment not found" />
-        <Card>
-          <CardBody>
-            <p className="text-muted text-sm">
-              The project or environment you're looking for isn't visible to
-              this account.{' '}
-              <Link to="/projects" className="text-accent underline">
-                Back to My Projects
-              </Link>
-            </p>
-          </CardBody>
-        </Card>
+      <div>
+        <Breadcrumb items={[{ label: 'My projects', to: '/projects' }, { label: 'Environment' }]} />
+        <h1 id="page-title" tabIndex={-1} className="mb-4 mt-3 text-console-title text-ink">
+          You can't open this environment
+        </h1>
+        <Banner title="It doesn't exist, or your roles don't cover it.">
+          <Link to="/projects" className="font-medium text-accent hover:underline">
+            Back to My projects
+          </Link>
+        </Banner>
       </div>
     );
   }
 
-  const rows = secrets.data ?? [];
+  const prod = env.kind === 'prod';
+  const canRequest = hasPermission('secret.request');
+  const canReveal = !prod && hasPermission('secret.reveal.direct');
+  const rows = groupBoundSecrets(secrets.data ?? []);
+  const requestPrefill = (s?: BoundSecret): RequestPrefill => ({ projectId: project.id, envName: env.name, secretRef: s?.ref });
 
-  return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
-      <PageHeader
-        title={`${project.name} · ${env.name}`}
-        actions={
-          <span className="flex items-center gap-2">
-            <KindBadge kind={env.kind} />
-            <span className="text-muted text-xs">
-              Risk level {env.risk_level}
-            </span>
-          </span>
-        }
-      />
-
-      {showCrossTeamCTA && (
-        <Card>
-          <CardBody className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-ink font-semibold text-sm">
-                Need a value from another team?
-              </h3>
-              <p className="text-muted text-xs mt-0.5">
-                Open a cross-team request: another team's value provider
-                fills it, an approver verifies, then the agent writes it
-                to your provider.
-              </p>
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setCrossTeamOpen(true)}
-            >
-              New cross-team request
-            </Button>
-          </CardBody>
-        </Card>
+  const columns: Column<BoundSecret>[] = [
+    {
+      key: 'ref',
+      header: 'Path',
+      render: (s) => <Path value={s.ref} className="text-ink" />,
+      className: 'max-w-[360px]',
+    },
+    { key: 'provider', header: 'Provider', render: (s) => providerLabel(s.provider), className: 'whitespace-nowrap' },
+    { key: 'keys', header: 'Keys', render: (s) => <Keys keys={s.allKeys ? [] : s.keys} />, className: 'max-w-[240px]' },
+    {
+      key: 'ops',
+      header: 'Allows',
+      render: (s) => (s.ops.length ? s.ops.map((o) => OPS[o] ?? o).join(', ') : <span className="text-muted">Nothing</span>),
+      className: 'whitespace-nowrap',
+    },
+  ];
+  const actions = (s: BoundSecret) => (
+    <span className="inline-flex gap-2">
+      {canReveal && s.ops.includes('read') && (
+        <Button variant="secondary" size="sm" onClick={() => setOpen({ kind: 'reveal', secret: s })} aria-label={`Reveal ${s.ref}`}>
+          Reveal
+        </Button>
       )}
-
-      <ProviderConnectionsCard project={project} env={env} />
-
-      <Card>
-        <CardHeader>
-          <h3 className="text-ink font-semibold">Secrets</h3>
-          <span className="text-muted text-xs">
-            {rows.length} {rows.length === 1 ? 'binding' : 'bindings'}
-          </span>
-        </CardHeader>
-        <CardBody className="space-y-3">
-          {secrets.isLoading && (
-            <p className="text-muted text-sm">Loading bindings…</p>
-          )}
-          {!secrets.isLoading && rows.length === 0 && (
-            <p className="text-muted text-sm">
-              No secrets bound to this environment yet. Ask your project admin
-              to bind one via the Secrets admin page.
-            </p>
-          )}
-          {rows.map((row, idx) => (
-            <SecretRow
-              key={`${row.secret_id}-${row.key_name}-${idx}`}
-              projectId={projectId!}
-              envId={envId!}
-              env={env}
-              row={row}
-            />
-          ))}
-        </CardBody>
-      </Card>
-
-      {crossTeamOpen && (
-        <CrossTeamSubmitDrawer
-          sourceProject={project as MyProject}
-          sourceEnvironmentID={envId}
-          onClose={() => setCrossTeamOpen(false)}
-        />
+      {canRequest && (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setOpen({ kind: 'request', prefill: requestPrefill(s) })}
+          aria-label={`Request access to ${s.ref}`}
+        >
+          Request
+        </Button>
       )}
-    </div>
+    </span>
   );
-}
+  if (canReveal || canRequest) {
+    columns.push({ key: 'actions', header: 'Actions', hiddenHeader: true, align: 'right', className: 'whitespace-nowrap', render: actions });
+  }
 
-function SecretRow({
-  projectId,
-  envId,
-  env,
-  row,
-}: {
-  projectId: string;
-  envId: string;
-  env: MyEnvironment;
-  row: EnvSecretKey;
-}) {
-  const navigate = useNavigate();
-  const directReveal = useDirectReveal(projectId, envId);
-  const submitRequest = useSubmitEnvRequest(projectId, envId);
-
-  const [justification, setJustification] = useState('');
-  const [open, setOpen] = useState<'reveal' | 'request' | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-
-  // CTA pre-selection. PROD always routes through request flow.
-  const defaultMode: 'reveal' | 'request' = env.kind === 'prod' ? 'request' : 'reveal';
-
-  const targetKeys = row.key_name ? [row.key_name] : undefined;
-
-  const submit = async (mode: 'reveal' | 'request') => {
-    setSubmitError(null);
-    const body = {
-      target_provider_type: row.provider_type,
-      target_secret_ref: row.secret_ref,
-      target_keys: targetKeys,
-      justification: justification.trim(),
-    };
-    try {
-      const resp =
-        mode === 'reveal'
-          ? await directReveal.mutateAsync(body)
-          : await submitRequest.mutateAsync(body);
-      // Reveal (auto-approved) → bulk reveal session page (Slice M4).
-      // Request (pending approval) → request detail page where the
-      // user sees approval state + can come back later to reveal.
-      if (mode === 'reveal') {
-        navigate(`/projects/${projectId}/env/${envId}/reveal/${resp.request_id}`);
-      } else {
-        navigate(`/requests/${resp.request_id}`);
-      }
-    } catch (err) {
-      // Binding refusals (api#201: not bound in this env, key outside
-      // the allowlist) get readable copy; others show the api message.
-      setSubmitError(describeRevealError(err, ' · '));
-    }
+  const created = (id: string) => {
+    setOpen(null);
+    toast(`Request ${requestRef(id)} submitted.`, { to: `/requests/${id}`, label: 'Open it' });
   };
 
-  const busy = directReveal.isPending || submitRequest.isPending;
-
   return (
-    <div className="bg-bg/40 border border-border/60 rounded-md px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
+    <div>
+      <Breadcrumb items={[{ label: 'My projects', to: '/projects' }, { label: project.name }, { label: env.name }]} />
+      <div className="mb-6 mt-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="min-w-0">
-          <div className="font-mono text-ink text-sm truncate">
-            {row.key_name || '(all keys)'}
-          </div>
-          <div className="text-muted text-xs truncate">
-            {row.provider_type} · {row.secret_ref}
-          </div>
+          <h1 id="page-title" tabIndex={-1} className="flex flex-wrap items-center gap-x-3 gap-y-1 break-words text-console-title text-ink">
+            <EntityMark name={project.name} size="lg" src={logoUrl('project', project.id, project.logo_version)} />
+            <span>{project.name}</span> <EnvTag kind={env.kind}>{env.name}</EnvTag>
+          </h1>
+          <p className="mt-[3px] max-w-3xl text-ui font-normal text-muted">
+            {prod
+              ? 'Production. Values are read only through an approved request; direct reveal is blocked here.'
+              : canReveal
+                ? 'Non-production. Reveal a value directly when policy allows it, or request access for an approver to review.'
+                : 'Non-production. Request access and an approver reviews it.'}{' '}
+            Risk level {env.risk_level} of 4.
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          {env.kind !== 'prod' && row.allowed_ops.includes('read') && (
-            <Button
-              variant={defaultMode === 'reveal' ? 'primary' : 'secondary'}
-              size="sm"
-              onClick={() => setOpen(open === 'reveal' ? null : 'reveal')}
-              disabled={busy}
-            >
-              Reveal
+        {canRequest && (
+          <div className="flex flex-wrap items-center gap-2.5 max-[600px]:w-full max-[600px]:[&>button]:flex-1">
+            <Button variant="secondary" onClick={() => setOpen({ kind: 'cross-team' })}>
+              Ask another team
             </Button>
-          )}
-          {row.allowed_ops.includes('read') && (
-            <Button
-              variant={defaultMode === 'request' ? 'primary' : 'secondary'}
-              size="sm"
-              onClick={() => setOpen(open === 'request' ? null : 'request')}
-              disabled={busy}
-            >
+            <Button variant="primary" onClick={() => setOpen({ kind: 'request', prefill: requestPrefill() })}>
               Request access
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {open && (
-        <div className="mt-3 pt-3 border-t border-border/60 space-y-2">
-          <label className="block text-[11px] text-muted font-medium">
-            Justification
-          </label>
-          <input
-            type="text"
-            value={justification}
-            onChange={(e) => setJustification(e.target.value)}
-            placeholder={
-              open === 'reveal'
-                ? 'Why do you need to view this secret right now?'
-                : 'Why are you requesting access? (visible to approvers)'
-            }
-            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
-          />
-          {submitError && (
-            <p className="text-bad text-xs">{submitError}</p>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setOpen(null)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => submit(open)}
-              disabled={busy || justification.trim().length < 3}
-            >
-              {busy ? 'Submitting…' : open === 'reveal' ? 'Reveal now' : 'Submit request'}
-            </Button>
-          </div>
-        </div>
+      <section aria-labelledby="secrets-heading" className="mb-8">
+        <h2 id="secrets-heading" className="mb-3 text-block-heading text-ink">
+          Secrets
+          <span className="ml-2 font-mono text-mono-small font-normal text-muted">{rows.length}</span>
+        </h2>
+        {secrets.isLoading && <p className="text-muted">Loading the secrets bound here…</p>}
+        {secrets.isError && <Banner tone="error" title="Couldn't load the secrets bound here.">Try again in a moment.</Banner>}
+        {secrets.data &&
+          (rows.length > 0 ? (
+            <DataTable
+              label={`Secrets bound to ${title}`}
+              columns={columns}
+              rows={rows}
+              rowKey={(s) => s.ref}
+              minWidth={680}
+              stacked={(s) => (
+                <div className="flex flex-col gap-1.5">
+                  <p><Path value={s.ref} className="text-ink" /></p>
+                  <p className="text-caption text-muted">
+                    {providerLabel(s.provider)} · {s.ops.map((o) => OPS[o] ?? o).join(', ') || 'Nothing allowed'}
+                  </p>
+                  <Keys keys={s.allKeys ? [] : s.keys} variant="chips" />
+                  {(canReveal || canRequest) && <div className="mt-1">{actions(s)}</div>}
+                </div>
+              )}
+            />
+          ) : (
+            <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">
+              No secret is bound to this environment yet. A project admin binds them from the Secrets page.
+            </p>
+          ))}
+        <p className="mt-2 text-caption text-muted">Paths and key names only. Values stay in the provider until an approved read runs.</p>
+      </section>
+
+      <ProviderConnections project={project} env={env} />
+
+      {open?.kind === 'reveal' && (
+        <DirectRevealDrawer
+          project={project}
+          env={env}
+          secret={open.secret}
+          onClose={() => setOpen(null)}
+          onCreated={(id) => {
+            setOpen(null);
+            navigate(`/requests/${id}`);
+          }}
+          onRequestInstead={() => setOpen({ kind: 'request', prefill: requestPrefill(open.secret) })}
+        />
+      )}
+      {open?.kind === 'request' && (
+        <RequestAccessDrawer prefill={open.prefill} onClose={() => setOpen(null)} onCreated={created} />
+      )}
+      {open?.kind === 'cross-team' && (
+        <CrossTeamSubmitDrawer sourceProject={project} sourceEnvironmentID={env.id} onClose={() => setOpen(null)} />
       )}
     </div>
-  );
-}
-
-function KindBadge({ kind }: { kind: MyEnvironment['kind'] }) {
-  if (kind === 'prod') {
-    return (
-      <StatusPill variant="accent" tone="outline">
-        prod
-      </StatusPill>
-    );
-  }
-  return (
-    <StatusPill variant="neutral" tone="outline">
-      non_prod
-    </StatusPill>
   );
 }

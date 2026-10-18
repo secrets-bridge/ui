@@ -1,49 +1,19 @@
 /**
- * Slice M2/M4 — typed surface for the bulk reveal session endpoints
- * (api#85):
+ * Reveal sessions (api#85):
  *
  *   POST   /api/v1/reveal-sessions             open
- *   GET    /api/v1/reveal-sessions/me/active   value-free summaries
- *   POST   /api/v1/reveal-sessions/:id/expire  end ahead of TTL
+ *   POST   /api/v1/reveal-sessions/:id/expire  end ahead of the deadline
  *
- * Open returns wrap_id + key_name handles, NOT plaintext. The page
- * loops over `wraps[]` and fetches each plaintext via the existing
- * single-shot `/api/v1/requests/:id/wraps/:wrap_id` endpoint
- * (`revealWrap` in src/api/requests.ts).
+ * Every reveal in the console goes through a session, so the server
+ * owns the viewing window (`ttl_seconds`, `expires_at`). Open returns
+ * wrap handles (wrap id and key name), never values; each value is then
+ * fetched once through GET /requests/:id/wraps/:wrap_id (`revealWrap`).
+ *
+ * These are plain calls, not TanStack hooks, on purpose: nothing about a
+ * reveal should sit in a query or mutation cache.
  */
-
-import { useMutation } from '@tanstack/react-query';
 
 import { api } from './client';
-import type { AccessRequest } from './types';
-
-/**
- * True when the request's wraps belong to the reveal-session flow, so the
- * UI must open a reveal session instead of fetching a single wrap.
- *
- * Mirrors the api check (api#201, API-S-20, RetrieveWrapForUser): a read
- * request that is approved or executed with ZERO approve votes is a
- * direct reveal. Approve always appends the vote before it flips the
- * status, so an approver-approved read always has at least one; the
- * GET /requests/:id response carries no explicit direct-reveal field.
- * Once #201 is live the api refuses a single-wrap fetch of such a wrap
- * with 403 unless the caller has an open session that bundles it. On
- * api main the session flow works the same, so this is safe either way.
- */
-export function isRevealSessionFlow(r: AccessRequest): boolean {
-  if (r.type !== 'read') return false;
-  if (r.status !== 'approved' && r.status !== 'executed') return false;
-  return !(r.approvals ?? []).some((a) => a.decision === 'approve');
-}
-
-/** Route of the reveal-session page (`RevealSession.tsx`). */
-export function revealSessionPath(
-  projectId: string,
-  envId: string,
-  requestId: string,
-): string {
-  return `/projects/${projectId}/env/${envId}/reveal/${requestId}`;
-}
 
 /** Per-wrap handle returned by Open. NEVER carries plaintext. */
 export interface RevealSessionWrapHandle {
@@ -51,7 +21,7 @@ export interface RevealSessionWrapHandle {
   key_name?: string;
 }
 
-/** Successful Open response. session_id + TTL anchors the SPA countdown. */
+/** Successful Open response. `opened_at` and `expires_at` anchor the countdown. */
 export interface RevealSessionResponse {
   session_id: string;
   access_request_id: string;
@@ -63,60 +33,30 @@ export interface RevealSessionResponse {
   wraps: RevealSessionWrapHandle[];
 }
 
-/** Body for POST /reveal-sessions. */
-export interface OpenRevealSessionInput {
-  access_request_id: string;
-}
-
 /**
- * Opens a bulk reveal session for an approved/executed read request.
+ * Open a reveal session for an approved or executed read request. Needs
+ * a fresh MFA step-up (the client handles a 401 step-up challenge).
  *
- * Status mapping (handled by `ApiError`):
- *   - 404 — request not found or wrong type (e.g. patch)
- *   - 403 — caller is not the requester
- *   - 409 — request not approved/executed yet
- *   - 410 — every wrap already consumed (re-open after expire)
- *   - 412 — step-up MFA required (handled SPA-wide by the auth client)
+ *   - 503 `wrap_not_ready`: the agent hasn't stored the values yet
+ *   - 410: every value was already revealed or expired
+ *   - 403: not the requester, or the binding refuses a key
+ *   - 409: not approved yet
+ *   - 429: too many reveal attempts
  */
-export function useOpenRevealSession() {
-  return useMutation({
-    mutationFn: (body: OpenRevealSessionInput) =>
-      api.post<RevealSessionResponse>('/api/v1/reveal-sessions', body),
-  });
-}
-
-/** Body for POST /reveal-sessions/:id/expire. */
-export interface ExpireRevealSessionInput {
-  reason: 'user_hide' | 'unmount';
+export function openRevealSession(accessRequestId: string): Promise<RevealSessionResponse> {
+  return api.post<RevealSessionResponse>('/api/v1/reveal-sessions', { access_request_id: accessRequestId });
 }
 
 /**
- * Ends a session ahead of its TTL. The server flips the row to expired
- * and advances each underlying wrap's expires_at to "now" so any
- * post-expire retrieve returns 410. Idempotent server-side (a double
- * Hide-Now or sweeper race returns nil).
+ * End a session before its deadline. The server marks it expired and
+ * moves each wrap's expiry to now, so nothing in it can be fetched
+ * again. Idempotent server-side. Errors are swallowed: the worker's
+ * sweeper closes the session at its deadline anyway.
  */
-export function useExpireRevealSession() {
-  return useMutation({
-    mutationFn: (vars: { sessionId: string; body: ExpireRevealSessionInput }) =>
-      api.post<void>(
-        `/api/v1/reveal-sessions/${vars.sessionId}/expire`,
-        vars.body,
-      ),
-  });
-}
-
-/**
- * Fire-and-forget unmount expire. Used in `useEffect` cleanups where
- * blocking the navigation on a mutation isn't acceptable. Swallows
- * errors — the M3 sweeper is the safety net.
- */
-export function expireSessionUnmount(sessionId: string): void {
+export function expireRevealSession(sessionId: string, reason: 'user_hide' | 'unmount'): void {
   void api
-    .post<void>(`/api/v1/reveal-sessions/${sessionId}/expire`, {
-      reason: 'unmount',
-    })
+    .post<void>(`/api/v1/reveal-sessions/${sessionId}/expire`, { reason })
     .catch(() => {
-      /* fire-and-forget */
+      /* best effort */
     });
 }

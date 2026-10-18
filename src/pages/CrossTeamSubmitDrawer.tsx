@@ -1,26 +1,22 @@
 /**
- * Slice N5 — cross-team request submit drawer.
+ * Ask another team for values (cross-team request, Slice N5). Opened
+ * from an environment page, which is the source: its provider
+ * connections receive the values.
  *
- * Hosted from ProjectEnv.tsx as the third CTA (alongside Reveal +
- * Request access). Form shape per §5 design:
+ *   - Who has them: team, then one of its projects, then an environment.
+ *   - Where they go: a provider connection bound to the source project
+ *     and environment, the secret path, and the key names.
+ *   - Justification: at least 10 characters, no pasted values. The
+ *     other team's value provider and the approvers read it.
  *
- *   - target: team → project → environment (cascading)
- *   - destination: provider_connection (from SOURCE project bindings)
- *                 + secret_ref + dynamic key chip list
- *   - justification (≥10 chars)
- *
- * Hard rules:
- *   - NO secret values in the body (key NAMES only).
- *   - The body carries the SOURCE project id and environment name
- *     (`project_id`, `environment`); the api checks the destination is
- *     bound there (API-N-03). Without a source project, submit is
- *     blocked instead of sending a request the api refuses.
- *   - Stable error codes routed through `crossTeamErrorMessage` to
- *     friendly inline text; falls through to api's own message otherwise.
+ * Key names only, never values. Errors show under their field after a
+ * submit attempt and focus moves to the first. `buildCrossTeamSubmitBody`
+ * stays the single place the body is built and checked (every id a real
+ * UUID, the source project present).
  */
 
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
 import {
@@ -32,422 +28,307 @@ import {
 } from '../api/crossTeam';
 import { useEnvironmentsForProject, useProjects } from '../api/tenancy';
 import { useTeams } from '../api/teams';
-import { useAuth } from '../auth/AuthContext';
-import { Button } from '../ui/Button';
 import type { MyProject } from '../api/types';
+import { useAuth } from '../auth/AuthContext';
+import { looksLikeASecret } from '../lib/justification';
+import { providerLabel } from '../lib/providers';
+import { requestRef } from '../lib/requestRef';
+import { Banner } from '../ui/Banner';
+import { Button } from '../ui/Button';
+import { Drawer } from '../ui/Drawer';
+import { EnvTag } from '../ui/EnvTag';
+import { Field, Input, Select, Textarea } from '../ui/Field';
+import { Keys } from '../ui/Keys';
+import { useToast } from '../ui/toastContext';
+
+const WHY_MIN = 10;
 
 interface Props {
-  /**
-   * Source project: the requester's project, whose provider connection
-   * receives the values. Required by the api; when it's absent the
-   * drawer blocks submit with an inline message.
-   */
+  /** The requester's project; its provider connection receives the values. */
   sourceProject?: MyProject | null;
-  /**
-   * Source environment id. Threaded through to the provider-connections
-   * dropdown so the api returns env-specific + project-wide bindings
-   * (EPIC P §4). Optional because the drawer can also be opened from
-   * project-level surfaces that don't carry an env context.
-   */
+  /** The source environment; narrows the connections to its bindings. */
   sourceEnvironmentID?: string;
   onClose: () => void;
 }
 
-export function CrossTeamSubmitDrawer({
-  sourceProject,
-  sourceEnvironmentID,
-  onClose,
-}: Props) {
+export function CrossTeamSubmitDrawer({ sourceProject, sourceEnvironmentID, onClose }: Props) {
   const { hasPermission } = useAuth();
-  const navigate = useNavigate();
+  const toast = useToast();
   const teams = useTeams();
   const projects = useProjects();
 
-  // Target picker state. Cascading: team chosen → projects filtered to
-  // that team's owner_team_id → environment list narrowed to the
-  // chosen target project.
-  const [targetTeamID, setTargetTeamID] = useState('');
-  const [targetProjectID, setTargetProjectID] = useState('');
-  const [targetEnvID, setTargetEnvID] = useState('');
+  const [teamId, setTeamId] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [envId, setEnvId] = useState('');
+  const [connectionId, setConnectionId] = useState('');
+  const [secretRef, setSecretRef] = useState('');
+  const [keysText, setKeysText] = useState('');
+  const [why, setWhy] = useState('');
+  const [tried, setTried] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  // Filter to the chosen team's projects. The authoritative binding is
-  // the typed `team_id` FK; `owner_team_id` is the legacy free-text
-  // field and is EMPTY on projects created through the team FK, so
-  // filtering on it alone silently returns nothing (the ui#86 cascade
-  // bug). Prefer team_id, fall back to owner_team_id for legacy rows.
-  const targetProjects = useMemo(
-    () =>
-      (projects.data ?? []).filter(
-        (p) =>
-          (p.team_id ?? p.owner_team_id ?? '') === targetTeamID &&
-          p.status === 'active',
-      ),
-    [projects.data, targetTeamID],
+  // A project belongs to a team through `team_id`; `owner_team_id` is the
+  // legacy free-text field, empty on newer projects (ui#86).
+  const teamProjects = useMemo(
+    () => (projects.data ?? []).filter((p) => (p.team_id ?? p.owner_team_id ?? '') === teamId && p.status === 'active'),
+    [projects.data, teamId],
   );
-  const targetEnvs = useEnvironmentsForProject(
-    targetProjectID || undefined,
-  );
-
-  // The api resolves the source environment by NAME inside the source
-  // project, so look the name up from the id the page passed in.
-  const sourceEnvironmentName = sourceEnvironmentID
-    ? sourceProject?.environments?.find((e) => e.id === sourceEnvironmentID)
-        ?.name
-    : undefined;
-
-  // Destination picker — provider connections come from the SOURCE
-  // project + env (cross-team values land in source's workload, not the
-  // target team's). EPIC P returns a sanitized {id, name, type}
-  // projection scoped to (project, env); empty list triggers the §5
-  // empty-state CTA below, branched by integration.edit permission.
-  const provConns = useProviderConnections(
-    sourceProject?.id,
-    sourceEnvironmentID,
-  );
-  const [destProvConnID, setDestProvConnID] = useState('');
-  const [destSecretRef, setDestSecretRef] = useState('');
-  const [destKeysInput, setDestKeysInput] = useState('');
-  const destKeys = useMemo(
-    () =>
-      destKeysInput
-        .split(/[\s,]+/)
-        .map((k) => k.trim())
-        .filter(Boolean),
-    [destKeysInput],
-  );
-
-  const [justification, setJustification] = useState('');
-
+  const envs = useEnvironmentsForProject(projectId || undefined);
+  const sourceEnv = sourceProject?.environments?.find((e) => e.id === sourceEnvironmentID);
+  const connections = useProviderConnections(sourceProject?.id, sourceEnvironmentID);
+  const keys = useMemo(() => [...new Set(keysText.split(/[\s,]+/).map((k) => k.trim()).filter(Boolean))], [keysText]);
   const submit = useSubmitCrossTeam();
-  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Fail-closed validation lives in buildCrossTeamSubmitBody: every id
-  // must be a real UUID, the source project must be present, and the
-  // justification keeps its 10-char floor. `errors` is surfaced as a
-  // visible checklist so submit is never a silent no-op.
-  const build = useMemo(
-    () =>
-      buildCrossTeamSubmitBody({
-        sourceProjectID: sourceProject?.id,
-        sourceEnvironmentID,
-        sourceEnvironmentName,
-        targetTeamID,
-        targetProjectID,
-        targetEnvironmentID: targetEnvID,
-        destinationProviderConnectionID: destProvConnID,
-        destinationSecretRef: destSecretRef,
-        destinationKeys: destKeys,
-        justification,
-      }),
-    [
-      sourceProject?.id,
-      sourceEnvironmentID,
-      sourceEnvironmentName,
-      targetTeamID,
-      targetProjectID,
-      targetEnvID,
-      destProvConnID,
-      destSecretRef,
-      destKeys,
-      justification,
-    ],
-  );
-  const valid = build.ok;
-  const errors = build.ok ? [] : build.errors;
+  const build = buildCrossTeamSubmitBody({
+    sourceProjectID: sourceProject?.id,
+    sourceEnvironmentID,
+    sourceEnvironmentName: sourceEnv?.name,
+    targetTeamID: teamId,
+    targetProjectID: projectId,
+    targetEnvironmentID: envId,
+    destinationProviderConnectionID: connectionId,
+    destinationSecretRef: secretRef,
+    destinationKeys: keys,
+    justification: why,
+  });
+
+  const whyLen = why.trim().length;
+  const errors: Record<string, string> = {};
+  if (!teamId) errors.team = 'Choose the team that has the values.';
+  else if (!projectId) errors.project = 'Choose one of their projects.';
+  else if (!envId) errors.env = 'Choose the environment the values come from.';
+  if (!connectionId) errors.connection = 'Choose where the values are written.';
+  if (!secretRef.trim()) errors.ref = 'Enter the secret path the values are written to.';
+  if (keys.length === 0) errors.keys = 'Name at least one key.';
+  if (whyLen < WHY_MIN) errors.why = `Explain why in at least ${WHY_MIN} characters (${whyLen} so far).`;
+  else if (looksLikeASecret(why)) errors.why = "This looks like it contains a secret value. Describe the need instead; don't paste values here.";
+  const show = (k: string) => (tried ? errors[k] : undefined);
+  const order = ['team', 'project', 'env', 'connection', 'ref', 'keys', 'why'];
 
   const onSubmit = async () => {
-    setSubmitError(null);
-    if (!build.ok) return;
+    setTried(true);
+    setServerError(null);
+    const first = order.find((k) => errors[k]);
+    if (first) {
+      document.getElementById(`ct-${first}`)?.focus();
+      return;
+    }
+    if (!build.ok) {
+      setServerError(build.errors.join(' '));
+      return;
+    }
     try {
-      const resp = await submit.mutateAsync(build.body);
-      navigate(`/requests/${resp.id}`);
+      const created = await submit.mutateAsync(build.body);
+      const team = teams.data?.find((t) => t.id === teamId)?.name ?? 'the other team';
+      toast(`Asked ${team} for ${keys.length} ${keys.length === 1 ? 'value' : 'values'} (${requestRef(created.id)}).`, {
+        to: `/requests/${created.id}`,
+        label: 'Open it',
+      });
+      onClose();
     } catch (err) {
-      if (err instanceof ApiError) {
-        const code = extractErrorCode(err);
-        setSubmitError(
-          `${err.status} · ${crossTeamErrorMessage(code) ?? err.message}`,
-        );
-      } else if (err instanceof Error) {
-        setSubmitError(err.message);
-      } else {
-        setSubmitError(String(err));
-      }
+      setServerError(
+        err instanceof ApiError
+          ? `${err.status}: ${crossTeamErrorMessage(extractCrossTeamErrorCode(err.body)) ?? err.message}`
+          : err instanceof Error
+            ? err.message
+            : String(err),
+      );
     }
   };
 
+  const noConnections = connections.data && connections.data.length === 0;
+
   return (
-    <div className="fixed inset-0 z-40 flex">
-      <button
-        className="flex-1 bg-scrim"
-        onClick={onClose}
-        aria-label="Close"
-      />
-      <aside className="w-[520px] max-w-full h-full bg-surface border-l border-border overflow-y-auto p-6 space-y-5">
-        <div>
-          <h2 className="text-ink text-xl font-semibold tracking-tight">
-            New cross-team request
-          </h2>
-          <p className="text-muted text-sm mt-1">
-            Ask another team to provide values you don't have direct
-            access to. Their value provider fills the form; an approver
-            (and security, if the policy requires it) verifies before
-            the values land in your provider.
-          </p>
-          <p className="text-muted text-xs mt-2">
-            Source:{' '}
-            {sourceProject ? (
-              <span className="text-ink">
-                {sourceProject.name}
-                {sourceEnvironmentName ? ` · ${sourceEnvironmentName}` : ''}
-              </span>
-            ) : (
-              <span className="text-warn">no project selected</span>
-            )}
-          </p>
-        </div>
-
-        <section className="space-y-3">
-          <h3 className="text-ink font-semibold text-sm">
-            Target
-          </h3>
-          <Select
-            label="Team"
-            value={targetTeamID}
-            onChange={(v) => {
-              setTargetTeamID(v);
-              setTargetProjectID('');
-              setTargetEnvID('');
-            }}
-            options={[
-              { value: '', label: 'Select a team…' },
-              ...(teams.data ?? [])
-                .filter((t) => t.status === 'active')
-                .map((t) => ({ value: t.id, label: t.name })),
-            ]}
-          />
-          <Select
-            label="Project"
-            value={targetProjectID}
-            onChange={(v) => {
-              setTargetProjectID(v);
-              setTargetEnvID('');
-            }}
-            disabled={!targetTeamID}
-            options={[
-              { value: '', label: 'Select a project…' },
-              ...targetProjects.map((p) => ({ value: p.id, label: p.name })),
-            ]}
-          />
-          <Select
-            label="Environment"
-            value={targetEnvID}
-            onChange={setTargetEnvID}
-            disabled={!targetProjectID}
-            options={[
-              { value: '', label: 'Select an environment…' },
-              ...(targetEnvs.data ?? []).map((e) => ({
-                value: e.id,
-                label: `${e.name} · ${e.kind ?? e.type}`,
-              })),
-            ]}
-          />
-        </section>
-
-        <section className="space-y-3">
-          <h3 className="text-ink font-semibold text-sm">
-            Destination
-          </h3>
-          <p className="text-muted text-xs">
-            Values will be written by the agent to your workload's
-            secret store. Pick the provider connection bound to your
-            source project.
-          </p>
-          <Select
-            label="Provider connection"
-            value={destProvConnID}
-            onChange={setDestProvConnID}
-            options={[
-              { value: '', label: 'Select a provider connection…' },
-              ...(provConns.data ?? []).map((c) => ({
-                value: c.id,
-                label: `${c.name} · ${c.type}`,
-              })),
-            ]}
-          />
-          {provConns.data && provConns.data.length === 0 && (
-            <div className="rounded-md border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted space-y-1">
-              <div className="text-ink font-medium">
-                No provider connections are bound to this project / environment.
-              </div>
-              {hasPermission('integration.edit') ? (
-                <div>
-                  <Link
-                    to="/admin/provider-connections"
-                    className="text-accent hover:underline underline"
-                  >
-                    Manage provider connections
-                  </Link>{' '}
-                  and bind one to this project to enable cross-team writes.
-                </div>
-              ) : (
-                <div>
-                  Ask your platform / admin team to bind a provider
-                  connection to this project.
-                </div>
-              )}
-            </div>
-          )}
-          <Field label="Secret reference">
-            <input
-              type="text"
-              value={destSecretRef}
-              onChange={(e) => setDestSecretRef(e.target.value)}
-              placeholder="e.g. billing/prod/db"
-              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
-            />
-          </Field>
-          <Field
-            label="Keys to fill"
-            hint={`${destKeys.length} key${destKeys.length === 1 ? '' : 's'} • comma- or space-separated`}
-          >
-            <input
-              type="text"
-              value={destKeysInput}
-              onChange={(e) => setDestKeysInput(e.target.value)}
-              placeholder="DB_PASSWORD, DB_USER"
-              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm font-mono focus:border-accent"
-            />
-            {destKeys.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1.5">
-                {destKeys.map((k) => (
-                  <span
-                    key={k}
-                    className="bg-accent/15 text-accent text-[11px] rounded-sm px-2 py-0.5 font-mono"
-                  >
-                    {k}
-                  </span>
-                ))}
-              </div>
-            )}
-          </Field>
-        </section>
-
-        <section className="space-y-2">
-          <Field
-            label="Justification"
-            hint={`${justification.trim().length} / 10 minimum`}
-          >
-            <textarea
-              value={justification}
-              onChange={(e) => setJustification(e.target.value)}
-              placeholder="Why does your workload need these values? (visible to approvers + value provider)"
-              rows={3}
-              className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent"
-            />
-          </Field>
-        </section>
-
-        {submitError && (
-          <div className="bg-bad-bg border border-bad-line border-l-4 border-l-bad rounded-md px-3 py-2 text-sm text-bad">
-            {submitError}
-          </div>
-        )}
-
-        {!valid && (
-          <div className="rounded-md border border-warn-line bg-warn-bg px-3 py-2 text-xs text-warn space-y-1">
-            <div className="font-medium text-warn">
-              Complete these to submit:
-            </div>
-            <ul className="list-disc list-inside space-y-0.5">
-              {errors.map((m) => (
-                <li key={m}>{m}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
-          <Button variant="secondary" size="md" onClick={onClose}>
+    <Drawer
+      title="Ask another team for values"
+      subtitle={
+        sourceProject ? (
+          <>
+            For {sourceProject.name} {sourceEnv && <EnvTag kind={sourceEnv.kind}>{sourceEnv.name}</EnvTag>}. Their value
+            provider fills it, your approvers verify it, then an agent writes the values for you.
+          </>
+        ) : (
+          'Open this from one of your environment pages.'
+        )
+      }
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={submit.isPending}>
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => void onSubmit()}
-            disabled={!valid || submit.isPending}
-          >
-            {submit.isPending ? 'Submitting…' : 'Submit request'}
+          <Button type="submit" form="cross-team" variant="primary" disabled={submit.isPending} aria-busy={submit.isPending}>
+            {submit.isPending ? 'Sending…' : 'Send request'}
           </Button>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-interface SelectOption {
-  value: string;
-  label: string;
-}
-
-function Select({
-  label,
-  value,
-  onChange,
-  options,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: SelectOption[];
-  disabled?: boolean;
-}) {
-  return (
-    <Field label={label}>
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent disabled:opacity-50"
+        </>
+      }
+    >
+      <form
+        id="cross-team"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void onSubmit();
+        }}
+        className="flex flex-col gap-[18px]"
       >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </Field>
-  );
-}
+        <fieldset className="flex min-w-0 flex-col gap-3.5">
+          <legend className="mb-1 text-body font-semibold text-ink">Who has the values</legend>
+          <Field id="ct-team" label="Team" error={show('team')}>
+            {(p) => (
+              <Select
+                {...p}
+                value={teamId}
+                onChange={(e) => {
+                  setTeamId(e.target.value);
+                  setProjectId('');
+                  setEnvId('');
+                }}
+                data-autofocus
+              >
+                <option value="">{teams.isLoading ? 'Loading teams…' : 'Choose a team'}</option>
+                {(teams.data ?? [])
+                  .filter((t) => t.status === 'active')
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+              </Select>
+            )}
+          </Field>
+          <Field
+            id="ct-project"
+            label="Their project"
+            hint={teamId && teamProjects.length === 0 && !projects.isLoading ? 'This team has no active projects.' : undefined}
+            error={show('project')}
+          >
+            {(p) => (
+              <Select
+                {...p}
+                value={projectId}
+                onChange={(e) => {
+                  setProjectId(e.target.value);
+                  setEnvId('');
+                }}
+                disabled={!teamId}
+              >
+                <option value="">Choose a project</option>
+                {teamProjects.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Field id="ct-env" label="Their environment" error={show('env')}>
+            {(p) => (
+              <Select {...p} value={envId} onChange={(e) => setEnvId(e.target.value)} disabled={!projectId}>
+                <option value="">Choose an environment</option>
+                {(envs.data ?? []).map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                    {(e.kind ?? e.type) === 'prod' ? ' (production)' : ''}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </fieldset>
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div className="flex items-baseline justify-between">
-        <label className="block text-[11px] text-muted font-medium">
-          {label}
-        </label>
-        {hint && <span className="text-[11px] text-muted">{hint}</span>}
-      </div>
-      <div className="mt-1">{children}</div>
-    </div>
-  );
-}
+        <fieldset className="flex min-w-0 flex-col gap-3.5">
+          <legend className="mb-1 text-body font-semibold text-ink">Where the values go</legend>
+          <Field
+            id="ct-connection"
+            label="Provider connection"
+            hint={noConnections ? undefined : 'Connections bound to your project and environment.'}
+            error={show('connection')}
+          >
+            {(p) => (
+              <Select {...p} value={connectionId} onChange={(e) => setConnectionId(e.target.value)} disabled={!!noConnections}>
+                <option value="">{connections.isLoading ? 'Loading connections…' : 'Choose a connection'}</option>
+                {(connections.data ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} · {providerLabel(c.type)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          {noConnections && (
+            <Banner title="No provider connection is bound here.">
+              {hasPermission('integration.edit') ? (
+                <>
+                  Bind one on the environment page or in{' '}
+                  <Link to="/admin/provider-connections" className="font-medium text-accent hover:underline">
+                    Provider connections
+                  </Link>{' '}
+                  so the agent can write the values.
+                </>
+              ) : (
+                'Ask the platform team to bind one to this project and environment.'
+              )}
+            </Banner>
+          )}
+          <Field id="ct-ref" label="Secret path" hint="Where the agent writes the values, in your provider." error={show('ref')}>
+            {(p) => (
+              <Input
+                {...p}
+                value={secretRef}
+                onChange={(e) => setSecretRef(e.target.value)}
+                placeholder="team-alpha/uat/db"
+                className="font-mono"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            )}
+          </Field>
+          <Field
+            id="ct-keys"
+            label="Keys"
+            hint="Names only, separated by commas or spaces. The other team fills one value for each."
+            error={show('keys')}
+          >
+            {(p) => (
+              <Input
+                {...p}
+                value={keysText}
+                onChange={(e) => setKeysText(e.target.value)}
+                placeholder="DB_USERNAME, DB_PASSWORD"
+                className="font-mono"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            )}
+          </Field>
+          {keys.length > 0 && <Keys keys={keys} variant="chips" />}
+        </fieldset>
 
-/**
- * Pulls a stable error code from an ApiError's body. The api renders
- * cross-team errors as `{"error": "<code>"}`; reading only `code` (the
- * old shape) meant no friendly message ever matched. Shared with
- * InboxFill.
- */
-export function extractErrorCode(err: ApiError): string | undefined {
-  return extractCrossTeamErrorCode(err.body);
+        <Field
+          id="ct-why"
+          label="Justification"
+          hint={`The other team and your approvers read this. At least ${WHY_MIN} characters.`}
+          error={show('why')}
+        >
+          {(p) => (
+            <Textarea
+              {...p}
+              rows={3}
+              value={why}
+              onChange={(e) => setWhy(e.target.value)}
+              placeholder="What needs these values, and why can't you get them yourself?"
+              maxLength={1000}
+            />
+          )}
+        </Field>
+
+        {serverError && (
+          <Banner tone="error" title="Not sent.">
+            {serverError}
+          </Banner>
+        )}
+      </form>
+    </Drawer>
+  );
 }

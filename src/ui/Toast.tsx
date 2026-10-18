@@ -2,7 +2,8 @@
  * Short confirmation after an action, in the past tense, with an
  * optional link to the result: "Requested 2 keys. Open REQ-1042".
  * Disappears after about 6 seconds, so it is never the only place
- * important information appears. Announced through role=status.
+ * important information appears. Announced through role=status. On
+ * phones it sits at the top so it never covers a drawer's buttons.
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -35,7 +36,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={show}>
       {children}
-      <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-5 z-[60] flex justify-center px-4">
+      <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-5 z-[60] flex justify-center px-4 max-[600px]:bottom-auto max-[600px]:top-3">
         {toast && (
           <div
             key={toast.id}

@@ -19,11 +19,11 @@ export function Keys({
   }
   if (variant === 'chips') {
     return (
-      <span className={'inline-flex flex-wrap gap-1.5 ' + className}>
+      <span className={'inline-flex max-w-full flex-wrap gap-1.5 ' + className}>
         {keys.map((k) => (
           <span
             key={k}
-            className="inline-flex h-[22px] items-center rounded-sm border border-border bg-sunken px-[7px] font-mono text-[12px]"
+            className="inline-flex min-h-[22px] max-w-full items-center rounded-sm border border-border bg-sunken px-[7px] py-px font-mono text-[12px] [overflow-wrap:anywhere]"
           >
             {k}
           </span>

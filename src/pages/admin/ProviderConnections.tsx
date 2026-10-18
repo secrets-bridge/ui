@@ -1,645 +1,272 @@
 /**
- * Provider connections admin page. Mirrors the Workflows / Policies
- * pattern (PageHeader + Card-wrapped table + shared Drawer +
- * ConfirmModal). Sidebar entry gated by `hasPermission('integration.edit')`.
+ * Provider connections admin page (`/admin/provider-connections`,
+ * integration.edit in the sidebar).
  *
- * EPIC P §5 lock highlights:
- *  - List columns: Name | Type | Cluster | Status | Discover
- *  - Filters: search (substring on name, client-side) + type + status
- *  - Per-row click opens the edit drawer; overflow menu hosts `Discover now`
- *  - Delete confirm modal reads bindings_count + open_requests_count
- *    from the 409 envelope; "Delete anyway" disabled when counts > 0
- *  - Discover column derives "possibly stale" client-side:
- *      last_discover_status === 'running' &&
- *      last_discover_started_at + 2 * interval_seconds * 1000 < now
+ * EPIC P §5 highlights, kept:
+ *  - Columns: name, provider, cluster, status, discovery.
+ *  - Filters: name search (client-side), provider and status.
+ *  - The row (or its name) opens the edit drawer, which also holds
+ *    "Run discovery now" and the project bindings.
+ *  - Delete reads bindings_count and open_requests_count from the 409
+ *    envelope and keeps Delete disabled while either is above zero.
+ *  - Discovery shows "possibly stale" when a run is still marked running
+ *    after twice the interval (see DiscoveryStatus).
+ *
+ * Agents: holders of agent.list see how many agents serve each
+ * connection, linked to `/agents?connection=<id>`; holders of
+ * agent.mint can enroll one from the row.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
+import { useAdminAgents } from '../../api/agents';
 import { ApiError } from '../../api/client';
-import {
-  extractProviderConnectionErrorCode,
-  providerConnectionErrorMessage,
-  useBindings,
-  useCreateBinding,
-  useCreateProviderConnection,
-  useDeleteBinding,
-  useDeleteProviderConnection,
-  useProviderConnection,
-  useProviderConnectionsAdmin,
-  useUpdateProviderConnection,
-} from '../../api/providerConnections';
-import { useEnvironmentsForProject, useProjects } from '../../api/tenancy';
-import type {
-  ConnectionInUseBody,
-  ProviderConnection,
-  ProviderConnectionInput,
-} from '../../api/types';
+import { useProviderConnectionsAdmin } from '../../api/providerConnections';
+import type { ProviderConnection } from '../../api/types';
+import { useAuth } from '../../auth/AuthContext';
+import { providerLabel } from '../../lib/providers';
+import { useNow } from '../../lib/useNow';
+import { Banner } from '../../ui/Banner';
 import { Button } from '../../ui/Button';
-import { Card } from '../../ui/Card';
-import { Drawer } from '../../ui/Drawer';
+import { DataTable, type Column } from '../../ui/DataTable';
+import { EmptyState } from '../../ui/EmptyState';
+import { Input, Select } from '../../ui/Field';
 import { PageHeader } from '../../ui/PageHeader';
-import { StatusPill } from '../../ui/StatusPill';
-import { ProviderConnectionForm } from './ProviderConnectionForm';
+import { ToneStatus } from '../../ui/Status';
+import { EnrollAgentDrawer } from '../agents/EnrollAgentDrawer';
+import { CreateConnectionDrawer, EditConnectionDrawer } from './connections/ConnectionDrawers';
+import { DeleteConnectionDialog } from './connections/DeleteConnectionDialog';
+import { DiscoveryStatus } from './connections/DiscoveryStatus';
 
 export function ProviderConnections() {
+  const { hasPermission } = useAuth();
   const list = useProviderConnectionsAdmin();
-  const create = useCreateProviderConnection();
+  const canListAgents = hasPermission('agent.list');
+  const canEnroll = hasPermission('agent.mint');
+  const agents = useAdminAgents({ enabled: canListAgents });
+  const now = useNow(30_000);
 
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [editing, setEditing] = useState<ProviderConnection | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<ProviderConnection | null>(
-    null,
+  const [deleting, setDeleting] = useState<ProviderConnection | null>(null);
+  const [enrollFor, setEnrollFor] = useState<string | null>(null);
+
+  const all = useMemo(() => list.data ?? [], [list.data]);
+  const rows = useMemo(
+    () =>
+      all
+        .filter((c) => {
+          if (search && !c.name.toLowerCase().includes(search.trim().toLowerCase())) return false;
+          if (typeFilter && c.type !== typeFilter) return false;
+          if (statusFilter && c.status !== statusFilter) return false;
+          return true;
+        })
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [all, search, typeFilter, statusFilter],
+  );
+  const knownTypes = useMemo(() => [...new Set(all.map((c) => c.type))].sort(), [all]);
+  const editing = all.find((c) => c.id === editingId) ?? null;
+
+  // Agents per connection, revoked ones left out.
+  const agentCount = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of agents.data ?? []) {
+      if (!a.provider_connection_id || a.status === 'revoked') continue;
+      m.set(a.provider_connection_id, (m.get(a.provider_connection_id) ?? 0) + 1);
+    }
+    return m;
+  }, [agents.data]);
+
+  const active = all.filter((c) => c.status === 'active').length;
+  const failing = all.filter((c) => c.status === 'active' && c.discover_enabled && c.last_discover_status === 'failure').length;
+  const facts = [
+    `${all.length} ${all.length === 1 ? 'connection' : 'connections'}`,
+    `${active} active`,
+    failing ? `${failing} with failed discovery` : '',
+  ].filter(Boolean);
+  const filtered = !!search || !!typeFilter || !!statusFilter;
+
+  const agentsCell = (c: ProviderConnection) => {
+    const n = agentCount.get(c.id) ?? 0;
+    return (
+      <Link to={`/agents?connection=${c.id}`} className="whitespace-nowrap font-medium text-accent hover:underline" aria-label={`Agents for ${c.name}`}>
+        {agents.isLoading ? 'Agents' : n === 0 ? 'No agents' : `${n} ${n === 1 ? 'agent' : 'agents'}`}
+      </Link>
+    );
+  };
+  const actions = (c: ProviderConnection) => (
+    <span className="inline-flex gap-2">
+      {canEnroll && c.status === 'active' && (
+        <Button variant="secondary" size="sm" onClick={() => setEnrollFor(c.id)} aria-label={`Enroll an agent for ${c.name}`}>
+          Enroll an agent
+        </Button>
+      )}
+      <Button variant="danger" size="sm" onClick={() => setDeleting(c)} aria-label={`Delete ${c.name}…`}>
+        Delete…
+      </Button>
+    </span>
   );
 
-  const rows = useMemo(() => {
-    const all = list.data ?? [];
-    return all.filter((c) => {
-      if (search && !c.name.toLowerCase().includes(search.toLowerCase()))
-        return false;
-      if (typeFilter && c.type !== typeFilter) return false;
-      if (statusFilter && c.status !== statusFilter) return false;
-      return true;
-    });
-  }, [list.data, search, typeFilter, statusFilter]);
-
-  const knownTypes = useMemo(() => {
-    const s = new Set<string>();
-    for (const c of list.data ?? []) s.add(c.type);
-    return [...s].sort();
-  }, [list.data]);
+  const columns: Column<ProviderConnection>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      render: (c) => (
+        <span className="block max-w-[280px]">
+          <button type="button" onClick={() => setEditingId(c.id)} className="text-left font-medium text-accent hover:underline">
+            {c.name}
+          </button>
+          {c.description && <span className="block truncate text-caption text-muted" title={c.description}>{c.description}</span>}
+        </span>
+      ),
+    },
+    { key: 'type', header: 'Provider', render: (c) => providerLabel(c.type), className: 'whitespace-nowrap' },
+    {
+      key: 'cluster',
+      header: 'Cluster',
+      render: (c) => (c.cluster_name ? <span className="font-mono text-mono">{c.cluster_name}</span> : <span className="text-muted">—</span>),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (c) => <ToneStatus tone={c.status === 'active' ? 'ok' : 'neutral'}>{c.status === 'active' ? 'Active' : 'Disabled'}</ToneStatus>,
+    },
+    { key: 'discovery', header: 'Discovery', render: (c) => <DiscoveryStatus connection={c} now={now} /> },
+  ];
+  if (canListAgents) columns.push({ key: 'agents', header: 'Agents', render: agentsCell });
+  columns.push({ key: 'actions', header: 'Actions', hiddenHeader: true, align: 'right', className: 'whitespace-nowrap', render: actions });
 
   return (
     <div>
       <PageHeader
         title="Provider connections"
-        description="Connection metadata to external secret stores (Vault, AWS Secrets Manager, …). Credentials never live here — the agent uses its own workload identity."
+        description={
+          list.data
+            ? `${facts.join(' · ')}. Connection details only; agents sign in with their own identity.`
+            : 'Where agents find the secrets. Connection details only; agents sign in with their own identity.'
+        }
         actions={
-          <Button
-            variant="primary"
-            onClick={() => {
-              setEditing(null);
-              setCreating(true);
-            }}
-          >
-            + New connection
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            Add connection
           </Button>
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name…"
-          className="bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm focus:border-accent w-56"
-        />
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm"
-        >
-          <option value="">All types</option>
-          {knownTypes.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm"
-        >
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="disabled">Disabled</option>
-        </select>
-      </div>
-
-      {list.isError && (
-        <Card className="border-bad-line p-5 text-sm mb-4">
-          <div className="text-bad font-medium">
-            Failed to load provider connections
-          </div>
-          <div className="text-muted mt-1">{stringifyError(list.error)}</div>
-        </Card>
-      )}
-
-      {list.isLoading && <div className="text-muted text-sm">Loading…</div>}
-
-      {list.data && rows.length === 0 && (
-        <Card className="p-10 text-center text-muted text-sm">
-          {(list.data.length === 0 && 'No provider connections defined yet.') ||
-            'No connections match the current filters.'}
-        </Card>
-      )}
-
-      {rows.length > 0 && (
-        <Card className="overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="text-left text-muted text-[11px]">
-              <tr className="border-b border-border/60">
-                <Th>Name</Th>
-                <Th>Type</Th>
-                <Th>Cluster</Th>
-                <Th>Status</Th>
-                <Th>Discover</Th>
-                <Th className="text-right">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => (
-                <ConnectionRow
-                  key={c.id}
-                  connection={c}
-                  onEdit={() => {
-                    setCreating(false);
-                    setEditing(c);
-                  }}
-                  onDelete={() => setConfirmDelete(c)}
-                />
+      {all.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2.5">
+          <label className="min-w-[220px] max-[600px]:w-full">
+            <span className="sr-only">Search by name</span>
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name" className="w-full" />
+          </label>
+          <label className="min-w-[180px] max-[600px]:w-full">
+            <span className="sr-only">Provider</span>
+            <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="w-full">
+              <option value="">All providers</option>
+              {knownTypes.map((t) => (
+                <option key={t} value={t}>
+                  {providerLabel(t)}
+                </option>
               ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {creating && (
-        <Drawer title="New provider connection" onClose={() => setCreating(false)}>
-          <ProviderConnectionForm
-            submitting={create.isPending}
-            submitError={create.error}
-            onSubmit={async (body: ProviderConnectionInput) => {
-              await create.mutateAsync(body);
-              setCreating(false);
-            }}
-            onCancel={() => setCreating(false)}
-          />
-        </Drawer>
-      )}
-
-      {editing && (
-        <EditDrawer connection={editing} onClose={() => setEditing(null)} />
-      )}
-
-      {confirmDelete && (
-        <DeleteConfirmModal
-          connection={confirmDelete}
-          onCancel={() => setConfirmDelete(null)}
-          onDone={() => setConfirmDelete(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-// --- row -----------------------------------------------------------
-
-function ConnectionRow({
-  connection: c,
-  onEdit,
-  onDelete,
-}: {
-  connection: ProviderConnection;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <tr className="border-b border-border/40 last:border-0 hover:bg-bg/20 align-top">
-      <Td>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={onEdit}
-            className="font-mono text-accent hover:underline text-sm text-left"
-          >
-            {c.name}
-          </button>
-        </div>
-        {c.description && (
-          <div className="text-muted text-xs mt-1 line-clamp-2">{c.description}</div>
-        )}
-      </Td>
-      <Td className="text-muted font-mono text-xs">{c.type}</Td>
-      <Td className="text-muted font-mono text-xs">{c.cluster_name ?? '—'}</Td>
-      <Td>
-        {c.status === 'active' ? (
-          <StatusPill variant="success" tone="outline">
-            active
-          </StatusPill>
-        ) : (
-          <StatusPill variant="error" tone="outline">
-            disabled
-          </StatusPill>
-        )}
-      </Td>
-      <Td>
-        <DiscoverCell connection={c} />
-      </Td>
-      <Td className="text-right">
-        <div className="flex items-center justify-end gap-3">
-          <button
-            onClick={onEdit}
-            className="text-accent hover:underline text-sm font-medium"
-          >
-            Edit
-          </button>
-          <button
-            onClick={onDelete}
-            className="text-bad hover:underline text-sm font-medium"
-          >
-            Delete
-          </button>
-        </div>
-      </Td>
-    </tr>
-  );
-}
-
-// Wall-clock "now" for render-time comparisons. Reading Date.now()
-// directly in render is impure (react-hooks/purity): the result
-// depends on when React happens to re-render. This samples it once on
-// mount and refreshes it on an interval, so a long-open page still
-// notices a job crossing the stale threshold.
-const NOW_REFRESH_MS = 30_000;
-function useNow(refreshMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), refreshMs);
-    return () => window.clearInterval(t);
-  }, [refreshMs]);
-  return now;
-}
-
-function DiscoverCell({ connection: c }: { connection: ProviderConnection }) {
-  const now = useNow(NOW_REFRESH_MS);
-  if (c.status === 'disabled') {
-    return <span className="text-muted text-xs">Connection disabled</span>;
-  }
-  if (!c.discover_enabled) {
-    return <span className="text-muted text-xs">Discovery off</span>;
-  }
-  const status = c.last_discover_status;
-  // Possibly-stale derivation per §5: running for > 2× interval since
-  // started_at without a transition.
-  if (status === 'running' && c.last_discover_started_at) {
-    const started = Date.parse(c.last_discover_started_at);
-    const limitMs = 2 * (c.discover_interval_seconds ?? 0) * 1000;
-    if (limitMs > 0 && started + limitMs < now) {
-      return (
-        <div className="flex flex-col">
-          <StatusPill variant="warning" tone="outline">
-            possibly stale
-          </StatusPill>
-          <span
-            className="text-[10px] text-muted mt-0.5"
-            title="The current discover job has been running longer than 2× the configured interval. The worker sweeper will reconcile it; the connection is safe to use."
-          >
-            running &gt; 2× interval
-          </span>
-        </div>
-      );
-    }
-  }
-  if (status === 'running') {
-    return (
-      <div className="flex flex-col">
-        <StatusPill variant="pending" tone="outline">
-          running
-        </StatusPill>
-        <span className="text-[10px] text-muted mt-0.5">
-          {c.last_discover_started_at ? relativeAgo(c.last_discover_started_at) + ' elapsed' : ''}
-        </span>
-      </div>
-    );
-  }
-  if (status === 'success') {
-    return (
-      <div className="flex flex-col">
-        <StatusPill variant="success" tone="outline">
-          success
-        </StatusPill>
-        {c.last_discover_at && (
-          <span className="text-[10px] text-muted mt-0.5">
-            {relativeAgo(c.last_discover_at)}
-          </span>
-        )}
-      </div>
-    );
-  }
-  if (status === 'failure') {
-    return (
-      <div className="flex flex-col">
-        <StatusPill variant="error" tone="outline">
-          failure
-        </StatusPill>
-        <span
-          className="text-[10px] text-muted mt-0.5 truncate max-w-[14ch]"
-          title={c.last_discover_error ?? ''}
-        >
-          {c.last_discover_at ? relativeAgo(c.last_discover_at) : 'recently'}
-        </span>
-      </div>
-    );
-  }
-  return <span className="text-muted text-xs">—</span>;
-}
-
-// --- edit drawer (includes bindings sub-panel) ---------------------
-
-function EditDrawer({
-  connection,
-  onClose,
-}: {
-  connection: ProviderConnection;
-  onClose: () => void;
-}) {
-  // Re-fetch the single row so the drawer sees fresh discovery status.
-  const fresh = useProviderConnection(connection.id);
-  const view = fresh.data ?? connection;
-  const update = useUpdateProviderConnection(connection.id);
-
-  return (
-    <Drawer title={`Edit ${view.name}`} onClose={onClose}>
-      <div className="space-y-6">
-        <ProviderConnectionForm
-          initial={view}
-          submitting={update.isPending}
-          submitError={update.error}
-          onSubmit={async (body) => {
-            await update.mutateAsync(body);
-            onClose();
-          }}
-          onCancel={onClose}
-        />
-        <BindingsPanel connectionID={connection.id} />
-      </div>
-    </Drawer>
-  );
-}
-
-function BindingsPanel({ connectionID }: { connectionID: string }) {
-  const bindings = useBindings(connectionID);
-  const projects = useProjects();
-  const create = useCreateBinding(connectionID);
-  const del = useDeleteBinding(connectionID);
-
-  const [projectID, setProjectID] = useState('');
-  const [envID, setEnvID] = useState('');
-  const envs = useEnvironmentsForProject(projectID || undefined);
-
-  const [bindError, setBindError] = useState<string | null>(null);
-
-  const onBind = async () => {
-    setBindError(null);
-    if (!projectID) return;
-    try {
-      await create.mutateAsync({
-        project_id: projectID,
-        environment_id: envID || null,
-      });
-      setProjectID('');
-      setEnvID('');
-    } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? providerConnectionErrorMessage(
-              extractProviderConnectionErrorCode(err),
-            ) ?? `${err.status} · ${err.message}`
-          : err instanceof Error
-            ? err.message
-            : String(err);
-      setBindError(msg);
-    }
-  };
-
-  return (
-    <section className="space-y-3 border-t border-border/60 pt-5">
-      <h3 className="text-ink font-semibold text-sm">
-        Bindings
-      </h3>
-      <p className="text-muted text-xs">
-        A connection becomes consumable by a developer dropdown when at
-        least one binding covers their (project, environment). An empty
-        <code className="text-muted/80 mx-1">environment</code> binds every
-        environment in the project.
-      </p>
-
-      {bindings.isLoading && <div className="text-muted text-xs">Loading bindings…</div>}
-      {bindings.data && bindings.data.length === 0 && (
-        <div className="text-muted text-xs">No bindings yet.</div>
-      )}
-      {bindings.data && bindings.data.length > 0 && (
-        <ul className="space-y-1">
-          {bindings.data.map((b) => (
-            <li
-              key={b.id}
-              className="flex items-center justify-between text-xs border border-border/40 rounded-md px-3 py-1.5"
-            >
-              <div>
-                <span className="font-mono text-accent">
-                  {b.project_name ?? b.project_id}
-                </span>
-                <span className="text-muted mx-1">/</span>
-                <span className="font-mono text-ink">
-                  {b.environment_name ?? (b.environment_id ?? 'all envs')}
-                </span>
-              </div>
-              <button
-                onClick={() => void del.mutateAsync(b.id)}
-                className="text-bad hover:underline"
-                disabled={del.isPending}
+            </Select>
+          </label>
+          <label className="min-w-[150px] max-[600px]:w-full">
+            <span className="sr-only">Status</span>
+            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full">
+              <option value="">Any status</option>
+              <option value="active">Active</option>
+              <option value="disabled">Disabled</option>
+            </Select>
+          </label>
+          {filtered && (
+            <>
+              <Button
+                variant="quiet"
+                onClick={() => {
+                  setSearch('');
+                  setTypeFilter('');
+                  setStatusFilter('');
+                }}
               >
-                Unbind
-              </button>
-            </li>
-          ))}
-        </ul>
+                Reset filters
+              </Button>
+              <span className="text-ui font-normal text-muted" aria-live="polite">
+                Showing {rows.length} of {all.length}
+              </span>
+            </>
+          )}
+        </div>
       )}
 
-      <div className="flex items-end gap-2">
-        <div className="flex-1">
-          <label className="block text-[11px] text-muted font-medium">
-            Project
-          </label>
-          <select
-            value={projectID}
-            onChange={(e) => {
-              setProjectID(e.target.value);
-              setEnvID('');
-            }}
-            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm"
-          >
-            <option value="">Pick a project…</option>
-            {(projects.data ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex-1">
-          <label className="block text-[11px] text-muted font-medium">
-            Environment
-          </label>
-          <select
-            value={envID}
-            onChange={(e) => setEnvID(e.target.value)}
-            disabled={!projectID}
-            className="w-full bg-surface border border-edge rounded-md px-3 py-2 text-ink text-sm disabled:opacity-50"
-          >
-            <option value="">All envs in project</option>
-            {(envs.data ?? []).map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name} ({e.type})
-              </option>
-            ))}
-          </select>
-        </div>
-        <Button
-          variant="secondary"
-          size="md"
-          type="button"
-          onClick={() => void onBind()}
-          disabled={!projectID || create.isPending}
+      {list.isLoading && <p className="text-muted">Loading provider connections…</p>}
+      {list.isError && (
+        <Banner
+          tone="error"
+          title="Couldn't load the provider connections."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => void list.refetch()}>
+              Try again
+            </Button>
+          }
         >
-          {create.isPending ? 'Binding…' : '+ Bind'}
-        </Button>
-      </div>
-
-      {bindError && (
-        <div className="text-bad text-xs">{bindError}</div>
+          {list.error instanceof ApiError ? `${list.error.status}: ${list.error.message}` : 'Network error.'}
+        </Banner>
       )}
-    </section>
-  );
-}
-
-// --- delete confirm with 409 counts --------------------------------
-
-function DeleteConfirmModal({
-  connection,
-  onCancel,
-  onDone,
-}: {
-  connection: ProviderConnection;
-  onCancel: () => void;
-  onDone: () => void;
-}) {
-  const del = useDeleteProviderConnection();
-  const [counts, setCounts] = useState<{ b: number; r: number } | null>(null);
-  const [err, setErr] = useState<string | null>(null);
-
-  const inUse = counts !== null && (counts.b > 0 || counts.r > 0);
-
-  const tryDelete = async () => {
-    setErr(null);
-    try {
-      await del.mutateAsync(connection.id);
-      onDone();
-    } catch (e) {
-      if (e instanceof ApiError) {
-        const code = extractProviderConnectionErrorCode(e);
-        if (code === 'connection_in_use' && e.body && typeof e.body === 'object') {
-          const body = e.body as ConnectionInUseBody;
-          setCounts({
-            b: body.bindings_count ?? 0,
-            r: body.open_requests_count ?? 0,
-          });
-          setErr(providerConnectionErrorMessage(code) ?? e.message);
-          return;
-        }
-        setErr(
-          providerConnectionErrorMessage(extractProviderConnectionErrorCode(e)) ??
-            `${e.status} · ${e.message}`,
-        );
-      } else if (e instanceof Error) {
-        setErr(e.message);
-      } else {
-        setErr(String(e));
-      }
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim">
-      <div className="bg-surface border border-border rounded-md p-6 max-w-md w-full space-y-4">
-        <h3 className="text-ink text-lg font-semibold">
-          Delete provider connection &ldquo;{connection.name}&rdquo;?
-        </h3>
-        <p className="text-muted text-sm">
-          This cannot be undone. Existing bindings + open requests block the
-          delete; the api refuses with a count.
-        </p>
-        {counts && (
-          <div className="text-xs text-warn bg-warn-bg border border-warn-line rounded-md px-3 py-2">
-            In use: <span className="font-mono">{counts.b}</span> binding{counts.b === 1 ? '' : 's'},
-            {' '}
-            <span className="font-mono">{counts.r}</span> open request{counts.r === 1 ? '' : 's'}.
-            Unbind / close them first.
-          </div>
-        )}
-        {err && !counts && (
-          <div className="text-xs text-bad bg-bad-bg border border-bad-line rounded-md px-3 py-2">
-            {err}
-          </div>
-        )}
-        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/60">
-          <Button variant="secondary" onClick={onCancel}>Cancel</Button>
-          <Button
-            variant="primary"
-            onClick={() => void tryDelete()}
-            disabled={del.isPending || inUse}
-            title={inUse ? 'Counts must be zero before delete.' : undefined}
+      {list.data &&
+        (all.length === 0 ? (
+          <EmptyState
+            title="No provider connections yet."
+            action={
+              <Button variant="secondary" onClick={() => setCreating(true)}>
+                Add connection
+              </Button>
+            }
           >
-            {del.isPending ? 'Deleting…' : 'Delete anyway'}
-          </Button>
-        </div>
-      </div>
+            A connection tells agents which Vault, AWS Secrets Manager or other store to use. Add one, bind it to projects, then
+            enroll an agent for it.
+          </EmptyState>
+        ) : rows.length === 0 ? (
+          <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">No connection matches these filters.</p>
+        ) : (
+          <DataTable
+            label="Provider connections"
+            columns={columns}
+            rows={rows}
+            rowKey={(c) => c.id}
+            onRowClick={(c) => setEditingId(c.id)}
+            minWidth={canListAgents ? 960 : 860}
+            stacked={(c) => (
+              <div className="flex flex-col gap-1.5">
+                <p className="flex items-center justify-between gap-3">
+                  <button type="button" onClick={() => setEditingId(c.id)} className="text-left font-medium text-accent hover:underline">
+                    {c.name}
+                  </button>
+                  <ToneStatus tone={c.status === 'active' ? 'ok' : 'neutral'}>{c.status === 'active' ? 'Active' : 'Disabled'}</ToneStatus>
+                </p>
+                <p className="text-caption text-muted">
+                  {providerLabel(c.type)}
+                  {c.cluster_name ? ` · ${c.cluster_name}` : ''}
+                </p>
+                <div className="text-caption">
+                  <span className="text-muted">Discovery: </span>
+                  <span className="inline-block align-top">
+                    <DiscoveryStatus connection={c} now={now} />
+                  </span>
+                </div>
+                {canListAgents && <p className="text-caption">{agentsCell(c)}</p>}
+                <div className="mt-1">{actions(c)}</div>
+              </div>
+            )}
+          />
+        ))}
+
+      {creating && <CreateConnectionDrawer onClose={() => setCreating(false)} />}
+      {editing && <EditConnectionDrawer connection={editing} onClose={() => setEditingId(null)} />}
+      {deleting && <DeleteConnectionDialog connection={deleting} onClose={() => setDeleting(null)} />}
+      {enrollFor && <EnrollAgentDrawer initialConnectionId={enrollFor} onClose={() => setEnrollFor(null)} />}
     </div>
   );
-}
-
-// --- bits ----------------------------------------------------------
-
-function Th({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <th className={`px-5 py-3 font-medium ${className}`}>{children}</th>;
-}
-
-function Td({
-  children,
-  className = '',
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <td className={`px-5 py-3.5 align-top ${className}`}>{children}</td>;
-}
-
-function stringifyError(e: unknown): string {
-  if (e instanceof ApiError) return `${e.status}: ${e.message}`;
-  if (e instanceof Error) return e.message;
-  return String(e);
-}
-
-function relativeAgo(iso: string): string {
-  const diffMs = Date.now() - Date.parse(iso);
-  if (Number.isNaN(diffMs)) return '';
-  const sec = Math.floor(diffMs / 1000);
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  return `${day}d ago`;
 }

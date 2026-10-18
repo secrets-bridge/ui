@@ -1,202 +1,148 @@
 /**
- * R-follow-up #5 §5 D7 — Admin policy rule Detail page.
+ * R-follow-up #5 §5 D7 — a platform policy rule's page (admin).
  *
  *   /admin/policies/:id
  *
- * Admin context: requires `policy.edit`. Per §4 C2/C4 the History tab
- * stays accessible even when the rule has been deleted — the api's
- * existence check looks at the audit chain instead of policyRepo.Get.
- * That post-delete forensic visibility is admin-only.
+ * Overview and History tabs. Editing and deleting stay on the Policies
+ * list (OQ5-2); this page is for reading and deep links. History needs
+ * policy.edit and stays readable after the rule is deleted, because the
+ * api checks the audit chain rather than the rule (§4 C2/C4).
  */
 
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
-import { useAuth } from '../../auth/AuthContext';
-import { canViewPolicyRuleHistory } from '../../auth/capabilities';
 import { usePolicy } from '../../api/policies';
 import { useAdminPolicyRuleHistory } from '../../api/policyRuleHistory';
-import { Card, CardBody } from '../../ui/Card';
-import { PageHeader } from '../../ui/PageHeader';
-import { StatusPill } from '../../ui/StatusPill';
-import { PolicyHistoryTimeline } from '../PolicyHistoryTimeline';
+import type { Policy } from '../../api/types';
+import { useTeams } from '../../api/teams';
+import { useProjects } from '../../api/tenancy';
+import { useWorkflows } from '../../api/workflows';
+import { useAuth } from '../../auth/AuthContext';
+import { canViewPolicyRuleHistory } from '../../auth/capabilities';
+import { formatExact } from '../../lib/time';
+import { Banner } from '../../ui/Banner';
+import { Button } from '../../ui/Button';
+import { PolicyHistoryView } from '../PolicyHistoryTimeline';
+import { ANCHOR_LABEL, anchorOf, formatSeconds, type SelectorNames } from '../policies/labels';
+import { DetailRows, Loading, Panel, RuleDetailFrame, RuleStatus, Selector, type RuleTab } from '../policies/parts';
 
-type Tab = 'overview' | 'history';
+/** Reveal settings the api returns on a policy (not yet in `Policy`). */
+type PolicyWithReveal = Policy & {
+  direct_reveal_allowed?: boolean;
+  requires_mfa?: boolean;
+  reveal_ttl_seconds?: number;
+};
 
 export function AdminPolicyDetail() {
   const { id: ruleID } = useParams<{ id: string }>();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<RuleTab>('overview');
   const auth = useAuth();
   const rule = usePolicy(ruleID);
+  const workflows = useWorkflows();
+  const projects = useProjects();
+  const teams = useTeams();
 
-  const historyAllowed = canViewPolicyRuleHistory(
-    { kind: 'admin' },
-    { permissions: auth.identity?.permissions },
-  );
+  const historyAllowed = canViewPolicyRuleHistory({ kind: 'admin' }, { permissions: auth.identity?.permissions });
 
-  if (rule.isLoading) {
-    return (
-      <div className="max-w-4xl mx-auto p-6">
-        <Card><CardBody><p className="text-sm text-muted">Loading rule…</p></CardBody></Card>
-      </div>
-    );
-  }
-  const ruleMissing = rule.isError || !rule.data;
+  if (rule.isLoading) return <Loading>Loading the rule…</Loading>;
 
-  return (
-    <div className="max-w-4xl mx-auto p-6 space-y-4">
-      <PageHeader
-        title={ruleMissing ? `Deleted rule · ${ruleID?.slice(0, 8)}…` : rule.data!.name}
-        description={
-          ruleMissing
-            ? 'Rule has been deleted. History below loads from the audit chain (admin post-delete forensic visibility).'
-            : `Platform rule · priority ${rule.data!.priority}`
-        }
-        actions={
-          <Link to="/admin/policies" className="text-accent text-xs hover:underline">
-            ← Back
-          </Link>
-        }
+  // A deleted rule still has a history (admin only).
+  const missing = rule.isError || !rule.data;
+  const r = rule.data as PolicyWithReveal | undefined;
+  const crumbs = [{ label: 'Policies', to: '/admin/policies' }, { label: r?.name ?? 'Deleted rule' }];
+  const names: SelectorNames = {
+    project: (id) => projects.data?.find((p) => p.id === id)?.name,
+    team: (id) => teams.data?.find((t) => t.id === id)?.name,
+  };
+  const workflow = r ? workflows.data?.find((w) => w.id === r.workflow_id)?.name : undefined;
+
+  const overview = missing ? (
+    <Banner
+      title="This rule no longer exists."
+      action={
+        historyAllowed.allowed ? (
+          <Button variant="secondary" size="sm" onClick={() => setTab('history')}>
+            Show history
+          </Button>
+        ) : undefined
+      }
+    >
+      It was deleted, or the id is wrong. Its history stays readable for administrators.
+    </Banner>
+  ) : (
+    <Panel>
+      <DetailRows
+        rows={[
+          ['Status', <RuleStatus key="s" enabled={r!.enabled} />],
+          [
+            'Applies to',
+            anchorOf(r!) === 'project'
+              ? `${ANCHOR_LABEL.project} · ${names.project?.(r!.project_id!) ?? r!.project_id}`
+              : anchorOf(r!) === 'team'
+                ? `${ANCHOR_LABEL.team} · ${names.team?.(r!.team_id!) ?? r!.team_id}`
+                : 'The whole platform',
+          ],
+          ['Matches', <Selector key="m" selector={r!.selector ?? {}} names={names} />],
+          ['Workflow', workflow ?? <span className="font-mono text-mono">{r!.workflow_id}</span>],
+          ['Priority', <span key="p" className="font-mono text-mono">{r!.priority}</span>],
+          ...revealRows(r!),
+          ...(r!.is_system ? ([['Kind', 'System default. It can be edited but not deleted.']] as [string, string][]) : []),
+          ...(r!.updated_at ? ([['Last changed', formatExact(r!.updated_at)]] as [string, string][]) : []),
+          ['Rule id', <span key="id" className="break-all font-mono text-mono">{r!.id}</span>],
+        ]}
       />
-
-      <TabBar tab={tab} onTab={setTab} historyDisabled={!historyAllowed.allowed} />
-
-      {tab === 'overview' && (
-        ruleMissing ? (
-          <Card className="border-warn-line">
-            <CardBody>
-              <p className="text-sm text-warn">
-                This rule no longer exists. Switch to the History tab to view
-                its audit trail.
-              </p>
-            </CardBody>
-          </Card>
-        ) : (
-          <OverviewBlock rule={rule.data!} />
-        )
-      )}
-      {tab === 'history' && historyAllowed.allowed && (
-        <AdminHistoryTabBody ruleID={ruleID!} />
-      )}
-    </div>
+      <p className="border-t border-rule px-5 py-3 text-caption text-muted">Edit or delete this rule from the Policies list.</p>
+    </Panel>
   );
-}
 
-function TabBar({
-  tab,
-  onTab,
-  historyDisabled,
-}: {
-  tab: Tab;
-  onTab: (t: Tab) => void;
-  historyDisabled: boolean;
-}) {
+  const history = historyAllowed.allowed ? (
+    <AdminHistory ruleID={ruleID!} />
+  ) : (
+    <Banner title="History needs the policy.edit permission.">Ask an administrator if you need to see who changed this rule.</Banner>
+  );
+
   return (
-    <div className="border-b border-border flex gap-4 text-sm">
-      <button
-        type="button"
-        onClick={() => onTab('overview')}
-        className={
-          tab === 'overview'
-            ? 'pb-2 border-b-2 border-accent text-ink'
-            : 'pb-2 text-muted hover:text-ink'
-        }
-      >
-        Overview
-      </button>
-      <button
-        type="button"
-        onClick={() => onTab('history')}
-        disabled={historyDisabled}
-        title={historyDisabled ? 'policy.edit required' : undefined}
-        className={
-          historyDisabled
-            ? 'pb-2 text-muted/50 cursor-not-allowed'
-            : tab === 'history'
-              ? 'pb-2 border-b-2 border-accent text-ink'
-              : 'pb-2 text-muted hover:text-ink'
-        }
-      >
-        History
-      </button>
-    </div>
+    <RuleDetailFrame
+      crumbs={crumbs}
+      title={r?.name ?? 'Deleted rule'}
+      fact={
+        missing
+          ? `Rule ${ruleID?.slice(0, 8)} was deleted. Its history comes from the audit trail.`
+          : `${anchorOf(r!) === 'platform' ? 'Platform rule' : `${ANCHOR_LABEL[anchorOf(r!)]} rule`} · priority ${r!.priority}${workflow ? ` · workflow ${workflow}` : ''}`
+      }
+      tab={tab}
+      onTab={setTab}
+      overview={overview}
+      history={history}
+    />
   );
 }
 
-function OverviewBlock({ rule }: { rule: { name: string; selector?: Record<string, unknown>; enabled: boolean; is_system?: boolean; team_id?: string | null; project_id?: string | null } }) {
-  const anchor = rule.team_id ? 'team' : rule.project_id ? 'project' : 'platform';
-  return (
-    <Card>
-      <CardBody className="space-y-3 text-sm">
-        <div className="flex items-center gap-2">
-          {rule.enabled ? (
-            <StatusPill variant="success" tone="outline">enabled</StatusPill>
-          ) : (
-            <StatusPill variant="error" tone="outline">disabled</StatusPill>
-          )}
-          {rule.is_system && (
-            <StatusPill variant="system" tone="outline">system</StatusPill>
-          )}
-          <span className="inline-flex items-center rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono text-muted">
-            {anchor}
-          </span>
-        </div>
-        <dl className="grid grid-cols-[10rem_1fr] gap-x-3 gap-y-1 text-[12px]">
-          <dt className="text-muted">Selector:</dt>
-          <dd className="flex flex-wrap gap-1">
-            {Object.entries(rule.selector ?? {}).map(([k, v]) => (
-              <span
-                key={k}
-                className="inline-flex items-center gap-1 rounded-sm bg-bg/60 border border-border px-2 py-0.5 text-[10px] font-mono"
-              >
-                <span className="text-muted">{k}</span>
-                <span className="text-muted/50">=</span>
-                <span className="text-accent">{String(v)}</span>
-              </span>
-            ))}
-          </dd>
-        </dl>
-        <p className="text-[11px] text-muted">
-          Edit / delete via the parent list page's drawer. Detail page is
-          read-only by design (R-follow-up #5 §5 OQ5-2).
-        </p>
-      </CardBody>
-    </Card>
-  );
+/** What the rule says about revealing values, in words. */
+function revealRows(r: PolicyWithReveal): [string, string][] {
+  const rows: [string, string][] = [];
+  if (r.direct_reveal_allowed !== undefined) {
+    rows.push([
+      'Direct reveal',
+      r.direct_reveal_allowed
+        ? 'Allowed on non-production environments. Production never allows it, whatever this rule says.'
+        : 'Not allowed. Values are read through approved requests.',
+    ]);
+  }
+  if (r.requires_mfa !== undefined) rows.push(['Second factor', r.requires_mfa ? 'Required before a value shows' : 'Not required by this rule']);
+  if (r.reveal_ttl_seconds) rows.push(['Reveal window', formatSeconds(r.reveal_ttl_seconds)]);
+  return rows;
 }
 
-function AdminHistoryTabBody({ ruleID }: { ruleID: string }) {
+function AdminHistory({ ruleID }: { ruleID: string }) {
   const [limit, setLimit] = useState(50);
   const q = useAdminPolicyRuleHistory(ruleID, limit);
-  if (q.isLoading) {
-    return (
-      <Card><CardBody><p className="text-sm text-muted">Loading history…</p></CardBody></Card>
-    );
-  }
-  if (q.isError) {
-    return (
-      <Card className="border-bad-line">
-        <CardBody>
-          <p className="text-sm text-bad">Failed to load history.</p>
-          <button
-            type="button"
-            onClick={() => q.refetch()}
-            className="text-accent text-xs hover:underline mt-1"
-          >
-            Retry
-          </button>
-        </CardBody>
-      </Card>
-    );
-  }
-  const data = q.data!;
   return (
-    <PolicyHistoryTimeline
-      entries={data.entries}
-      hasMore={data.has_more}
-      limit={data.limit}
+    <PolicyHistoryView
+      query={q}
       onLoadMore={() => setLimit((n) => Math.min(n + 50, 500))}
-      pageScope={data.scope === 'platform' ? 'platform' : data.scope}
+      pageScope={q.data && q.data.scope !== 'platform' ? q.data.scope : 'platform'}
     />
   );
 }

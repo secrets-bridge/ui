@@ -1,19 +1,20 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 
 import { queryClient } from './api/queryClient';
 import { AuthProvider } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import { StepUpModalProvider } from './auth/StepUpModal';
 import { Shell } from './layout/Shell';
+import { ScopeProvider } from './requests/ScopeProvider';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { ToastProvider } from './ui/Toast';
 import { Agents } from './pages/Agents';
 import { Audit } from './pages/Audit';
-import { Dashboard } from './pages/Dashboard';
 import { Inbox } from './pages/Inbox';
 import { InboxFill } from './pages/InboxFill';
 import { Login } from './pages/Login';
+import { Overview } from './pages/Overview';
 import { Me } from './pages/Me';
 import { MFASettings } from './pages/MFASettings';
 import { MyProjects } from './pages/MyProjects';
@@ -26,7 +27,6 @@ import { TeamPoliciesPicker } from './pages/TeamPoliciesPicker';
 import { TeamPolicyDetail } from './pages/TeamPolicyDetail';
 import { RequestDetail } from './pages/RequestDetail';
 import { Requests } from './pages/Requests';
-import { RevealSession } from './pages/RevealSession';
 import { Secrets } from './pages/Secrets';
 import { Assignments } from './pages/admin/Assignments';
 import { Integrations } from './pages/admin/Integrations';
@@ -51,12 +51,14 @@ export function App() {
           element={
             <RequireAuth>
               <StepUpModalProvider>
-                <Shell />
+                <ScopeProvider>
+                  <Shell />
+                </ScopeProvider>
               </StepUpModalProvider>
             </RequireAuth>
           }
         >
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Overview />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/requests" element={<Requests />} />
           <Route path="/requests/:id" element={<RequestDetail />} />
@@ -76,10 +78,9 @@ export function App() {
           <Route path="/teams/policies" element={<TeamPoliciesPicker />} />
           <Route path="/teams/:id/policies" element={<TeamPolicies />} />
           <Route path="/teams/:id/policies/:ruleID" element={<TeamPolicyDetail />} />
-          <Route
-            path="/projects/:id/env/:env_id/reveal/:request_id"
-            element={<RevealSession />}
-          />
+          {/* The reveal moved inline to the request page. Old links land
+              there; nothing is revealed until the requester asks. */}
+          <Route path="/projects/:id/env/:env_id/reveal/:request_id" element={<RevealRedirect />} />
           <Route path="/admin/projects" element={<Projects />} />
           <Route path="/admin/teams" element={<Teams />} />
           <Route path="/admin/roles" element={<Roles />} />
@@ -98,4 +99,9 @@ export function App() {
       </AuthProvider>
     </QueryClientProvider>
   );
+}
+
+function RevealRedirect() {
+  const { request_id = '' } = useParams<{ request_id: string }>();
+  return <Navigate to={`/requests/${request_id}`} replace />;
 }

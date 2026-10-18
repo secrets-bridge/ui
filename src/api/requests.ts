@@ -141,13 +141,15 @@ export function useRequestWraps(id: string | undefined, enabled = true) {
 /**
  * Single-shot wrap reveal — the platform's load-bearing security UX.
  *
- * HARD RULE: this MUST only be called from an explicit user click on
- * the Reveal button. NEVER call speculatively or in an effect — the
- * api consumes the wrap atomically on this call and a second call
- * returns 410.
+ * HARD RULE: called only from the reveal (pages/request/Reveal.tsx),
+ * after the requester's click and an MFA step-up, for the wraps of the
+ * reveal session it just opened. NEVER call speculatively or in an
+ * effect: the api consumes the wrap atomically on this call. A second
+ * fetch is refused (410 once consumed, 403 outside its open session).
  *
- * The response value is base64-encoded plaintext. The caller decodes,
- * displays once, and clears it from state when the modal closes.
+ * The response value is base64-encoded plaintext. The caller decodes it
+ * as UTF-8 (lib/decodeSecret.ts), shows it once and drops it when the
+ * reveal ends. Its byte length and hash are never displayed.
  *
  * Identity is derived server-side from the session cookie — the SPA
  * never sends a user_id on this call (ui#96 / UI-01).
