@@ -212,6 +212,19 @@ export function useProviderConnectionsForProject(
   });
 }
 
+// --- Name rule -----------------------------------------------------
+
+/**
+ * Mirror of `nameRe` in the api's internal/services/provider_connections.go
+ * (`^[a-z0-9][a-z0-9-]{0,119}$`). The api uses the same pattern for
+ * cluster_name. Client-side use is feedback only; the api decides.
+ */
+export const CONNECTION_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,119}$/;
+
+/** The name rule in plain words, for the field hint and the field error. */
+export const CONNECTION_NAME_RULE =
+  'Use lowercase letters, digits and hyphens, starting with a letter or digit, up to 120 characters.';
+
 // --- Stable error code router --------------------------------------
 
 /**
@@ -222,11 +235,11 @@ export function useProviderConnectionsForProject(
 export const PROVIDER_CONNECTION_ERROR_MESSAGES: Record<string, string> = {
   connection_not_found: 'Provider connection not found.',
   connection_name_taken: 'A provider connection with this name already exists.',
-  invalid_scope: 'Scope is invalid for this provider type.',
+  invalid_scope: 'Scope has keys this provider type does not accept.',
   invalid_auth_method:
     'Auth method is required and must be one of the values allowed for this provider type.',
-  invalid_name: 'Name must match ^[a-z0-9][a-z0-9-]{0,119}$.',
-  invalid_cluster_name: 'Cluster name is invalid.',
+  invalid_name: CONNECTION_NAME_RULE,
+  invalid_cluster_name: CONNECTION_NAME_RULE,
   credential_in_scope:
     'Scope contains a credential-shaped key. Use the agent’s workload identity instead.',
   secret_in_scope: 'Scope contains a value that looks like a secret.',
@@ -281,4 +294,33 @@ export function extractProviderConnectionErrorCode(
     if (typeof obj.code === 'string') return obj.code;
   }
   return undefined;
+}
+
+/**
+ * Reads the scope key lists from an `invalid_scope` response. The api
+ * (`mapServiceErr` in internal/handlers/provider_connections.go)
+ * adds `missing_keys` and `unknown_keys` to the body, each only when
+ * non-empty.
+ */
+export function extractScopeKeyProblems(err: ApiError): { missing: string[]; unknown: string[] } {
+  const list = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string') : [];
+  if (err.body && typeof err.body === 'object') {
+    const obj = err.body as { missing_keys?: unknown; unknown_keys?: unknown };
+    return { missing: list(obj.missing_keys), unknown: list(obj.unknown_keys) };
+  }
+  return { missing: [], unknown: [] };
+}
+
+/**
+ * The `invalid_scope` message with the key lists spelled out, for
+ * example "Missing: region. Not allowed: prefix." Falls back to the
+ * generic message when the api sent no lists.
+ */
+export function scopeErrorMessage(err: ApiError): string {
+  const { missing, unknown } = extractScopeKeyProblems(err);
+  const parts: string[] = [];
+  if (missing.length > 0) parts.push(`Missing: ${missing.join(', ')}.`);
+  if (unknown.length > 0) parts.push(`Not allowed: ${unknown.join(', ')}.`);
+  return parts.length > 0 ? parts.join(' ') : PROVIDER_CONNECTION_ERROR_MESSAGES.invalid_scope;
 }
