@@ -52,3 +52,5 @@ For a full local stack (api, Postgres, Redis, ingress), use the platform `docker
 Feature branch off `main`, conventional commits, small PRs, CI green, then open a PR for maintainer review. Never push to `main`. Features that need a new endpoint land in `api` first.
 
 This repo is public. Keep hostnames, account IDs, real secret paths and company names out of code, fixtures, screenshots, commits, PRs and issues.
+
+**No AI attribution.** Commits and PRs describe the change, nothing else. Don't add `Co-Authored-By` trailers for AI assistants, "Generated with ..." lines or links to AI sessions to commit messages, PR titles or PR bodies. A squash merge copies the PR body into the commit on `main`, where it can't be edited later. If you use a coding assistant, turn off its commit and PR attribution in its settings.
