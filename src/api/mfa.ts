@@ -241,7 +241,7 @@ export interface WebAuthnCredentialRequestOptionsJSON {
 /**
  * Mint a step-up challenge of the requested kind. Returns 412
  * `mfa_enrollment_required` when the user has no factor of any kind
- * (SPA routes to /me/mfa); 412 `mfa_kind_not_enrolled` when they have
+ * (the step-up modal offers to add one); 412 `mfa_kind_not_enrolled` when they have
  * factors but none of the requested kind (SPA can hint "try the
  * other kind").
  */

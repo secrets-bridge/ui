@@ -204,3 +204,12 @@ export function assertionResponseToJSON(
     },
   };
 }
+
+/** Security keys need a secure context and a browser with WebAuthn. */
+export function canUseWebAuthn(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.PublicKeyCredential !== 'undefined' &&
+    window.isSecureContext
+  );
+}

@@ -16,13 +16,22 @@
  *     → POST /auth/mfa/verify {challenge_id, code | response}
  *     → 204 = MFA-fresh; close modal, user re-clicks the original button
  *
+ *   Tier-2 op from an account with no factor → 412 mfa_enrollment_required
+ *     → client.ts calls requestStepUp() the same way
+ *     → the modal asks the user to add a factor and opens the enrollment
+ *       drawer over the current page. The page stays mounted, so a
+ *       half-filled form keeps what was typed (it used to navigate to
+ *       /me/mfa and lose it).
+ *     → once the factor is added, the user confirms with it and the
+ *       original request retries
+ *
  * Error cases the modal handles directly:
  *
  *   400 verification failed and
  *   410 challenge expired         → ask for a fresh challenge (each
  *                                   one is single-shot) and let the
  *                                   user type the code again
- *   412 mfa_enrollment_required   → navigate to /me/mfa
+ *   412 mfa_enrollment_required   → ask the user to add a factor
  *   412 mfa_kind_not_enrolled     → hint to switch factor
  *   401 factor_compromised        → hard-navigate to /login (sessions
  *                                   were revoked server-side)
@@ -33,30 +42,29 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '../api/client';
-import { useMFAChallenge, useMFAFactors, useMFAVerify } from '../api/mfa';
+import { mfaKey, useMFAChallenge, useMFAFactors, useMFAVerify } from '../api/mfa';
 import type { MFAFactor, MFAFactorKind } from '../api/mfa';
-import { assertionResponseToJSON, toRequestOptions } from '../api/webauthn';
+import { assertionResponseToJSON, canUseWebAuthn, toRequestOptions } from '../api/webauthn';
 import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Field, Input, Select } from '../ui/Field';
 import { useAuth } from './AuthContext';
+import { TOTPEnrollDrawer, WebAuthnEnrollDrawer } from './FactorEnroll';
 import {
   resolveStepUp,
   setCompromisedHandler,
-  setEnrollmentRequiredHandler,
   setStepUpHandler,
   type StepUpPurpose,
 } from './stepUp';
 
-type Stage = 'picker' | 'totp' | 'webauthn' | 'done';
+type Stage = 'picker' | 'totp' | 'webauthn' | 'enroll' | 'enroll-totp' | 'enroll-webauthn';
 
 export function StepUpModalProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState<StepUpPurpose | null>(null);
-  const navigate = useNavigate();
   const { logout } = useAuth();
 
   // Closing the modal MUST resolve the pending step-up promise so
@@ -70,11 +78,6 @@ export function StepUpModalProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     setStepUpHandler((purpose) => setOpen(purpose));
-    setEnrollmentRequiredHandler(() => {
-      // Bounce the user straight to enrollment. Don't open the modal
-      // — there's nothing to verify with.
-      navigate('/me/mfa');
-    });
     setCompromisedHandler(() => {
       // Sign-count regression on a WebAuthn factor. The api's verify
       // service revoked every session for the user before returning
@@ -85,10 +88,9 @@ export function StepUpModalProvider({ children }: { children: React.ReactNode })
     });
     return () => {
       setStepUpHandler(null);
-      setEnrollmentRequiredHandler(null);
       setCompromisedHandler(null);
     };
-  }, [navigate, logout]);
+  }, [logout]);
 
   return (
     <>
@@ -115,21 +117,14 @@ function StepUpModal({
   onCancel: () => void;
   onVerified: () => void;
 }) {
-  const navigate = useNavigate();
+  const qc = useQueryClient();
   const factors = useMFAFactors();
   const [stage, setStage] = useState<Stage>('picker');
   const [pickedFactor, setPickedFactor] = useState<MFAFactor | null>(null);
   const [pickedKind, setPickedKind] = useState<MFAFactorKind | null>(null);
-
-  // Auto-navigate to /me/mfa if the factor list resolves and the user
-  // has zero — they shouldn't see the picker at all. That's a cancel
-  // from the step-up perspective (no verify can happen here).
-  useEffect(() => {
-    if (factors.data && factors.data.length === 0) {
-      navigate('/me/mfa');
-      onCancel();
-    }
-  }, [factors.data, navigate, onCancel]);
+  // Set once the user adds a factor here, for the wording of the
+  // confirm step that follows.
+  const [added, setAdded] = useState(false);
 
   const start = useCallback(
     (kind: MFAFactorKind, factor?: MFAFactor) => {
@@ -152,6 +147,70 @@ function StepUpModal({
     setStage('totp');
   }
 
+  // No factor yet: offer to add one here rather than leave the page,
+  // which would drop whatever the user was in the middle of. Only on a
+  // settled list, so a refetch in flight can't land here.
+  if (stage === 'picker' && factors.data && list.length === 0 && !factors.isFetching) {
+    setStage('enroll');
+  }
+
+  // The api says there is no factor although the list showed one (it
+  // was removed in another tab): refresh the list and offer to add one.
+  const noFactor = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: mfaKey.factors });
+    setStage('enroll');
+  }, [qc]);
+
+  // Enrolling doesn't verify the session, so the new factor is used
+  // once more. The list must include it before that step reads it.
+  const afterEnroll = async (factor: MFAFactor) => {
+    const refreshed = qc.refetchQueries({ queryKey: mfaKey.factors });
+    setAdded(true);
+    setStage('picker');
+    await refreshed;
+    start(factor.kind, factor);
+  };
+
+  if (stage === 'enroll-totp') {
+    return <TOTPEnrollDrawer onClose={() => setStage('enroll')} onEnrolled={(f) => void afterEnroll(f)} />;
+  }
+  if (stage === 'enroll-webauthn') {
+    return <WebAuthnEnrollDrawer onClose={() => setStage('enroll')} onEnrolled={(f) => void afterEnroll(f)} />;
+  }
+  if (stage === 'enroll') {
+    const webAuthn = canUseWebAuthn();
+    return (
+      <Dialog
+        title="Add a second factor"
+        onClose={onCancel}
+        actions={
+          <>
+            <Button variant="secondary" onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setStage('enroll-webauthn')}
+              disabled={!webAuthn}
+              title={webAuthn ? undefined : 'Security keys need HTTPS (or localhost) and a browser that supports WebAuthn.'}
+            >
+              Add security key…
+            </Button>
+            <Button variant="primary" onClick={() => setStage('enroll-totp')} data-autofocus>
+              Add authenticator app…
+            </Button>
+          </>
+        }
+      >
+        <p className="text-muted">
+          {purpose === 'reveal'
+            ? "Revealing needs a second factor, and your account doesn't have one yet. Add one now to carry on. Nothing is retrieved until you confirm with it."
+            : "This needs a second factor, and your account doesn't have one yet. Add one now to carry on. Nothing you've entered on this page is lost."}
+        </p>
+      </Dialog>
+    );
+  }
+
   // Escape, the scrim and Cancel all close the dialog as a cancel.
   return (
     <Dialog
@@ -164,13 +223,17 @@ function StepUpModal({
       }
     >
       <p className="text-muted">
-        {purpose === 'reveal'
-          ? 'Enter your authentication code to reveal the values. Nothing is retrieved until you confirm, and closing this retrieves nothing.'
-          : "This action needs your second factor. After you confirm, you won't be asked again for 15 minutes."}
+        {added
+          ? purpose === 'reveal'
+            ? 'Your second factor is added. Use it once more to reveal the values. Nothing is retrieved until you confirm.'
+            : "Your second factor is added. Use it once more to finish. After that, you won't be asked again for 15 minutes."
+          : purpose === 'reveal'
+            ? 'Enter your authentication code to reveal the values. Nothing is retrieved until you confirm, and closing this retrieves nothing.'
+            : "This action needs your second factor. After you confirm, you won't be asked again for 15 minutes."}
       </p>
 
       {stage === 'picker' && (
-        <FactorPicker factors={list} loading={factors.isLoading} onPick={start} />
+        <FactorPicker factors={list} loading={factors.isLoading || (list.length === 0 && factors.isFetching)} onPick={start} />
       )}
       {stage === 'totp' && (
         <TOTPVerify
@@ -180,10 +243,11 @@ function StepUpModal({
           canGoBack={!totpOnly}
           onBack={() => setStage('picker')}
           onSuccess={onVerified}
+          onNoFactor={noFactor}
         />
       )}
       {stage === 'webauthn' && pickedKind === 'webauthn' && (
-        <WebAuthnVerify onBack={() => setStage('picker')} onSuccess={onVerified} />
+        <WebAuthnVerify onBack={() => setStage('picker')} onSuccess={onVerified} onNoFactor={noFactor} />
       )}
     </Dialog>
   );
@@ -233,12 +297,6 @@ function FactorPicker({
           </div>
         </button>
       )}
-      {factors.length === 0 && (
-        <p className="text-muted">
-          You haven't added a second factor yet. Taking you to Security
-          settings…
-        </p>
-      )}
     </div>
   );
 }
@@ -252,6 +310,7 @@ function TOTPVerify({
   canGoBack,
   onBack,
   onSuccess,
+  onNoFactor,
 }: {
   purpose: StepUpPurpose;
   factors: MFAFactor[];
@@ -259,10 +318,10 @@ function TOTPVerify({
   canGoBack: boolean;
   onBack: () => void;
   onSuccess: () => void;
+  onNoFactor: () => void;
 }) {
   const challenge = useMFAChallenge();
   const verify = useMFAVerify();
-  const navigate = useNavigate();
   const [factorId, setFactorId] = useState<string>(initialFactor?.id ?? factors[0]?.id ?? '');
   const [code, setCode] = useState('');
   const [challengeID, setChallengeID] = useState<string | null>(null);
@@ -275,7 +334,7 @@ function TOTPVerify({
       const out = await challenge.mutateAsync({ kind: 'totp' });
       return out.challenge_id;
     } catch (err) {
-      handleMFAEdgeCase(err, navigate);
+      handleMFAEdgeCase(err, onNoFactor);
       return null;
     }
   };
@@ -305,7 +364,7 @@ function TOTPVerify({
       verify.reset();
       onSuccess();
     } catch (err) {
-      handleMFAEdgeCase(err, navigate);
+      handleMFAEdgeCase(err, onNoFactor);
       setCode('');
       setChallengeID(null);
       setChallengeID(await newChallenge());
@@ -373,10 +432,17 @@ function TOTPVerify({
 
 // --- WebAuthn -------------------------------------------------------
 
-function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => void }) {
+function WebAuthnVerify({
+  onBack,
+  onSuccess,
+  onNoFactor,
+}: {
+  onBack: () => void;
+  onSuccess: () => void;
+  onNoFactor: () => void;
+}) {
   const challenge = useMFAChallenge();
   const verify = useMFAVerify();
-  const navigate = useNavigate();
   const [browserError, setBrowserError] = useState<string | null>(null);
   // Starts true: the ceremony auto-starts on mount (effect below), so
   // the first render already shows the waiting state.
@@ -411,7 +477,7 @@ function WebAuthnVerify({ onBack, onSuccess }: { onBack: () => void; onSuccess: 
       if (err instanceof DOMException) {
         return `${err.name}: ${err.message || 'no further detail from the browser'}`;
       } else if (err instanceof ApiError) {
-        handleMFAEdgeCase(err, navigate);
+        handleMFAEdgeCase(err, onNoFactor);
         return `${err.status} · ${err.message}`;
       } else if (err instanceof Error) {
         return err.message;
@@ -496,12 +562,12 @@ function ErrorBanner({ err, purpose }: { err: unknown; purpose: StepUpPurpose })
  * routing. The 401 step_up_required case never reaches here — the
  * global interceptor handles it by opening this modal.
  */
-function handleMFAEdgeCase(err: unknown, navigate: (path: string) => void): void {
+function handleMFAEdgeCase(err: unknown, onNoFactor: () => void): void {
   if (!(err instanceof ApiError)) return;
   const msg = (err.message ?? '').toLowerCase();
-  // 412 mfa_enrollment_required → no factors at all
+  // 412 mfa_enrollment_required → no factors at all: offer to add one
   if (err.status === 412 && msg.includes('mfa_enrollment_required')) {
-    navigate('/me/mfa');
+    onNoFactor();
     return;
   }
   // 412 mfa_kind_not_enrolled → wrong kind requested; the picker

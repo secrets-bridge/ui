@@ -31,7 +31,6 @@
 import {
   notifySessionExpired,
   requestCompromisedFlow,
-  requestEnrollment,
   requestStepUp,
 } from '../auth/stepUp';
 
@@ -196,7 +195,11 @@ async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0):
     // `attempt === 0` guards against an infinite retry loop in the
     // pathological case where the api still 401-step-ups after a
     // successful verify.
-    if (apiErr.stepUp && attempt === 0) {
+    //
+    // 412 mfa_enrollment_required (no factor yet) takes the same path:
+    // the modal has the user add a factor over the current page, then
+    // confirm with it, so the page and its form stay as they were.
+    if ((apiErr.stepUp || needsFirstFactor(apiErr)) && attempt === 0) {
       const outcome = await requestStepUp();
       if (outcome === 'verified') {
         return request<T>(path, opts, attempt + 1);
@@ -204,9 +207,8 @@ async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0):
       throw apiErr;
     }
 
-    // Non-step-up MFA-shaped errors navigate away (enrollment to
-    // /me/mfa; compromised to /login). Fire-and-forget routing,
-    // then throw so the caller still sees the error.
+    // A compromised factor navigates away to /login. Fire-and-forget
+    // routing, then throw so the caller still sees the error.
     routeNonStepUpSignals(apiErr);
 
     // UI-N-05: any other 401 means the session cookie is gone (expired,
@@ -224,15 +226,24 @@ async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0):
 }
 
 /**
- * Route the two MFA-shaped errors that DON'T retry through the SPA
- * singletons before the caller's try/catch sees them.
+ * The account has no second factor yet (`412 mfa_enrollment_required`
+ * from the step-up and login-time gates).
+ */
+function needsFirstFactor(err: ApiError): boolean {
+  return err.status === 412 && (err.message ?? '').toLowerCase().includes('mfa_enrollment_required');
+}
+
+/**
+ * Route the MFA-shaped error that DOESN'T retry through the SPA
+ * singletons before the caller's try/catch sees it.
  *
- * Step-up (`401 + WWW-Authenticate: step-up`) is handled inline in
- * `request()` because it's the only one that can RECOVER without
- * leaving the page — modal opens, user verifies, request retries.
- * The other two navigate away (enrollment → /me/mfa, compromised →
- * /login) so there's nothing to await — fire-and-forget routing,
- * then the original error still throws so the caller sees it.
+ * Step-up (`401 + WWW-Authenticate: step-up`) and a missing first
+ * factor (`412 mfa_enrollment_required`) are handled inline in
+ * `request()` because they can RECOVER without leaving the page —
+ * modal opens, user verifies (adding a factor first if needed),
+ * request retries. A compromised factor navigates away to /login, so
+ * there's nothing to await — fire-and-forget routing, then the
+ * original error still throws so the caller sees it.
  *
  * Lives in this layer (not in TanStack onError) so direct fetch
  * helpers (e.g. `revealWrap`) trigger the same SPA-wide flow as
@@ -240,10 +251,6 @@ async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0):
  */
 function routeNonStepUpSignals(err: ApiError): void {
   const message = (err.message ?? '').toLowerCase();
-  if (err.status === 412 && message.includes('mfa_enrollment_required')) {
-    requestEnrollment();
-    return;
-  }
   if (err.status === 401 && isFactorCompromised(message)) {
     requestCompromisedFlow();
   }
