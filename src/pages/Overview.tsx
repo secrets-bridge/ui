@@ -20,6 +20,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { useAdminAgents, type AgentStatus } from '../api/agents';
 import { useMe } from '../api/me';
+import { usePendingUsers } from '../api/pendingUsers';
 import { useRequests } from '../api/requests';
 import type { AccessRequest } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -63,6 +64,10 @@ export function Overview() {
   const me = identity?.id ?? '';
   const canRequest = hasPermission('secret.request');
   const canApprove = hasPermission('secret.approve');
+  // People waiting for an admin's approval (api#266), for whoever can
+  // approve them.
+  const canApproveUsers = hasPermission('user_role.edit');
+  const waitingUsers = usePendingUsers({ enabled: canApproveUsers }).data?.total ?? 0;
   const { scope, setScope } = useScope();
   const meQ = useMe();
   const scopes = useMemo(() => scopeOptions(meQ.data?.projects), [meQ.data]);
@@ -227,6 +232,23 @@ export function Overview() {
           </>
         }
       />
+
+      {canApproveUsers && waitingUsers > 0 && (
+        <Banner
+          title={waitingUsers === 1 ? '1 person is waiting for approval.' : `${waitingUsers} people are waiting for approval.`}
+          action={
+            <Link
+              to="/admin/users"
+              className="inline-flex h-(--control-sm) items-center rounded-md border border-edge bg-surface px-2.5 text-ui font-medium text-ink hover:bg-sunken"
+            >
+              Review
+            </Link>
+          }
+          className="mb-6"
+        >
+          They signed in with Google and can't do anything until you give them a role.
+        </Banner>
+      )}
 
       {failed && (
         <Banner

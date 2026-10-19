@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
 import { useInboxCount } from '../api/crossTeam';
+import { pendingForbidden, usePendingUsers } from '../api/pendingUsers';
 import { useRequests } from '../api/requests';
 import { needsMyDecision } from '../lib/requestQueues';
 import { useRevealConditions } from '../requests/revealState';
@@ -193,9 +194,10 @@ function Navigation() {
   const showWorkflows = hasPermission('workflow.edit');
   const showPolicies = hasPermission('policy.edit');
   const showIntegrations = hasPermission('integration.edit');
+  const showSignIn = hasPermission('auth.sso.edit');
   const showScopedPolicies = hasPermission('policy.author');
   const anyAdmin =
-    showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showIntegrations;
+    showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showIntegrations || showSignIn;
 
   // Requests count, hidden at 0, from the same queries and rules as the
   // pages so the numbers never disagree: for approvers, the requests
@@ -219,6 +221,14 @@ function Navigation() {
 
   const inboxCount = useInboxCount({ enabled: showInbox });
   const inboxBadge = showInbox ? inboxCount.data?.total : undefined;
+
+  // People waiting for an admin's approval (api#266), for whoever can
+  // approve them.
+  // The list needs a global grant; a team-scoped one gets a 403, and
+  // then there's no Users page for this admin to use.
+  const waiting = usePendingUsers({ enabled: showAssignments });
+  const showUsers = showAssignments && !pendingForbidden(waiting.error);
+  const waitingBadge = showUsers ? waiting.data?.total : undefined;
 
   return (
     <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
@@ -256,12 +266,21 @@ function Navigation() {
           {showTeams && <NavItem to="/admin/projects" label="Projects" />}
           {showTeams && <NavItem to="/admin/teams" label="Teams" />}
           {showRoles && <NavItem to="/admin/roles" label="Roles" />}
+          {showUsers && (
+            <NavItem
+              to="/admin/users"
+              label="Users"
+              count={waitingBadge}
+              countLabel={`${waitingBadge ?? 0} waiting for approval`}
+            />
+          )}
           {showAssignments && <NavItem to="/admin/assignments" label="Assignments" />}
           {showWorkflows && <NavItem to="/admin/workflows" label="Workflows" />}
           {showPolicies && <NavItem to="/admin/policies" label="Policies" />}
           {showPolicies && <NavItem to="/admin/platform-settings" label="Platform settings" />}
           {showIntegrations && <NavItem to="/admin/provider-connections" label="Provider connections" />}
           {showIntegrations && <NavItem to="/admin/integrations" label="Integrations" />}
+          {showSignIn && <NavItem to="/admin/sign-in" label="Sign-in" />}
         </NavGroup>
       )}
 

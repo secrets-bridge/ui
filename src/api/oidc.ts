@@ -47,12 +47,18 @@ export interface OidcStatus {
   loading: boolean;
 }
 
-export function useOidcAvailable(): OidcStatus {
+/**
+ * Probes the env-var OIDC provider. Each probe mints a sign-in state and
+ * spends the start route's rate limit, so the login page only uses it
+ * as a fallback when GET /auth/providers isn't there (an older api).
+ */
+export function useOidcAvailable(opts: { enabled?: boolean } = {}): OidcStatus {
   const q: UseQueryResult<boolean, Error> = useQuery({
     queryKey: ['oidc-available'],
     queryFn: probe,
     staleTime: 5 * 60 * 1000,
     retry: false,
+    enabled: opts.enabled ?? true,
   });
   return { enabled: q.data === true, loading: q.isLoading };
 }

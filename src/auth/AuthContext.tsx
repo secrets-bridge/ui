@@ -47,6 +47,9 @@ export interface Identity {
   // /users/me resolves this stays false (fail-closed — pushes to
   // enroll rather than implying a factor exists).
   mfa_enrolled: boolean;
+  // True while an admin hasn't approved the account yet (api#266).
+  // RequireAuth sends such a user to /pending.
+  pending_approval: boolean;
 }
 
 interface AuthState {
@@ -93,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         display_name: meQuery.data.display_name || meQuery.data.email,
         permissions: meQuery.data.permissions,
         mfa_enrolled: meQuery.data.mfa_enrolled,
+        pending_approval: meQuery.data.pending_approval === true,
       }
     : null;
 

@@ -18,7 +18,9 @@ import { useAuth } from './AuthContext';
  *   - loading → render a placeholder so the URL stays on the
  *               protected route; once /users/me resolves the next
  *               render flips to either 'ready' or 'idle'.
- *   - ready   → render children.
+ *   - ready   → render children, unless the account is still waiting
+ *               for an admin's approval (api#266): then /pending,
+ *               the only page such an account can use.
  *   - idle    → genuinely unauthenticated, redirect to /login.
  *   - error   → also redirect; the Login page surfaces the retry.
  */
@@ -31,6 +33,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   }
   if (!identity) {
     return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+  if (identity.pending_approval) {
+    return <Navigate to="/pending" replace />;
   }
   return <>{children}</>;
 }

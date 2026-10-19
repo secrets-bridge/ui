@@ -4,12 +4,25 @@
  * teams and their permissions. Read from AuthContext (/users/me).
  */
 
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { logoUrl } from '../api/logos';
+import {
+  takeTicketFromHash,
+  useConnectProvider,
+  useDisconnectProvider,
+  useFinishSSO,
+  useMyIdentities,
+  useSignInOptions,
+} from '../api/sso';
+import { ssoErrorText } from '../api/ssoErrors';
 import { useAuth } from '../auth/AuthContext';
+import { formatShort } from '../lib/time';
 import { Banner } from '../ui/Banner';
+import { Button } from '../ui/Button';
+import { ConfirmModal } from '../ui/ConfirmModal';
+import { useToast } from '../ui/toastContext';
 import { EntityMark } from '../ui/EntityMark';
 import { EnvTag } from '../ui/EnvTag';
 import { PageHeader } from '../ui/PageHeader';
@@ -79,6 +92,8 @@ export function Me() {
             </Link>
           </div>
         </Panel>
+
+        <GooglePanel />
 
         <Panel title="Projects you can work in" count={projects.length}>
           {projects.length === 0 ? (
@@ -157,6 +172,114 @@ export function Me() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Connect Google to this account, so the owner can sign in with it
+ * (api#267). Accounts are never linked by email: the owner connects it
+ * here, on their own session and after a fresh second factor. Google
+ * sends the browser back with a one-time ticket in the URL fragment,
+ * which this panel redeems on the same session.
+ */
+function GooglePanel() {
+  const { me } = useAuth();
+  // An account that a Google sign-in created has no password, so Google
+  // is its only way in; the api refuses the disconnect too.
+  const hasPassword = me?.has_password !== false;
+  const options = useSignInOptions();
+  const identities = useMyIdentities();
+  const connect = useConnectProvider('google');
+  const disconnect = useDisconnectProvider('google');
+  const finish = useFinishSSO('google');
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    const ticket = takeTicketFromHash();
+    if (!ticket) return;
+    finish.mutate(ticket, { onSuccess: () => toast('Google is connected. You can sign in with it now.') });
+    // Redeem once, on load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const linked = identities.data?.find((i) => i.provider_type === 'google');
+  const offered = options.data?.some((o) => o.type === 'google') ?? false;
+  if (!linked && !offered && !finish.isError) return null;
+
+  return (
+    <Panel title="Google">
+      <div className="px-5 py-4">
+        {linked ? (
+          <p className="text-body">
+            Connected to <span className="font-medium text-ink">{linked.email}</span> since {formatShort(linked.linked_at)}.{' '}
+            {hasPassword
+              ? 'You can sign in with Google instead of your password.'
+              : 'This account was created by signing in with Google and has no password, so Google is how you sign in. It can’t be disconnected.'}
+          </p>
+        ) : (
+          <p className="text-body">Connect your Google account to sign in with it instead of your password.</p>
+        )}
+        {finish.isError && (
+          <Banner tone="error" className="mt-3" title="Google wasn't connected.">
+            {ssoErrorText(finish.error)}
+          </Banner>
+        )}
+        {connect.isError && (
+          <Banner tone="error" className="mt-3">
+            {ssoErrorText(connect.error)}
+          </Banner>
+        )}
+        <div className="mt-3 empty:hidden">
+          {linked ? (
+            hasPassword && (
+              <Button variant="secondary" onClick={() => setConfirming(true)}>
+                Disconnect…
+              </Button>
+            )
+          ) : (
+            <Button
+              variant="secondary"
+              disabled={connect.isPending}
+              aria-busy={connect.isPending}
+              onClick={async () => {
+                try {
+                  const { redirect_url } = await connect.mutateAsync();
+                  window.location.assign(redirect_url);
+                } catch {
+                  // Shown above.
+                }
+              }}
+            >
+              {connect.isPending ? 'Connecting…' : 'Connect Google'}
+            </Button>
+          )}
+        </div>
+      </div>
+      {confirming && linked && hasPassword && (
+        <ConfirmModal
+          title="Disconnect Google?"
+          body={`You won't be able to sign in with ${linked.email} any more. Sign in with your password instead, or connect Google again later.`}
+          confirmText="Disconnect"
+          danger
+          onCancel={() => {
+            disconnect.reset();
+            setConfirming(false);
+          }}
+          onConfirm={async () => {
+            try {
+              await disconnect.mutateAsync();
+              toast('Google is disconnected.');
+              setConfirming(false);
+            } catch {
+              // Shown in the dialog.
+            }
+          }}
+          loading={disconnect.isPending}
+          error={disconnect.error}
+        />
+      )}
+    </Panel>
   );
 }
 

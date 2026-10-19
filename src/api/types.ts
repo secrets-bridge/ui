@@ -123,6 +123,14 @@ export interface MeResponse {
   // 412 mfa_enrollment_required on Tier-2 ops when the user has
   // no factor.
   mfa_enrolled: boolean;
+  // True while the account waits for an admin's approval (api#266).
+  // Such an account can only read /users/me and sign out; the console
+  // shows the waiting page and nothing else. Absent on older APIs.
+  pending_approval?: boolean;
+  // False for an account that a Google sign-in created: it has no
+  // password anyone knows, so its Google identity is its only way in and
+  // can't be disconnected. Absent on older APIs.
+  has_password?: boolean;
 }
 
 /**
