@@ -58,6 +58,7 @@ export function SignIn() {
   const providers = useSSOProviders({ enabled: allowed });
   const finish = useFinishSSO('google');
   const [testResult, setTestResult] = useState<FinishResult | null>(null);
+  const [addressEditing, setAddressEditing] = useState(false);
 
   // Back from a Test round trip: redeem the ticket on this session.
   useEffect(() => {
@@ -91,7 +92,7 @@ export function SignIn() {
       <div className="flex flex-col gap-6">
         {finish.isError && (
           <Banner tone="error" title="The test result couldn't be read.">
-            {ssoErrorText(finish.error)} Run the test again from this browser tab.
+            {ssoErrorText(finish.error)}
           </Banner>
         )}
         {testResult && testResult.result === 'ok' && (
@@ -107,10 +108,14 @@ export function SignIn() {
           <Banner tone="error">{ssoErrorText(settings.error ?? providers.error)}</Banner>
         )}
 
-        {settings.data && <AddressSection settings={settings.data} />}
+        {settings.data && <AddressSection settings={settings.data} onEditing={setAddressEditing} />}
 
         {providers.isSuccess && settings.data && (
-          google ? <GoogleSection provider={google} settings={settings.data} /> : <GoogleSetup settings={settings.data} />
+          google ? (
+            <GoogleSection provider={google} settings={settings.data} />
+          ) : (
+            <GoogleSetup settings={settings.data} quiet={addressEditing} />
+          )
         )}
       </div>
     </div>
@@ -134,10 +139,16 @@ function Section({ id, title, description, action, children }: { id: string; tit
   );
 }
 
+// Host names that only resolve inside a network: a single label, or a
+// suffix for local and cluster-internal names.
+const INTERNAL_SUFFIXES = ['.local', '.internal', '.svc', '.lan', '.home.arpa'];
+
 function addressWarning(value: string): string | null {
   try {
     const u = new URL(value);
-    if (u.hostname === 'localhost' || /^[0-9.]+$/.test(u.hostname) || u.hostname.includes(':')) {
+    const host = u.hostname.toLowerCase();
+    const internalName = !host.includes('.') || INTERNAL_SUFFIXES.some((suffix) => host.endsWith(suffix));
+    if (host === 'localhost' || /^[0-9.]+$/.test(host) || host.includes(':') || internalName) {
       return 'This looks like an internal address. Use the address people open the console with.';
     }
     if (u.protocol !== 'https:') return 'Google needs https, except for localhost.';
@@ -147,21 +158,43 @@ function addressWarning(value: string): string | null {
   return null;
 }
 
-function AddressSection({ settings }: { settings: SSOSettings }) {
+function AddressSection({ settings, onEditing }: { settings: SSOSettings; onEditing: (editing: boolean) => void }) {
   const update = useUpdateSSOSettings();
   const toast = useToast();
-  const [editing, setEditing] = useState<'address' | 'cap' | null>(null);
-  const [draft, setDraft] = useState('');
+  const [editing, setEditingState] = useState<'address' | 'cap' | null>(null);
+  const [draft, setDraftState] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
   const fromEnv = settings.public_url_source === 'env';
   const warning = editing === 'address' ? addressWarning(draft) : null;
+  const setEditing = (next: 'address' | 'cap' | null) => {
+    setEditingState(next);
+    setLocalError(null);
+    // While a form here is open, its Save is the page's primary button.
+    onEditing(next !== null);
+  };
+  const setDraft = (next: string) => {
+    setDraftState(next);
+    setLocalError(null);
+  };
 
   const save = async () => {
+    // Checked here before the api: an empty address would quietly take
+    // Google off the login page, and Number('') is 0 and Number('x') NaN.
+    if (editing === 'address' && draft.trim() === '') {
+      setLocalError('Enter the address people open the console with.');
+      return;
+    }
+    const cap = Number(draft);
+    if (editing === 'cap' && (!Number.isInteger(cap) || cap < 1 || cap > 10000)) {
+      setLocalError('Enter a whole number from 1 to 10,000.');
+      return;
+    }
     try {
       if (editing === 'address') {
         await update.mutateAsync({ public_url: draft.trim() });
         toast('Saved the public address.');
       } else {
-        await update.mutateAsync({ pending_cap: Number(draft) });
+        await update.mutateAsync({ pending_cap: cap });
         toast('Saved the waiting limit.');
       }
       setEditing(null);
@@ -197,7 +230,7 @@ function AddressSection({ settings }: { settings: SSOSettings }) {
                   {warning && <span className="mt-1 block font-medium text-warn">{warning}</span>}
                 </>
               }
-              error={update.isError ? ssoErrorText(update.error) : undefined}
+              error={localError ?? (update.isError ? ssoErrorText(update.error) : undefined)}
             >
               {(p) => <Input {...p} value={draft} onChange={(e) => setDraft(e.target.value)} className="w-full font-mono" autoComplete="off" spellCheck={false} data-autofocus />}
             </Field>
@@ -206,7 +239,7 @@ function AddressSection({ settings }: { settings: SSOSettings }) {
               id="pending-cap"
               label="Most accounts that can wait at once"
               hint="Past this, new Google sign-ins are turned away until you approve or decline some. Between 1 and 10,000."
-              error={update.isError ? ssoErrorText(update.error) : undefined}
+              error={localError ?? (update.isError ? ssoErrorText(update.error) : undefined)}
             >
               {(p) => <Input {...p} type="number" min={1} max={10000} value={draft} onChange={(e) => setDraft(e.target.value)} className="w-32 font-mono" data-autofocus />}
             </Field>
@@ -285,7 +318,7 @@ function CopyLine({ value }: { value: string }) {
   );
 }
 
-function GoogleSetup({ settings }: { settings: SSOSettings }) {
+function GoogleSetup({ settings, quiet }: { settings: SSOSettings; quiet: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <Section
@@ -293,7 +326,7 @@ function GoogleSetup({ settings }: { settings: SSOSettings }) {
       title="Google"
       description="Not set up. People sign in with a local account until you connect Google."
       action={
-        <Button variant="primary" onClick={() => setOpen(true)}>
+        <Button variant={quiet ? 'secondary' : 'primary'} onClick={() => setOpen(true)}>
           Set up Google
         </Button>
       }
@@ -476,18 +509,22 @@ function ProviderDrawer({ settings, provider, onClose }: { settings: SSOSettings
     }
   };
 
+  // Cancel and the header's close do the same: drop the typed secret and
+  // the mutation (its variables hold the secret).
+  const close = () => {
+    setSecret('');
+    mutation.reset();
+    onClose();
+  };
+
   return (
     <Drawer
       title={provider ? 'Edit Google' : 'Set up Google'}
       subtitle="From an OAuth client of type Internal in your Google Cloud project."
-      onClose={() => {
-        setSecret('');
-        mutation.reset();
-        onClose();
-      }}
+      onClose={close}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={mutation.isPending}>
+          <Button variant="secondary" onClick={close} disabled={mutation.isPending}>
             Cancel
           </Button>
           <Button type="submit" form="google-provider" variant="primary" disabled={mutation.isPending} aria-busy={mutation.isPending}>

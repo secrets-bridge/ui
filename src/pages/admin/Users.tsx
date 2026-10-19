@@ -13,7 +13,7 @@ import { useForm, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import { useApproveUser, useDeclineUser, usePendingUsers, type PendingUser } from '../../api/pendingUsers';
+import { pendingForbidden, useApproveUser, useDeclineUser, usePendingUsers, type PendingUser } from '../../api/pendingUsers';
 import { useRoles } from '../../api/roles';
 import { useTeams } from '../../api/teams';
 import { useProjects } from '../../api/tenancy';
@@ -39,12 +39,15 @@ export function Users() {
   const [declining, setDeclining] = useState<PendingUser | null>(null);
   const decline = useDeclineUser();
 
-  if (!allowed) {
+  // user_role.edit held only for a team or a project isn't enough: the
+  // list needs it globally, and the api says so with a 403.
+  if (!allowed || pendingForbidden(pending.error)) {
     return (
       <div>
         <PageHeader title="Users" />
         <Banner title="You can't approve new users.">
-          It needs the <code className="font-mono text-mono">user_role.edit</code> permission. Ask an administrator.
+          It needs the <code className="font-mono text-mono">user_role.edit</code> permission for everything, not only for a team
+          or a project. Ask an administrator.
         </Banner>
       </div>
     );

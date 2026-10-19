@@ -23,7 +23,7 @@
 
 import { useEffect, useState } from 'react';
 import { useForm, type SubmitHandler } from 'react-hook-form';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
@@ -92,11 +92,19 @@ export function Login() {
   //   2. User had a live session in another tab and opened /login;
   //      same flip, same redirect.
   // Gated on meStatus===ready so we never preempt the loading phase.
+  // A refused Google sign-in lands here with ?error=sso. The api sends
+  // the same answer whatever the reason, so the message can't say more.
+  // A signed-in user can land here too, when a Connect or Test round
+  // trip failed before the api knew which one it was (another browser,
+  // or it took too long): they get a way back instead of a silent bounce.
+  const ssoRefused = new URLSearchParams(location.search).get('error') === 'sso';
+  const signedIn = meStatus === 'ready' && !!identity;
+
   useEffect(() => {
-    if (meStatus === 'ready' && identity) {
+    if (signedIn && !ssoRefused) {
       navigate(returnTo, { replace: true });
     }
-  }, [meStatus, identity, navigate, returnTo]);
+  }, [signedIn, ssoRefused, navigate, returnTo]);
 
   const {
     register,
@@ -150,9 +158,6 @@ export function Login() {
   // A session that ended (expired, revoked, signed out elsewhere) sends
   // the tab here with ?return_to=, so say why.
   const sessionEnded = new URLSearchParams(location.search).has('return_to');
-  // A refused Google sign-in lands here with ?error=sso. The api sends
-  // the same answer whatever the reason, so this message can't say more.
-  const ssoRefused = new URLSearchParams(location.search).get('error') === 'sso';
 
   useEffect(() => {
     document.title = 'Sign in · Secrets Bridge';
@@ -167,6 +172,24 @@ export function Login() {
             <Logo size={24} product="Console" />
           </div>
 
+          {signedIn && ssoRefused ? (
+            <div className="flex flex-col gap-[18px] rounded-md border border-border bg-surface px-6 py-6">
+              <h1 id="page-title" className="text-console-title text-ink">
+                Google didn’t finish
+              </h1>
+              <Banner tone="error">
+                The round trip to Google took too long, or it finished in another browser. Start it again from the page
+                you were on.
+              </Banner>
+              <Link
+                to="/"
+                replace
+                className="inline-flex h-(--control-touch) items-center justify-center rounded-md border border-accent bg-accent px-3 text-ui font-semibold text-on-accent hover:brightness-110"
+              >
+                Back to the console
+              </Link>
+            </div>
+          ) : (
           <form
             onSubmit={handleSubmit(onValid)}
             noValidate
@@ -185,8 +208,7 @@ export function Login() {
 
             {ssoRefused && (
               <Banner tone="error" title="You couldn’t be signed in with that account.">
-                Use your organization’s account. If you already have a local account here, sign in with it and connect
-                Google from your profile. Otherwise, ask an administrator.
+                Use your organization’s account, or ask an administrator.
               </Banner>
             )}
 
@@ -263,6 +285,7 @@ export function Login() {
               Your session lives on the server. This page never stores a token or a secret value.
             </p>
           </form>
+          )}
         </div>
       </div>
     </div>

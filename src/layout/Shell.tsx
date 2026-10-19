@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
 import { useInboxCount } from '../api/crossTeam';
-import { usePendingUsers } from '../api/pendingUsers';
+import { pendingForbidden, usePendingUsers } from '../api/pendingUsers';
 import { useRequests } from '../api/requests';
 import { needsMyDecision } from '../lib/requestQueues';
 import { useRevealConditions } from '../requests/revealState';
@@ -224,8 +224,11 @@ function Navigation() {
 
   // People waiting for an admin's approval (api#266), for whoever can
   // approve them.
+  // The list needs a global grant; a team-scoped one gets a 403, and
+  // then there's no Users page for this admin to use.
   const waiting = usePendingUsers({ enabled: showAssignments });
-  const waitingBadge = showAssignments ? waiting.data?.total : undefined;
+  const showUsers = showAssignments && !pendingForbidden(waiting.error);
+  const waitingBadge = showUsers ? waiting.data?.total : undefined;
 
   return (
     <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
@@ -263,7 +266,7 @@ function Navigation() {
           {showTeams && <NavItem to="/admin/projects" label="Projects" />}
           {showTeams && <NavItem to="/admin/teams" label="Teams" />}
           {showRoles && <NavItem to="/admin/roles" label="Roles" />}
-          {showAssignments && (
+          {showUsers && (
             <NavItem
               to="/admin/users"
               label="Users"

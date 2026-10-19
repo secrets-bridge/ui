@@ -13,6 +13,7 @@ const CODE_MESSAGES: Record<string, string> = {
     'A default role can only hold secret.list, secret.request and audit.read. Make a role with just those, or keep approval on.',
   default_role_needs_approval_off: 'A default role is only used when new users don’t need approval.',
   env_provider_is_google: 'This install already signs in with Google through its SB_OIDC_* settings.',
+  identity_required: 'Google is how you sign in to this account, so it can’t be disconnected.',
   provider_exists: 'Google is already set up.',
   provider_not_ready: 'Set the missing items before turning sign-in on.',
   public_url_from_env: 'This install sets its public address with SB_PUBLIC_URL, so it can’t be changed here.',
@@ -34,7 +35,12 @@ const REASON_MESSAGES: Record<string, string> = {
   no_code: 'The sign-in was cancelled at Google.',
   state_unknown: 'The round trip took too long. Try again.',
   state_cookie: 'The round trip was started in another browser. Try again here.',
+  iat_invalid: 'Google’s answer was too old, or dated in the future. Check this server’s clock, then try again.',
+  no_provider: 'Google sign-in isn’t set up any more.',
+  error: 'Something went wrong on the way back from Google. Try again.',
 };
+
+const TICKET_REFUSED = 'This result expired or came from another tab. Try again.';
 
 /** The api's error_code and reason, when the error carries them. */
 export function ssoErrorDetail(err: unknown): { code?: string; reason?: string; field?: string; missing?: string[] } {
@@ -61,6 +67,11 @@ export function ssoErrorText(err: unknown): string {
     return `Set ${missing.map((m) => names[m] ?? m).join(' and ')} before turning sign-in on.`;
   }
   if (code === 'invalid_input' && err instanceof ApiError) return err.message;
+  // A test or connect result redeemed too late, twice, or from another
+  // session: the api answers 403 sso_ticket_refused.
+  if (err instanceof ApiError && err.status === 403 && (code === 'sso_ticket_refused' || err.message.includes('sso_ticket_refused'))) {
+    return TICKET_REFUSED;
+  }
   if (code && CODE_MESSAGES[code]) return CODE_MESSAGES[code];
   if (err instanceof ApiError) {
     if (err.status === 401) return 'Your second factor wasn’t confirmed, so nothing changed.';
@@ -69,7 +80,11 @@ export function ssoErrorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** A sentence for a failed Test round trip's reason. */
+/**
+ * A sentence for a failed Test round trip's reason. A reason without
+ * its own words is shown as the code, for the admin running the test.
+ */
 export function ssoReasonText(reason?: string): string {
-  return (reason && REASON_MESSAGES[reason]) || 'The test didn’t pass.';
+  if (reason && REASON_MESSAGES[reason]) return REASON_MESSAGES[reason];
+  return reason ? `Google’s answer didn’t pass a check (${reason}).` : 'Google’s answer didn’t pass a check.';
 }

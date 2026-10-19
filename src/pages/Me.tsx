@@ -183,6 +183,10 @@ export function Me() {
  * which this panel redeems on the same session.
  */
 function GooglePanel() {
+  const { me } = useAuth();
+  // An account that a Google sign-in created has no password, so Google
+  // is its only way in; the api refuses the disconnect too.
+  const hasPassword = me?.has_password !== false;
   const options = useSignInOptions();
   const identities = useMyIdentities();
   const connect = useConnectProvider('google');
@@ -208,8 +212,10 @@ function GooglePanel() {
       <div className="px-5 py-4">
         {linked ? (
           <p className="text-body">
-            Connected to <span className="font-medium text-ink">{linked.email}</span> since {formatShort(linked.linked_at)}. You can
-            sign in with Google instead of your password.
+            Connected to <span className="font-medium text-ink">{linked.email}</span> since {formatShort(linked.linked_at)}.{' '}
+            {hasPassword
+              ? 'You can sign in with Google instead of your password.'
+              : 'This account was created by signing in with Google and has no password, so Google is how you sign in. It can’t be disconnected.'}
           </p>
         ) : (
           <p className="text-body">Connect your Google account to sign in with it instead of your password.</p>
@@ -224,11 +230,13 @@ function GooglePanel() {
             {ssoErrorText(connect.error)}
           </Banner>
         )}
-        <div className="mt-3">
+        <div className="mt-3 empty:hidden">
           {linked ? (
-            <Button variant="secondary" onClick={() => setConfirming(true)}>
-              Disconnect…
-            </Button>
+            hasPassword && (
+              <Button variant="secondary" onClick={() => setConfirming(true)}>
+                Disconnect…
+              </Button>
+            )
           ) : (
             <Button
               variant="secondary"
@@ -248,7 +256,7 @@ function GooglePanel() {
           )}
         </div>
       </div>
-      {confirming && linked && (
+      {confirming && linked && hasPassword && (
         <ConfirmModal
           title="Disconnect Google?"
           body={`You won't be able to sign in with ${linked.email} any more. Sign in with your password instead, or connect Google again later.`}

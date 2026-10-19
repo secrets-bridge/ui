@@ -127,6 +127,10 @@ export interface MeResponse {
   // Such an account can only read /users/me and sign out; the console
   // shows the waiting page and nothing else. Absent on older APIs.
   pending_approval?: boolean;
+  // False for an account that a Google sign-in created: it has no
+  // password anyone knows, so its Google identity is its only way in and
+  // can't be disconnected. Absent on older APIs.
+  has_password?: boolean;
 }
 
 /**
