@@ -14,6 +14,7 @@ import { Audit } from './pages/Audit';
 import { Inbox } from './pages/Inbox';
 import { InboxFill } from './pages/InboxFill';
 import { Login } from './pages/Login';
+import { Pending } from './pages/Pending';
 import { Overview } from './pages/Overview';
 import { Me } from './pages/Me';
 import { MFASettings } from './pages/MFASettings';
@@ -36,7 +37,9 @@ import { AdminPolicyDetail } from './pages/admin/PolicyDetail';
 import { Projects } from './pages/admin/Projects';
 import { ProviderConnections } from './pages/admin/ProviderConnections';
 import { Roles } from './pages/admin/Roles';
+import { SignIn } from './pages/admin/SignIn';
 import { Teams } from './pages/admin/Teams';
+import { Users } from './pages/admin/Users';
 import { Workflows } from './pages/admin/Workflows';
 
 export function App() {
@@ -47,6 +50,7 @@ export function App() {
         <ToastProvider>
         <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/pending" element={<Pending />} />
         <Route
           element={
             <RequireAuth>
@@ -85,6 +89,8 @@ export function App() {
           <Route path="/admin/teams" element={<Teams />} />
           <Route path="/admin/roles" element={<Roles />} />
           <Route path="/admin/assignments" element={<Assignments />} />
+          <Route path="/admin/users" element={<Users />} />
+          <Route path="/admin/sign-in" element={<SignIn />} />
           <Route path="/admin/workflows" element={<Workflows />} />
           <Route path="/admin/policies" element={<Policies />} />
           <Route path="/admin/policies/:id" element={<AdminPolicyDetail />} />

@@ -6,11 +6,13 @@
  * successful submit we call `auth.refresh()` (re-fetches /users/me)
  * and navigate away.
  *
- * SSO button: when the api advertises an OIDC issuer (probe at
- * `useOidcAvailable`), a primary "Sign in with SSO" button appears
- * above the local form. Clicking it redirects to
- * `/api/v1/auth/oidc/start?return_to=<current url>`. After IdP +
- * callback land, the same cookie is set and the SPA boots normally.
+ * Sign-in buttons: one per option from GET /api/v1/auth/providers
+ * (Google set from the console, the env-var SSO), above the local
+ * form. Each links to its start URL with `return_to=<current url>`.
+ * After the provider and the callback, the same cookie is set and the
+ * SPA boots normally. A refused Google sign-in comes back with
+ * ?error=sso and gets one message, whatever the reason. An older api
+ * without the list falls back to probing the env-var SSO.
  *
  * Hard rules retained from earlier slices:
  *   - The password field uses `type="password"` + autoComplete so
@@ -28,6 +30,7 @@ import { z } from 'zod';
 import { ApiError } from '../api/client';
 import { useLogin } from '../api/auth';
 import { useOidcAvailable } from '../api/oidc';
+import { useSignInOptions, type SignInOption } from '../api/sso';
 import { useAuth } from '../auth/AuthContext';
 import { loginReturnTarget } from '../auth/sessionExpiry';
 import { Banner } from '../ui/Banner';
@@ -58,7 +61,13 @@ export function Login() {
   const location = useLocation();
   const { identity, meStatus, refresh } = useAuth();
   const login = useLogin();
-  const oidc = useOidcAvailable();
+  // The api lists its sign-in options (Google set from the console, the
+  // env-var SSO). An older api has no list; then fall back to probing
+  // the env-var SSO.
+  const options = useSignInOptions();
+  const oidc = useOidcAvailable({ enabled: options.isError });
+  const providers: SignInOption[] = options.data
+    ?? (oidc.enabled ? [{ type: 'oidc', display_name: 'single sign-on', start_url: '/api/v1/auth/oidc/start' }] : []);
 
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -141,6 +150,9 @@ export function Login() {
   // A session that ended (expired, revoked, signed out elsewhere) sends
   // the tab here with ?return_to=, so say why.
   const sessionEnded = new URLSearchParams(location.search).has('return_to');
+  // A refused Google sign-in lands here with ?error=sso. The api sends
+  // the same answer whatever the reason, so this message can't say more.
+  const ssoRefused = new URLSearchParams(location.search).get('error') === 'sso';
 
   useEffect(() => {
     document.title = 'Sign in · Secrets Bridge';
@@ -165,24 +177,38 @@ export function Login() {
                 Sign in
               </h1>
               <p className="mt-1 text-body text-muted">
-                {oidc.enabled
-                  ? "Use your organization's single sign-on, or a local account."
+                {providers.length > 0
+                  ? 'Use your organization’s account, or a local account.'
                   : 'Use the local account an administrator gave you.'}
               </p>
             </div>
 
-            {sessionEnded && !serverError && (
+            {ssoRefused && (
+              <Banner tone="error" title="You couldn’t be signed in with that account.">
+                Use your organization’s account. If you already have a local account here, sign in with it and connect
+                Google from your profile. Otherwise, ask an administrator.
+              </Banner>
+            )}
+
+            {sessionEnded && !serverError && !ssoRefused && (
               <Banner>Your session ended. Sign in to continue where you were.</Banner>
             )}
 
-            {oidc.enabled && (
+            {providers.length > 0 && (
               <>
-                <a
-                  href={`/api/v1/auth/oidc/start?return_to=${encodeURIComponent(returnTo)}`}
-                  className="inline-flex h-(--control-touch) items-center justify-center rounded-md border border-accent bg-accent px-3 text-ui font-semibold text-on-accent hover:brightness-110"
-                >
-                  Sign in with single sign-on
-                </a>
+                {providers.map((p, i) => (
+                  <a
+                    key={p.type}
+                    href={`${p.start_url}?return_to=${encodeURIComponent(returnTo)}`}
+                    className={
+                      i === 0
+                        ? 'inline-flex h-(--control-touch) items-center justify-center rounded-md border border-accent bg-accent px-3 text-ui font-semibold text-on-accent hover:brightness-110'
+                        : 'inline-flex h-(--control-touch) items-center justify-center rounded-md border border-border bg-surface px-3 text-ui font-semibold text-ink hover:bg-sunken'
+                    }
+                  >
+                    {signInLabel(p)}
+                  </a>
+                ))}
                 <div className="flex items-center gap-3 text-caption text-muted">
                   <div className="h-px flex-1 bg-rule" />
                   <span>or with a local account</span>
@@ -225,7 +251,7 @@ export function Login() {
 
             <Button
               type="submit"
-              variant={oidc.enabled ? 'secondary' : 'primary'}
+              variant={providers.length > 0 ? 'secondary' : 'primary'}
               className="h-(--control-touch) w-full"
               disabled={login.isPending}
               aria-busy={login.isPending}
@@ -243,6 +269,11 @@ export function Login() {
   );
 }
 
+function signInLabel(p: SignInOption): string {
+  if (p.type === 'oidc') return 'Sign in with single sign-on';
+  return `Sign in with ${p.display_name || p.type}`;
+}
+
 const FLOW = [
   { icon: RequestIcon, title: 'Ask for access', line: 'Name the secret, the keys and why. Never a value.' },
   { icon: ApprovalIcon, title: 'Someone approves', line: 'The policy decides how many approvals, and from whom.' },
@@ -251,7 +282,7 @@ const FLOW = [
 ];
 
 /** What the console is for, beside the form on wide screens. */
-function BrandPanel() {
+export function BrandPanel() {
   return (
     <aside className="hidden flex-col justify-between border-r border-border bg-surface px-14 py-12 min-[1000px]:flex">
       <Logo size={24} product="Console" />
