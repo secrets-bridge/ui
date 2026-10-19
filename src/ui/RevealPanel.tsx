@@ -62,9 +62,17 @@ export function RevealPanel({ reference, values, secondsLeft, totalSeconds, onCo
                 {v.value.kind === 'binary' && (
                   <span className="mb-1 block text-caption text-muted">Binary value, shown as base64</span>
                 )}
-                <code className="block select-all rounded-sm border border-dashed border-edge bg-sunken px-2 py-1 font-mono text-[13px] [overflow-wrap:anywhere]">
-                  {v.value.kind === 'text' ? v.value.text : v.value.base64}
-                </code>
+                {v.value.kind === 'text' && v.value.text === '' ? (
+                  // An empty value is a real value (api#286), not a failed
+                  // load, so say so instead of showing a blank box.
+                  <span className="block rounded-sm border border-dashed border-edge bg-sunken px-2 py-1 text-caption italic text-muted">
+                    Empty value
+                  </span>
+                ) : (
+                  <code className="block select-all rounded-sm border border-dashed border-edge bg-sunken px-2 py-1 font-mono text-[13px] [overflow-wrap:anywhere]">
+                    {v.value.kind === 'text' ? v.value.text : v.value.base64}
+                  </code>
+                )}
               </span>
             )}
             {!v.error && (
