@@ -30,7 +30,7 @@ import { z } from 'zod';
 import { ApiError } from '../api/client';
 import { useLogin } from '../api/auth';
 import { useOidcAvailable } from '../api/oidc';
-import { useSignInOptions, type SignInOption } from '../api/sso';
+import { takeSSOReturn, useSignInOptions, type SignInOption } from '../api/sso';
 import { useAuth } from '../auth/AuthContext';
 import { loginReturnTarget } from '../auth/sessionExpiry';
 import { Banner } from '../ui/Banner';
@@ -99,6 +99,9 @@ export function Login() {
   // or it took too long): they get a way back instead of a silent bounce.
   const ssoRefused = new URLSearchParams(location.search).get('error') === 'sso';
   const signedIn = meStatus === 'ready' && !!identity;
+  // Where that Connect or Test started (the profile or Admin → Sign-in),
+  // read once; '/' when it's unknown.
+  const [ssoReturn] = useState(() => (ssoRefused ? takeSSOReturn() : '/'));
 
   useEffect(() => {
     if (signedIn && !ssoRefused) {
@@ -182,11 +185,11 @@ export function Login() {
                 you were on.
               </Banner>
               <Link
-                to="/"
+                to={ssoReturn}
                 replace
                 className="inline-flex h-(--control-touch) items-center justify-center rounded-md border border-accent bg-accent px-3 text-ui font-semibold text-on-accent hover:brightness-110"
               >
-                Back to the console
+                {ssoReturn === '/' ? 'Back to the console' : 'Back to where you were'}
               </Link>
             </div>
           ) : (

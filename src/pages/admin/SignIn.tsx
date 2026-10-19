@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRoles } from '../../api/roles';
 import {
   NON_PRIVILEGED_PERMISSIONS,
+  rememberSSOReturn,
   takeTicketFromHash,
   useCreateSSOProvider,
   useDeleteSSOProvider,
@@ -365,6 +366,7 @@ function GoogleSection({ provider, settings }: { provider: SSOProvider; settings
   const test = async () => {
     try {
       const { redirect_url } = await startTest.mutateAsync();
+      rememberSSOReturn('/admin/sign-in');
       window.location.assign(redirect_url);
     } catch {
       // Shown below.

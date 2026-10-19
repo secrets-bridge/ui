@@ -43,14 +43,15 @@ export function usePendingUsers(opts: { enabled?: boolean } = {}) {
   // retry, no retry when another component mounts the query (the nav
   // and Overview both do), and no refetch on focus, mount or reconnect.
   // Otherwise a team-scoped admin would get a 403 on every focus. Other
-  // errors are retried on the next focus.
+  // errors (a 5xx, the network) are retried up to three times, then
+  // again on the next focus.
   const again = (q: { state: { error: unknown } }) => !pendingForbidden(q.state.error);
   return useQuery({
     queryKey: pendingUsersKey.all,
     queryFn: () => api.get<PendingUsers>('/api/v1/users/pending'),
     enabled: opts.enabled ?? true,
     staleTime: 10_000,
-    retry: false,
+    retry: (failures, err) => !pendingForbidden(err) && failures < 3,
     retryOnMount: false,
     refetchOnWindowFocus: again,
     refetchOnMount: again,

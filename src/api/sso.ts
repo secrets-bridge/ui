@@ -21,7 +21,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { api } from './client';
+import { api, sanitizeRedirectTarget } from './client';
 import { meKey } from './me';
 import { useSensitiveMutation } from './sensitiveMutation';
 
@@ -215,9 +215,41 @@ export function useFinishSSO(type: string) {
 }
 
 /** Reads `#sso_ticket=…` from the URL and removes it from history. */
+const SSO_RETURN_KEY = 'sb.sso.return';
+
+/**
+ * Remember the page a Connect or Test round trip starts from. If the
+ * round trip fails before the api knows which one it was (it took too
+ * long, or finished in another browser), the browser lands on
+ * /login?error=sso, and "Back to the console" goes back here. Only a
+ * path, never anything secret; per tab, and safe to lose.
+ */
+export function rememberSSOReturn(path: string): void {
+  try {
+    window.sessionStorage.setItem(SSO_RETURN_KEY, path);
+  } catch {
+    // Storage refused: the way back falls back to the overview.
+  }
+}
+
+/** The page a failed round trip started from (once), or '/'. */
+export function takeSSOReturn(): string {
+  let path: string | null = null;
+  try {
+    path = window.sessionStorage.getItem(SSO_RETURN_KEY);
+    window.sessionStorage.removeItem(SSO_RETURN_KEY);
+  } catch {
+    // Storage refused.
+  }
+  return sanitizeRedirectTarget(path);
+}
+
 export function takeTicketFromHash(): string | null {
   const m = /(?:^#|&)sso_ticket=([A-Za-z0-9_-]+)/.exec(window.location.hash);
   if (!m) return null;
+  // The round trip came back with a result, so the way back for a
+  // failed one isn't needed.
+  takeSSOReturn();
   window.history.replaceState(null, '', window.location.pathname + window.location.search);
   return m[1];
 }

@@ -18,6 +18,9 @@ interface Props {
   onConfirm: () => Promise<unknown>;
   loading: boolean;
   error?: unknown;
+  // Words for the error, when the caller knows better than its message
+  // (a stable error code mapped to a sentence). The status still shows.
+  errorText?: string;
 }
 
 export function ConfirmModal({
@@ -29,6 +32,7 @@ export function ConfirmModal({
   onConfirm,
   loading,
   error,
+  errorText,
 }: Props) {
   return (
     <Dialog
@@ -61,7 +65,7 @@ export function ConfirmModal({
               : 'Network error'}
           </div>
           <div className="mt-0.5 text-ink">
-            {error instanceof Error ? error.message : String(error)}
+            {errorText ?? (error instanceof Error ? error.message : String(error))}
           </div>
         </div>
       )}
