@@ -168,7 +168,7 @@ export function Users() {
         {declining && (
           <ConfirmModal
             title={`Decline ${declining.email}?`}
-            body="Their account is disabled and they can't sign in. To let them in later, an administrator has to enable the account and approve it."
+            body="Their account is disabled, and that Google account can't sign in again. This can't be undone from the console."
             confirmText="Decline"
             danger
             onCancel={() => {
