@@ -38,20 +38,31 @@ export function pendingForbidden(err: unknown): boolean {
   return err instanceof ApiError && err.status === 403;
 }
 
+/**
+ * Whether to retry /users/pending after `failures` failed tries: only a
+ * server error (5xx) or a request that didn't get an answer (network),
+ * up to three times. A 4xx won't change by asking again, and retrying a
+ * 429 makes the rate limit worse.
+ */
+export function retryPendingList(failures: number, err: unknown): boolean {
+  if (failures >= 3) return false;
+  return !(err instanceof ApiError) || err.status >= 500;
+}
+
 export function usePendingUsers(opts: { enabled?: boolean } = {}) {
   // After a 403 the cached error stays, and nothing refetches it: no
   // retry, no retry when another component mounts the query (the nav
   // and Overview both do), and no refetch on focus, mount or reconnect.
-  // Otherwise a team-scoped admin would get a 403 on every focus. Other
-  // errors (a 5xx, the network) are retried up to three times, then
-  // again on the next focus.
+  // Otherwise a team-scoped admin would get a 403 on every focus. A 5xx
+  // or a network error is retried up to three times (retryPendingList),
+  // other errors not at all; they're tried again on the next focus.
   const again = (q: { state: { error: unknown } }) => !pendingForbidden(q.state.error);
   return useQuery({
     queryKey: pendingUsersKey.all,
     queryFn: () => api.get<PendingUsers>('/api/v1/users/pending'),
     enabled: opts.enabled ?? true,
     staleTime: 10_000,
-    retry: (failures, err) => !pendingForbidden(err) && failures < 3,
+    retry: retryPendingList,
     retryOnMount: false,
     refetchOnWindowFocus: again,
     refetchOnMount: again,
