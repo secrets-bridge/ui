@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 
 import { logoUrl } from '../api/logos';
 import {
+  rememberSSOReturn,
   takeTicketFromHash,
   useConnectProvider,
   useDisconnectProvider,
@@ -245,6 +246,7 @@ function GooglePanel() {
               onClick={async () => {
                 try {
                   const { redirect_url } = await connect.mutateAsync();
+                  rememberSSOReturn('/me');
                   window.location.assign(redirect_url);
                 } catch {
                   // Shown above.
@@ -277,6 +279,7 @@ function GooglePanel() {
           }}
           loading={disconnect.isPending}
           error={disconnect.error}
+          errorText={disconnect.error ? ssoErrorText(disconnect.error) : undefined}
         />
       )}
     </Panel>
