@@ -5,4 +5,7 @@ declare const process: { env: Record<string, string | undefined> };
 declare module 'node:fs' {
   export function appendFileSync(path: string, data: string, options?: { mode?: number }): void;
   export function rmSync(path: string, options?: { force?: boolean }): void;
+  export function writeFileSync(path: string, data: string, options?: { mode?: number }): void;
+  export function readFileSync(path: string, encoding: 'utf8'): string;
+  export function existsSync(path: string): boolean;
 }

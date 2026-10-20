@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Throwaway stack for the browser security suite (ui#152).
 #
-#   stack.sh up     start the published api against an empty Postgres + Redis
-#   stack.sh seed   users, roles, projects, environments, a catalog secret
+#   stack.sh up     start a dev Vault and the published api against an
+#                   empty Postgres + Redis
+#   stack.sh seed   users, roles, projects, environments, a Vault secret,
+#                   an enrolled agent, discovery, a binding, a reveal policy
 #   stack.sh scan   fail if any generated secret or canary is in test output
-#   stack.sh down   stop the api container and remove the state dir
+#   stack.sh down   stop the containers and remove the state dir
 #
 # Every password, key and canary is generated here, per run. Values are
 # passed to docker by name (-e VAR), never on a command line, masked in
@@ -16,10 +18,16 @@ set -euo pipefail
 
 E2E_STATE=${E2E_STATE:-$(cd "$(dirname "$0")/.." && pwd)/.state}
 E2E_API_IMAGE=${E2E_API_IMAGE:-ghcr.io/secrets-bridge/api:dev}
+E2E_AGENT_IMAGE=${E2E_AGENT_IMAGE:-ghcr.io/secrets-bridge/agent:dev}
+E2E_VAULT_IMAGE=${E2E_VAULT_IMAGE:-hashicorp/vault:2.2}
 E2E_API_PORT=${E2E_API_PORT:-8080}
+E2E_VAULT_PORT=${E2E_VAULT_PORT:-8200}
 E2E_OUT=${E2E_OUT:-$(cd "$(dirname "$0")/.." && pwd)/.out}
 API=http://127.0.0.1:$E2E_API_PORT
+VAULT=http://127.0.0.1:$E2E_VAULT_PORT
 CONTAINER=sb-e2e-api
+AGENT=sb-e2e-agent
+VAULTC=sb-e2e-vault
 
 mask() { if [[ -n ${GITHUB_ACTIONS:-} ]]; then echo "::add-mask::$1"; fi; }
 rnd() { openssl rand -hex "$1"; }
@@ -35,10 +43,26 @@ up() {
     echo "export E2E_ADMIN_PASSWORD='Adm-$(rnd 16)'"
     echo "export E2E_USER_PASSWORD='Usr-$(rnd 16)'"
     echo "export E2E_CANARY='e2e-canary-$(rnd 12)'"
+    echo "export E2E_VAULT_TOKEN='$(rnd 16)'"
+    # The secret's two values in Vault; the reveal specs look for them.
+    echo "export E2E_VALUE_USER='e2e-value-user-$(rnd 8)'"
+    echo "export E2E_VALUE_PASS='e2e-value-pass-$(rnd 8)'"
   } > "$E2E_STATE/secrets.env"
   # shellcheck disable=SC1091
   source "$E2E_STATE/secrets.env"
-  for v in "$SB_WRAP_MASTER_KEY" "$E2E_ADMIN_PASSWORD" "$E2E_USER_PASSWORD" "$E2E_CANARY"; do mask "$v"; done
+  for v in "$SB_WRAP_MASTER_KEY" "$E2E_ADMIN_PASSWORD" "$E2E_USER_PASSWORD" "$E2E_CANARY" \
+           "$E2E_VAULT_TOKEN" "$E2E_VALUE_USER" "$E2E_VALUE_PASS"; do mask "$v"; done
+  printf 'X-Vault-Token: %s\n' "$E2E_VAULT_TOKEN" > "$E2E_STATE/vault.hdr"
+
+  export VAULT_DEV_ROOT_TOKEN_ID=$E2E_VAULT_TOKEN
+  docker rm -f "$VAULTC" >/dev/null 2>&1 || true
+  docker run -d --name "$VAULTC" --network host --cap-add IPC_LOCK \
+    -e VAULT_DEV_ROOT_TOKEN_ID -e VAULT_DEV_LISTEN_ADDRESS="127.0.0.1:$E2E_VAULT_PORT" \
+    "$E2E_VAULT_IMAGE" >/dev/null
+  for _ in $(seq 60); do
+    [[ $(curl -s -o /dev/null -w '%{http_code}' "$VAULT/v1/sys/health") == 200 ]] && break
+    sleep 1
+  done
 
   export DATABASE_URL=$E2E_DATABASE_URL REDIS_URL=$E2E_REDIS_URL
   export SB_BOOTSTRAP_ADMIN_EMAIL=$E2E_ADMIN_EMAIL SB_BOOTSTRAP_ADMIN_PASSWORD=$E2E_ADMIN_PASSWORD
@@ -47,6 +71,7 @@ up() {
     -e DATABASE_URL -e REDIS_URL -e SB_WRAP_MASTER_KEY \
     -e SB_BOOTSTRAP_ADMIN_EMAIL -e SB_BOOTSTRAP_ADMIN_PASSWORD \
     -e API_ADDR="127.0.0.1:$E2E_API_PORT" -e SB_ENV=dev -e LOG_LEVEL=info \
+    -e SB_ALLOW_INSECURE_VAULT_ADDR=true \
     "$E2E_API_IMAGE" >/dev/null
   for _ in $(seq 90); do
     [[ $(curl -s -o /dev/null -w '%{http_code}' "$API/readyz") == 200 ]] && break
@@ -109,15 +134,68 @@ seed() {
   need "$(api POST /api/v1/user-roles "{\"user_id\":\"$outsider\",\"role_id\":\"$rdev\",\"scope\":{\"project_id\":\"$q\"}}")" 201 grant-outsider
   need "$(api POST /api/v1/user-roles "{\"user_id\":\"$approver\",\"role_id\":\"$rappr\",\"scope\":{}}")" 201 grant-approver
 
-  # A catalog secret bound for read and patch in every environment. Discovery
-  # needs an agent, which this stack doesn't run, so the catalog row is
-  # inserted directly, the same shape discovery writes.
-  local sid
-  sid=$(psqlq "INSERT INTO secrets (cluster_name, provider_type, secret_ref, provider_config, labels, status, last_seen_at)
-               VALUES ('e2e-cluster', 'vault', 'team-alpha/e2e/db', '{}'::jsonb, '{}'::jsonb, 'present', now()) RETURNING id")
-  # One binding per (project, secret); a NULL environment covers both.
-  psqlq "INSERT INTO project_secrets (project_id, secret_id, environment_id, allowed_keys, allowed_ops, created_by)
-         VALUES ('$p', '$sid', NULL, ARRAY['DB_USER','DB_PASSWORD'], ARRAY['read','patch'], 'e2e-seed')"
+  # The secret lives in Vault (KV v2), the agent enrolls and discovers it,
+  # and the catalog row comes from that discovery, the same path as a real
+  # install. Values go to Vault on stdin, the token from a 600 header file.
+  local vs
+  vs=$(curl -sS -o /dev/null -w '%{http_code}' -H @"$E2E_STATE/vault.hdr" -X POST "$VAULT/v1/sys/mounts/sbkv" -d '{"type":"kv","options":{"version":"2"}}')
+  need "$vs" 204 vault-mount
+  vs=$(jq -n --arg u "$E2E_VALUE_USER" --arg p "$E2E_VALUE_PASS" '{data:{DB_USER:$u, DB_PASSWORD:$p}}' |
+    curl -sS -o /dev/null -w '%{http_code}' -H @"$E2E_STATE/vault.hdr" -X POST "$VAULT/v1/sbkv/data/team-alpha/e2e/db" --data-binary @-)
+  need "$vs" 200 vault-secret
+
+  need "$(api POST /api/v1/provider-connections "{\"name\":\"e2e-vault\",\"type\":\"vault\",\"auth_method\":\"token\",\"cluster_name\":\"e2e-cluster\",\"scope\":{\"address\":\"$VAULT\",\"mount\":\"sbkv\"},\"discover_enabled\":true,\"discover_interval_seconds\":3600}")" 201 connection
+  local c; c=$(jq -r .id "$E2E_STATE/last.json")
+  need "$(api POST "/api/v1/provider-connections/$c/bindings" "{\"project_id\":\"$p\",\"purpose\":\"destination\"}")" 201 connection-binding
+  need "$(api POST "/api/v1/provider-connections/$c/agent-enrollment-token" '{"name":"e2e-agent","expected_cluster_name":"e2e-cluster","expected_provider_type":"vault"}')" 201 enrollment-token
+  SB_ENROLLMENT_TOKEN=$(jq -j .enrollment_token "$E2E_STATE/last.json")
+  mask "$SB_ENROLLMENT_TOKEN"
+  : > "$E2E_STATE/last.json"
+  export SB_ENROLLMENT_TOKEN SB_VAULT_TOKEN=$E2E_VAULT_TOKEN
+  docker rm -f "$AGENT" >/dev/null 2>&1 || true
+  docker run -d --name "$AGENT" --network host --tmpfs /var/lib/sb-agent:rw,uid=65532,gid=65532,mode=0700 \
+    -e SB_CP_ENDPOINT="$API" -e SB_INSECURE_TRANSPORT=true \
+    -e SB_ENROLLMENT_ENABLED=true -e SB_ENROLLMENT_TOKEN -e SB_IDENTITY_FILE=/var/lib/sb-agent/identity.json \
+    -e SB_AGENT_NAME=e2e-agent -e SB_PROVIDER_TYPE=vault -e SB_CLUSTER_NAME=e2e-cluster \
+    -e SB_VAULT_ADDR="$VAULT" -e SB_VAULT_TOKEN -e SB_VAULT_KV_MOUNT=sbkv \
+    -e SB_CLAIM_INTERVAL=2s -e SB_HEARTBEAT_INTERVAL=15s \
+    "$E2E_AGENT_IMAGE" >/dev/null
+  unset SB_ENROLLMENT_TOKEN SB_VAULT_TOKEN
+  local ok=""
+  for _ in $(seq 60); do
+    api GET "/api/v1/provider-connections/$c/agents" >/dev/null
+    if jq -e '(if type=="array" then . else (.items // .agents) end) | any(.status=="active")' "$E2E_STATE/last.json" >/dev/null 2>&1; then ok=1; break; fi
+    sleep 1
+  done
+  [[ -n $ok ]] || { echo "agent did not become active"; exit 1; }
+
+  for _ in $(seq 30); do
+    [[ $(api POST "/api/v1/provider-connections/$c/discover-now" '{}') == 202 ]] && break
+    sleep 2
+  done
+  local sid=""
+  for _ in $(seq 60); do
+    api GET /api/v1/secrets >/dev/null
+    sid=$(jq -r '(if type=="array" then . else .items end)[] | select(.secret_ref=="team-alpha/e2e/db") | .id' "$E2E_STATE/last.json")
+    [[ -n $sid ]] && break
+    sleep 1
+  done
+  [[ -n $sid ]] || { echo "discovery found no catalog row"; exit 1; }
+
+  # The bootstrap admin role has no integration.bind (the smoke runs hit
+  # the same gap), so the admin takes the binder role for the binding.
+  need "$(api GET /api/v1/roles)" 200 roles-again
+  local rbind admin
+  rbind=$(rid provider_connection_binder)
+  admin=$(psqlq "SELECT id FROM local_users WHERE email = '$E2E_ADMIN_EMAIL'")
+  need "$(api POST /api/v1/user-roles "{\"user_id\":\"$admin\",\"role_id\":\"$rbind\",\"scope\":{}}")" 201 grant-binder
+  need "$(api POST "/api/v1/projects/$p/secrets" "{\"secret_id\":\"$sid\",\"environment_id\":null,\"allowed_ops\":[\"read\",\"patch\"],\"allowed_keys\":[\"DB_USER\",\"DB_PASSWORD\"]}")" 201 binding
+
+  # Non-prod direct reveal with the shortest TTL the api takes, so the
+  # auto-hide spec doesn't wait long. Prod stays blocked by the invariant.
+  need "$(api GET /api/v1/workflows)" 200 workflows
+  local wf; wf=$(jq -r '(if type=="array" then . else .items end)[] | select(.is_default==true) | .id' "$E2E_STATE/last.json")
+  need "$(api POST /api/v1/policies "{\"name\":\"e2e-direct-reveal\",\"selector\":{\"project_id\":\"$p\",\"environment_kind\":\"non_prod\",\"operation\":\"reveal\"},\"workflow_id\":\"$wf\",\"priority\":100,\"enabled\":true,\"direct_reveal_allowed\":true,\"requires_mfa\":true,\"reveal_ttl_seconds\":10}")" 201 reveal-policy
 
   jq -n --arg p "$p" --arg q "$q" --arg edev "$edev" --arg eprod "$eprod" --arg sid "$sid" \
         --arg admin "$E2E_ADMIN_EMAIL" --arg requester e2e-requester@example.com \
@@ -125,7 +203,7 @@ seed() {
     '{project:$p, otherProject:$q, envDev:$edev, envProd:$eprod, secretId:$sid, secretRef:"team-alpha/e2e/db",
       users:{admin:$admin, requester:$requester, approver:$approver, outsider:$outsider}}' > "$E2E_STATE/fixtures.json"
   rm -f "$E2E_STATE/admin.jar" "$E2E_STATE/last.json"
-  echo "seeded: 3 users, 2 projects, 3 environments, 1 bound secret"
+  echo "seeded: 3 users, 2 projects, 3 environments, an enrolled agent, 1 discovered and bound secret, 1 reveal policy"
 }
 
 scan() {
@@ -135,9 +213,11 @@ scan() {
   local hits=0 where
   mkdir -p "$E2E_OUT"
   docker logs "$CONTAINER" > "$E2E_STATE/api.log" 2>&1 || true
+  docker logs "$AGENT" >> "$E2E_STATE/api.log" 2>&1 || true
   # The generated secrets plus anything a test read off a page and
   # recorded (TOTP setup keys, via keepOutOfArtifacts).
-  local values=("$SB_WRAP_MASTER_KEY" "$E2E_ADMIN_PASSWORD" "$E2E_USER_PASSWORD" "$E2E_CANARY")
+  local values=("$SB_WRAP_MASTER_KEY" "$E2E_ADMIN_PASSWORD" "$E2E_USER_PASSWORD" "$E2E_CANARY"
+    "$E2E_VAULT_TOKEN" "$E2E_VALUE_USER" "$E2E_VALUE_PASS")
   if [[ -f $E2E_STATE/test-secrets ]]; then
     while IFS= read -r line; do [[ -n $line ]] && values+=("$line"); done < "$E2E_STATE/test-secrets"
   fi
@@ -152,7 +232,7 @@ scan() {
 }
 
 down() {
-  docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+  docker rm -f "$CONTAINER" "$AGENT" "$VAULTC" >/dev/null 2>&1 || true
   rm -rf "$E2E_STATE"
 }
 
