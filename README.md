@@ -92,7 +92,7 @@ src/
     Audit.tsx            append-only event log in pages of 50 (own events only when not admin)
     Inbox.tsx + InboxFill.tsx + CrossTeamSubmitDrawer.tsx   cross-team requests
     Me.tsx + MFASettings.tsx                      profile and second factor
-    admin/               projects, teams, roles, assignments, workflows, policies, connections, settings, integrations
+    admin/               projects, teams, roles, assignments, workflows, policies, connections, gateways, settings
   ui/                    shared components (see Design system)
 nginx/
   nginx.conf             SPA fallback + CSP + cache strategy + healthz
@@ -150,7 +150,7 @@ npm run dev
 | `/admin/assignments` | Grants (user → role + scope) | `user_role.edit` |
 | `/admin/workflows` | Workflow CRUD | `workflow.edit` |
 | `/admin/policies` | Policy CRUD | `policy.edit` |
-| `/admin/integrations` | ArgoCD endpoints + app mappings (when `SB_GITOPS_ENABLED`) | `integration.edit` |
+| `/admin/gateways` | Gateways, their connectors, bindings and observation tasks; Argo CD is observed only through a Gateway | `gateway.list` (writes: `gateway.mint`, `gateway.bind`, `gateway.revoke`) |
 
 Nav items hide entirely when the user lacks the gating permission, a strict fail-closed default.
 

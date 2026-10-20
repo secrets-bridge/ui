@@ -13,7 +13,7 @@ The Secrets Bridge dashboard: a React + TypeScript + Vite single-page app served
 | `src/api/*.ts` | One TanStack Query module per API area; `client.ts` sends requests with `credentials: 'include'` so the HttpOnly session cookie rides along (the SPA never sees a token) |
 | `src/auth` | `AuthContext` builds identity from `GET /users/me`; there is no token in JS, only the HttpOnly session cookie |
 | `src/pages` | Overview, requests and request detail (with the inline reveal), My projects and environment pages, inbox and fill (cross-team), secrets catalog, agents and enrollment, audit, profile and MFA settings, project and team policies |
-| `src/pages/admin` | Projects, teams, roles, assignments, workflows, policies, provider connections, integrations, platform settings |
+| `src/pages/admin` | Projects, teams, roles, assignments, workflows, policies, provider connections, gateways, platform settings |
 | `src/ui`, `src/layout` | Shared components (DataTable, Drawer, Dialog, Field, Status, EnvTag, Banner, ...) and the app shell |
 | `src/index.css`, `src/theme` | Design tokens for light and dark, the type scale and the theme switch |
 | `nginx/` | nginx config with security headers |

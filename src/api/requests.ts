@@ -8,11 +8,11 @@
  *   POST   /api/v1/requests/:id/reject     — cast a reject vote with reason
  *   POST   /api/v1/requests/:id/cancel     — withdraw your own request
  *
- * Wraps + GitOps observations live on adjacent paths and have their own
+ * Wraps and the Argo CD history live on adjacent paths and have their own
  * hook in this file:
  *
  *   GET    /api/v1/requests/:id/wraps/:wid              — single-shot
- *   GET    /api/v1/requests/:id/gitops                 — observation list
+ *   GET    /api/v1/requests/:id/gitops                 Argo CD history, read-only
  *
  * Mutation strategy: every approve / reject / cancel invalidates BOTH
  * the list query AND the per-id query so the list and the detail page
@@ -198,22 +198,30 @@ export function useSubmitPatchRequest() {
 }
 
 /**
- * GitOps observation rows for a request. Returns 404 when the §26
- * feature is OFF (api.SB_GITOPS_ENABLED=false) — the detail page
- * detects this and renders a disabled banner rather than an error.
+ * Argo CD history for a request: rows the control plane's own poller
+ * wrote before the Gateway took over Argo CD (secrets-bridge/gateway#13).
+ * Read-only and requester only. Every row carries history: true and
+ * label history_context_only: it was never linked to the change and is
+ * not proof that a value reached the app. Current state comes from the
+ * Gateway (GET /requests/:id/observations).
  */
+export type GitOpsHistoryStatus =
+  | 'argocd_healthy_synced_context_only'
+  | 'timed_out_unverified'
+  | 'failed'
+  | 'not_completed_poller_removed';
+
 export interface GitOpsObservation {
   id: string;
-  request_id: string;
   application_name: string;
   application_namespace?: string;
-  project_name?: string;
-  cluster_name?: string;
-  status: 'queued' | 'active' | 'applied' | 'failed' | 'applied_unverified';
-  observed_state?: Record<string, unknown>;
-  timeout_at?: string;
-  created_at: string;
-  updated_at?: string;
+  history: true;
+  label: 'history_context_only';
+  history_status: GitOpsHistoryStatus;
+  /** The poller's state, kept for compatibility. Read history_status. */
+  status: string;
+  last_polled_at?: string;
+  terminal_at?: string;
 }
 
 export function useRequestGitOps(id: string | undefined, enabled = true) {

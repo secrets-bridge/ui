@@ -35,11 +35,6 @@ export const GATEWAY_STATUS_MEANING: Record<GatewayStatus, string> = {
   revoked: 'Its credential is refused for good. Create a new Gateway to replace it.',
 };
 
-/** True when the Gateway's last heartbeat reported more Argo CD rights than read-only. */
-export function isOverPrivileged(lastStatus: string | undefined): boolean {
-  return lastStatus === 'over_privileged';
-}
-
 export const CONNECTOR_STATUS_LABEL: Record<string, string> = {
   advertised: 'Advertised',
   approved: 'Approved',
@@ -77,13 +72,11 @@ export const TASK_STATE_TONE: Record<ObservationTaskState, Tone> = {
 };
 
 export const SOURCE_LABEL: Record<ObservationSource, string> = {
-  control_plane: 'Control plane',
   gateway: 'Gateway',
   none: 'None',
 };
 
 export const SOURCE_MEANING: Record<ObservationSource, string> = {
-  control_plane: 'The control plane observes executed changes itself, when its GitOps integration is on.',
   gateway: 'A Gateway in the workload boundary observes executed changes through its bindings.',
   none: 'Nothing observes executed changes in this environment.',
 };

@@ -93,11 +93,12 @@ test('a developer sees no Gateways menu, and the page and its api refuse them', 
   expect((await call(page, 'POST', '/api/v1/admin/gateways', { name: 'e2e-nope', boundary: 'x' })).status, 'POST /admin/gateways').toBe(403);
 });
 
-test('a change in an environment the control plane observes shows "No observation configured"', async ({ browser }) => {
+test('a change in an environment with no observation source shows "No observation configured"', async ({ browser }) => {
   const admin = await as(browser, fx.users.admin, adminPassword);
   const src = await call(admin, 'GET', `/api/v1/admin/environments/${fx.envDev}/observation-source`);
   expect(src.status).toBe(200);
-  expect(src.body.observation_source).toBe('control_plane');
+  // The control plane no longer observes Argo CD; the default is none.
+  expect(src.body.observation_source).toBe('none');
 
   const page = await as(browser, fx.users.requester);
   const value = `e2e-gw-value-${rnd(8)}`;

@@ -31,7 +31,6 @@ import { RequestDetail } from './pages/RequestDetail';
 import { Requests } from './pages/Requests';
 import { Secrets } from './pages/Secrets';
 import { Assignments } from './pages/admin/Assignments';
-import { Integrations } from './pages/admin/Integrations';
 import { PlatformSettings } from './pages/admin/PlatformSettings';
 import { Policies } from './pages/admin/Policies';
 import { AdminPolicyDetail } from './pages/admin/PolicyDetail';
@@ -100,7 +99,6 @@ export function App() {
           <Route path="/admin/policies/:id" element={<AdminPolicyDetail />} />
           <Route path="/admin/platform-settings" element={<PlatformSettings />} />
           <Route path="/admin/provider-connections" element={<ProviderConnections />} />
-          <Route path="/admin/integrations" element={<Integrations />} />
           <Route
             path="/admin/gateways"
             element={

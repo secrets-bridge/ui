@@ -6,9 +6,9 @@
  * that a new secret value reached the app.
  *
  * - The list shows each Gateway's status (glyph and word), replicas seen
- *   in the last 10 minutes, last heartbeat in UTC, whether its last
- *   heartbeat reported more Argo CD rights than read-only, and the
- *   connectors it advertises.
+ *   in the last 10 minutes, last heartbeat in UTC, whether a recent
+ *   replica reported more Argo CD rights than read-only (over_privileged), and the
+ *   connectors it advertises (the list's connector summary).
  * - "Create gateway" (gateway.mint) creates the record and goes straight
  *   to a one-time enrollment token.
  * - A row opens the Gateway: tokens, connectors (approve, gateway.bind),
@@ -19,10 +19,10 @@
 import { useState } from 'react';
 
 import { ApiError } from '../../api/client';
-import { type CreateGatewayInput, type Gateway, type GatewayDetail, useCreateGateway, useGatewayDetails, useGateways } from '../../api/gateways';
+import { type CreateGatewayInput, type Gateway, type GatewayListItem, useCreateGateway, useGateways } from '../../api/gateways';
 import { useEnvironments, useProjects } from '../../api/tenancy';
 import { useAuth } from '../../auth/AuthContext';
-import { CONNECTOR_KIND_LABEL, CONNECTOR_STATUS_LABEL, isOverPrivileged, words } from '../../lib/gatewayStatus';
+import { CONNECTOR_KIND_LABEL, CONNECTOR_STATUS_LABEL, words } from '../../lib/gatewayStatus';
 import { formatAgo, formatExact } from '../../lib/time';
 import { useNow } from '../../lib/useNow';
 import { Banner } from '../../ui/Banner';
@@ -48,9 +48,6 @@ export function Gateways() {
   const [tokenFor, setTokenFor] = useState<Gateway | null>(null);
 
   const all = list.data ?? [];
-  const details = useGatewayDetails(all.map((g) => g.id));
-  const detailOf = new Map<string, GatewayDetail>();
-  details.forEach((d) => d.data && detailOf.set(d.data.gateway.id, d.data));
 
   if (!allowed) {
     return (
@@ -63,7 +60,7 @@ export function Gateways() {
 
   const rows = [...all].sort((a, b) => Number(a.status === 'revoked') - Number(b.status === 'revoked') || a.name.localeCompare(b.name));
   const count = (s: Gateway['status']) => all.filter((g) => g.status === s).length;
-  const over = all.filter((g) => g.status !== 'revoked' && isOverPrivileged(g.last_status)).length;
+  const over = all.filter((g) => g.status !== 'revoked' && g.over_privileged).length;
   const facts = [
     `${all.length} ${all.length === 1 ? 'gateway' : 'gateways'}`,
     count('active') && `${count('active')} active`,
@@ -72,24 +69,25 @@ export function Gateways() {
     over && `${over} over-privileged`,
   ].filter(Boolean);
 
-  const connectors = (g: Gateway) => {
-    const d = detailOf.get(g.id);
-    if (!d) return <span className="text-muted">…</span>;
-    const cs = d.connectors ?? [];
+  const connectors = (g: GatewayListItem) => {
+    const cs = g.connectors ?? [];
     if (!cs.length) return <span className="text-muted">None advertised</span>;
     return (
       <span className="flex flex-col">
         {cs.map((c) => (
           <span key={c.id}>
             {words(c.kind, CONNECTOR_KIND_LABEL)} <span className="font-mono text-mono-small">{c.connector_id}</span>
-            <span className="text-caption text-muted"> · {words(c.status, CONNECTOR_STATUS_LABEL)}</span>
+            <span className="text-caption text-muted">
+              {' '}
+              · {words(c.status, CONNECTOR_STATUS_LABEL)} · {c.target_count} {c.target_count === 1 ? 'target' : 'targets'}
+            </span>
           </span>
         ))}
       </span>
     );
   };
 
-  const columns: Column<Gateway>[] = [
+  const columns: Column<GatewayListItem>[] = [
     {
       key: 'name',
       header: 'Gateway',
@@ -105,7 +103,7 @@ export function Gateways() {
       key: 'priv',
       header: 'Argo CD rights',
       render: (g) =>
-        isOverPrivileged(g.last_status) ? <ToneStatus tone="bad">Over-privileged</ToneStatus> : <span className="text-muted">{g.last_seen_at ? 'Not flagged' : 'No heartbeat yet'}</span>,
+        g.over_privileged ? <ToneStatus tone="bad">Over-privileged</ToneStatus> : <span className="text-muted">{g.last_seen_at ? 'Not flagged' : 'No heartbeat yet'}</span>,
     },
     { key: 'replicas', header: 'Replicas', render: (g) => `${g.replicas_seen} of ${g.max_replicas}`, className: 'whitespace-nowrap' },
     {
@@ -180,7 +178,7 @@ export function Gateways() {
                   </button>
                   <GatewayStatusWord status={g.status} />
                 </p>
-                {isOverPrivileged(g.last_status) && <ToneStatus tone="bad">Over-privileged</ToneStatus>}
+                {g.over_privileged && <ToneStatus tone="bad">Over-privileged</ToneStatus>}
                 <p className="text-caption text-muted">
                   {g.boundary} · {g.replicas_seen} of {g.max_replicas} replicas ·{' '}
                   {g.last_seen_at ? `last heartbeat ${formatExact(g.last_seen_at)}` : 'never seen'}
