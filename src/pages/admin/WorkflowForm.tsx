@@ -45,7 +45,6 @@ const schema = z.object({
   wrap_ttl_claimed_seconds: seconds('the claimed-values time'),
   request_ttl_seconds: seconds('when requests expire'),
   require_justification: z.boolean(),
-  allow_self_approval: z.boolean(),
   notification_channels_csv: z.string().optional(),
   enabled: z.boolean(),
   scoped_policy_authorable: z.boolean(),
@@ -74,7 +73,6 @@ const defaults: FormShape = {
   wrap_ttl_claimed_seconds: 300,
   request_ttl_seconds: 7 * 24 * 3600,
   require_justification: true,
-  allow_self_approval: false,
   notification_channels_csv: '',
   enabled: true,
   // R-follow-up #1 (api#118): off on create. Edit reseeds it from
@@ -105,7 +103,6 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
         wrap_ttl_claimed_seconds: initial.wrap_ttl_claimed_seconds,
         request_ttl_seconds: initial.request_ttl_seconds,
         require_justification: initial.require_justification,
-        allow_self_approval: initial.allow_self_approval,
         notification_channels_csv: (initial.notification_channels ?? []).join(', '),
         enabled: initial.enabled,
         // An older api response may lack the field: seed false, and the
@@ -152,7 +149,6 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
       wrap_ttl_claimed_seconds: data.wrap_ttl_claimed_seconds,
       request_ttl_seconds: data.request_ttl_seconds,
       require_justification: data.require_justification,
-      allow_self_approval: data.allow_self_approval,
       notification_channels: channels,
       enabled: data.enabled,
     };
@@ -200,18 +196,18 @@ export function WorkflowForm({ initial, onSubmit, onCancel, submitting, submitEr
         </Field>
 
         <Section title="Approvals">
-          <Field id="wf-min" label="Approvals needed" hint="How many approvers must approve a request." error={errors.min_approvers?.message}>
+          <Field
+            id="wf-min"
+            label="Approvals needed"
+            hint="How many approvers must approve a request. The requester never counts: nobody can approve their own request."
+            error={errors.min_approvers?.message}
+          >
             {(p) => <Input {...p} type="number" min={0} max={20} {...register('min_approvers')} className="w-32" />}
           </Field>
           <Check
             label="Require a justification"
             hint="Requesters must say why they need access."
             {...register('require_justification')}
-          />
-          <Check
-            label="Let requesters approve their own requests"
-            hint="Off keeps separation of duties: someone else must approve."
-            {...register('allow_self_approval')}
           />
         </Section>
 
