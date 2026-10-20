@@ -25,6 +25,7 @@ import {
   useUpdateProjectStatus,
 } from '../../../api/tenancy';
 import type { Environment, Project } from '../../../api/types';
+import { useAuth } from '../../../auth/AuthContext';
 import { formatExact } from '../../../lib/time';
 import { Banner } from '../../../ui/Banner';
 import { Breadcrumb } from '../../../ui/Breadcrumb';
@@ -41,6 +42,7 @@ import { TabPanel, Tabs } from '../../../ui/Tabs';
 import { useToast } from '../../../ui/toastContext';
 import { ProjectSecretsPanel } from '../ProjectSecretsPanel';
 import { LogoDialog } from './LogoDialog';
+import { ObservationSourceCell } from './ObservationSource';
 import { projectTeamLabel } from './projectTeam';
 
 const TYPE_LABEL: Record<Environment['type'], string> = {
@@ -199,6 +201,9 @@ function Counts({ project, tab, setTab }: { project: Project; tab: string; setTa
 // --- environments ----------------------------------------------------
 
 function EnvironmentsPanel({ project }: { project: Project }) {
+  const { hasPermission } = useAuth();
+  // Observation source needs gateway.bind (api#294).
+  const canObserve = hasPermission('gateway.bind');
   const envs = useEnvironmentsForProject(project.id);
   const createEnv = useCreateEnvironment();
   const deleteEnv = useDeleteEnvironment();
@@ -223,6 +228,7 @@ function EnvironmentsPanel({ project }: { project: Project }) {
       render: (e) => (kindOf(e) === 'prod' ? 'Production · no direct reveal' : <span className="text-muted">Non-production</span>),
     },
     { key: 'created', header: 'Created', render: (e) => <span className="whitespace-nowrap">{e.created_at ? formatExact(e.created_at) : '—'}</span> },
+    ...(canObserve ? [{ key: 'observation', header: 'Observation', render: (e: Environment) => <ObservationSourceCell env={e} /> }] : []),
     { key: 'actions', header: 'Actions', hiddenHeader: true, align: 'right', render: del },
   ];
 
@@ -284,6 +290,11 @@ function EnvironmentsPanel({ project }: { project: Project }) {
                     {e.type === 'prod' ? 'Production' : `${TYPE_LABEL[e.type] ?? e.type} · ${kindOf(e) === 'prod' ? 'production' : 'non-production'}`}
                     {e.created_at ? ` · ${formatExact(e.created_at)}` : ''}
                   </p>
+                  {canObserve && (
+                    <p className="text-caption text-muted">
+                      Observation: <ObservationSourceCell env={e} />
+                    </p>
+                  )}
                 </div>
                 {del(e)}
               </div>
