@@ -50,7 +50,10 @@ test('an admin creates a Gateway and its enrollment token is shown once, masked,
 
   const shown = admin.getByRole('dialog', { name: 'Enrollment token' });
   const field = shown.getByLabel('Enrollment token', { exact: true });
-  await expect(field).toHaveText(MASK);
+  // A text matcher prints what it received when it fails, which here would
+  // be the token. Compare with a boolean instead.
+  const masked = () => field.evaluate((el, m) => (el.textContent ?? '').replace(/\s+/g, ' ').trim() === m, MASK);
+  await expect.poll(masked, { message: 'the token is masked when the panel opens' }).toBe(true);
   await shown.getByRole('button', { name: 'Show token' }).click();
   await expect(field).not.toHaveText(MASK);
   const token = ((await field.textContent()) ?? '').trim();
@@ -59,7 +62,7 @@ test('an admin creates a Gateway and its enrollment token is shown once, masked,
 
   expect(await storageHolds(admin, token), 'the token is in browser storage').toEqual({ local: false, session: false, cookie: false, indexedDB: false });
   await shown.getByRole('button', { name: 'Hide token' }).click();
-  await expect(field).toHaveText(MASK);
+  await expect.poll(masked, { message: 'the token is masked again after Hide token' }).toBe(true);
 
   // Not copied: closing asks once, then closes.
   await shown.getByRole('button', { name: 'Done' }).click();
