@@ -175,6 +175,7 @@ function Navigation() {
   //   Requests        → secret.request OR secret.approve
   //   Inbox           → secret.value.provide (at any scope)
   //   Agents          → agent.list
+  //   Gateways        → gateway.list
   //   Secrets         → secret.list
   //   Audit           → audit.read
   //   Project / team policies → policy.author (never auto-shown for
@@ -196,8 +197,9 @@ function Navigation() {
   const showIntegrations = hasPermission('integration.edit');
   const showSignIn = hasPermission('auth.sso.edit');
   const showScopedPolicies = hasPermission('policy.author');
+  const showGateways = hasPermission('gateway.list');
   const anyAdmin =
-    showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showIntegrations || showSignIn;
+    showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showIntegrations || showSignIn || showGateways;
 
   // Requests count, hidden at 0, from the same queries and rules as the
   // pages so the numbers never disagree: for approvers, the requests
@@ -280,6 +282,7 @@ function Navigation() {
           {showPolicies && <NavItem to="/admin/platform-settings" label="Platform settings" />}
           {showIntegrations && <NavItem to="/admin/provider-connections" label="Provider connections" />}
           {showIntegrations && <NavItem to="/admin/integrations" label="Integrations" />}
+          {showGateways && <NavItem to="/admin/gateways" label="Gateways" />}
           {showSignIn && <NavItem to="/admin/sign-in" label="Sign-in" />}
         </NavGroup>
       )}

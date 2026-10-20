@@ -1,4 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query';
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 
 import { queryClient } from './api/queryClient';
@@ -41,6 +42,9 @@ import { SignIn } from './pages/admin/SignIn';
 import { Teams } from './pages/admin/Teams';
 import { Users } from './pages/admin/Users';
 import { Workflows } from './pages/admin/Workflows';
+
+// Admin-only and rarely opened: loaded on first visit.
+const Gateways = lazy(() => import('./pages/admin/Gateways').then((m) => ({ default: m.Gateways })));
 
 export function App() {
   return (
@@ -97,6 +101,14 @@ export function App() {
           <Route path="/admin/platform-settings" element={<PlatformSettings />} />
           <Route path="/admin/provider-connections" element={<ProviderConnections />} />
           <Route path="/admin/integrations" element={<Integrations />} />
+          <Route
+            path="/admin/gateways"
+            element={
+              <Suspense fallback={<p className="text-muted">Loading…</p>}>
+                <Gateways />
+              </Suspense>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
         </Routes>

@@ -24,6 +24,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import type { AuditEvent } from '../api/audit';
 import { api, ApiError } from '../api/client';
+import { useRequestObservations } from '../api/gateways';
 import { requestsKey, useRequest, useRequestGitOps } from '../api/requests';
 import type { AccessRequest, Workflow } from '../api/types';
 import { useWorkflows } from '../api/workflows';
@@ -53,6 +54,7 @@ import { useToast } from '../ui/toastContext';
 import { CrossTeamApprovalChainCard, CrossTeamVerifyCard } from './request/CrossTeamVerify';
 import { ApproveDialog, CancelDialog, RejectDialog } from './request/DecisionDialogs';
 import { GitOpsCard } from './request/GitOps';
+import { ObservationPanel } from './request/Observation';
 import { Reveal } from './request/Reveal';
 import { RequestAccessDrawer } from './RequestAccessDrawer';
 
@@ -173,6 +175,9 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
   const [revealNotice, setRevealNotice] = useState<{ title: string; text: string } | null>(null);
   const showReveal = r.type === 'read' && isMine && (revealing || (!!revealDeadline && !revealDone));
   const gitops = useRequestGitOps(r.id, isMine);
+  // Only a change is observed (patch and cross-team); a read writes nothing.
+  const observable = r.type === 'patch' || r.type === 'cross_team';
+  const observations = useRequestObservations(r.id, observable);
 
   // While approved, follow the request until the agent reports back
   // (a direct reveal lands here at once). Read-only: it never starts or
@@ -290,6 +295,14 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
           </Panel>
 
           <GitOpsCard query={gitops} />
+          {observable && (
+            <ObservationPanel
+              data={observations.data}
+              error={observations.error}
+              loading={observations.isLoading}
+              requestStatus={r.status}
+            />
+          )}
         </div>
 
         <div className="flex min-w-0 flex-col gap-6">
