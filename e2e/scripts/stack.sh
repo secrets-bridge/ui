@@ -253,10 +253,15 @@ scan() {
   if [[ -f $E2E_STATE/test-secrets ]]; then
     while IFS= read -r line; do [[ -n $line ]] && values+=("$line"); done < "$E2E_STATE/test-secrets"
   fi
+  # The console copy the workflow keeps is checked without the
+  # ::add-mask:: lines mask-recorded.ts prints for these same values.
+  local console=$E2E_OUT/console.log filtered=$E2E_STATE/console.scan
+  if [[ -f $console ]]; then grep -v '^::add-mask::' "$console" > "$filtered" || true; fi
   for v in "${values[@]}"; do
     for where in "$E2E_OUT" "$E2E_STATE/api.log"; do
-      if grep -rqF -- "$v" "$where" 2>/dev/null; then hits=$((hits + 1)); echo "secret value found in $(basename "$where")"; fi
+      if grep -rqF --exclude=console.log -- "$v" "$where" 2>/dev/null; then hits=$((hits + 1)); echo "secret value found in $(basename "$where")"; fi
     done
+    if [[ -f $filtered ]] && grep -qF -- "$v" "$filtered"; then hits=$((hits + 1)); echo "secret value found in console.log"; fi
   done
   if grep -qF 'DEV SEEDER' "$E2E_STATE/api.log"; then hits=$((hits + 1)); echo "the dev seeder ran"; fi
   echo "leak scan: ${#values[@]} values, $hits hit(s)"

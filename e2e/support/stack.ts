@@ -53,7 +53,9 @@ export function requestRef(id: string): string {
 /**
  * Records a value the test read from the page (a TOTP setup key) so the
  * leak scan also fails if it ever lands in test output. The file is in
- * the state dir, mode 600, never uploaded.
+ * the state dir, mode 600, never uploaded. In GitHub Actions,
+ * mask-recorded.ts also masks the value in the job log as soon as the
+ * step that recorded it ends.
  */
 export function keepOutOfArtifacts(value: string): void {
   appendFileSync(`${need('E2E_STATE')}/test-secrets`, value + '\n', { mode: 0o600 });
