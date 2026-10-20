@@ -72,7 +72,7 @@ export function Workflows() {
     );
   };
   const rules = (w: Workflow) =>
-    [w.require_justification ? 'Reason required' : 'Reason optional', w.allow_self_approval ? 'Self-approval allowed' : 'No self-approval'].join(' · ');
+    w.require_justification ? 'Reason required' : 'Reason optional';
   const deleteButton = (w: Workflow) =>
     w.is_system ? null : (
       <Button

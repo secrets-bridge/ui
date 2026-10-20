@@ -480,7 +480,6 @@ export interface Workflow {
   wrap_ttl_claimed_seconds: number;
   request_ttl_seconds: number;
   require_justification: boolean;
-  allow_self_approval: boolean;
   notification_channels: string[];
   is_default?: boolean;
   enabled: boolean;
@@ -515,7 +514,6 @@ export interface WorkflowInput {
   wrap_ttl_claimed_seconds: number;
   request_ttl_seconds: number;
   require_justification: boolean;
-  allow_self_approval: boolean;
   notification_channels: string[];
   enabled: boolean;
   /**
