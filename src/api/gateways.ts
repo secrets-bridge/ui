@@ -1,7 +1,7 @@
 /**
  * Gateways (Release 1, Argo CD only; api#293 and api#294).
  *
- *   GET    /admin/gateways                                    gateway.list
+ *   GET    /admin/gateways                                    gateway.list (with a connector summary)
  *   GET    /admin/gateways/:id                                gateway.list
  *   GET    /admin/gateways/:id/tasks?state=&limit=            gateway.list
  *   POST   /admin/gateways                                    gateway.mint, fresh MFA
@@ -10,9 +10,10 @@
  *   POST   /admin/gateways/:id/revoke {reason?}               gateway.revoke, fresh MFA
  *   PUT    /admin/gateways/:id/enabled {enabled}              gateway.revoke, fresh MFA
  *   POST   /admin/gateways/:id/connectors/:cid/approve        gateway.bind, fresh MFA
+ *   GET    /admin/gateway-bindings?gateway_id=                gateway.list
  *   POST   /admin/gateway-bindings                            gateway.bind, fresh MFA
  *   DELETE /admin/gateway-bindings/:id                        gateway.bind, fresh MFA
- *   GET    /admin/environments/:id/observation-source         gateway.bind
+ *   GET    /admin/environments/:id/observation-source         gateway.list
  *   PUT    /admin/environments/:id/observation-source         gateway.bind, fresh MFA
  *   GET    /requests/:id/observations                         same read check as the request
  *
@@ -24,7 +25,7 @@
  * copies the token into component state and calls reset().
  */
 
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
 import { useSensitiveMutation } from './sensitiveMutation';
@@ -49,8 +50,26 @@ export interface Gateway {
   enrolled_at?: string;
   revoked_at?: string;
   replicas_seen: number;
+  /** A replica seen in the replica window last reported more Argo CD rights than read-only (api#299). */
+  over_privileged: boolean;
+  /** That replica's latest heartbeat. */
+  over_privileged_reported_at?: string;
   created_by: string;
   created_at: string;
+}
+
+/** A connector line of GET /admin/gateways: no target ids or names. */
+export interface GatewayConnectorSummary {
+  id: string;
+  connector_id: string;
+  kind: string;
+  status: GatewayConnectorStatus;
+  target_count: number;
+}
+
+/** One GET /admin/gateways item: the Gateway and its connector summary. */
+export interface GatewayListItem extends Gateway {
+  connectors: GatewayConnectorSummary[] | null;
 }
 
 export interface GatewayConnectorHealth {
@@ -160,11 +179,14 @@ export interface ObservationTask {
 
 export interface GatewayTasks {
   items: ObservationTask[] | null;
-  /** Per state, counted over the returned items only (the limit applies). */
+  /** Per state, over every task of the Gateway (not only the returned page). */
   counts: Partial<Record<ObservationTaskState, number>> | null;
+  /** Every task of the Gateway. */
+  total: number;
 }
 
-export type ObservationSource = 'control_plane' | 'gateway' | 'none';
+/** control_plane was retired with the Gateway cutover; the api refuses it (source_retired). */
+export type ObservationSource = 'gateway' | 'none';
 
 export const gatewaysKey = {
   all: ['gateways'] as const,
@@ -180,7 +202,7 @@ const gw = (id: string) => `/api/v1/admin/gateways/${encodeURIComponent(id)}`;
 export function useGateways(opts: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: gatewaysKey.list,
-    queryFn: async () => (await api.get<{ items: Gateway[] | null }>('/api/v1/admin/gateways')).items ?? [],
+    queryFn: async () => (await api.get<{ items: GatewayListItem[] | null }>('/api/v1/admin/gateways')).items ?? [],
     enabled: opts.enabled ?? true,
     // Heartbeats move "last heartbeat" every 30 s; keep the table fresh
     // while it is on screen, no faster.
@@ -195,17 +217,6 @@ export function useGateway(id: string | undefined) {
     queryFn: () => api.get<GatewayDetail>(gw(id!)),
     enabled: !!id,
     refetchOnWindowFocus: true,
-  });
-}
-
-/** Each listed Gateway's detail, for the connector column. Gateways are few. */
-export function useGatewayDetails(ids: string[]) {
-  return useQueries({
-    queries: ids.map((id) => ({
-      queryKey: gatewaysKey.one(id),
-      queryFn: () => api.get<GatewayDetail>(gw(id)),
-      staleTime: 30_000,
-    })),
   });
 }
 
@@ -394,6 +405,8 @@ export interface RequestObservationTask {
   created_at: string;
   terminal_at?: string;
   stages: EvidenceStage[] | null;
+  /** Shown as timed out because the deadline passed before the sweeper closed the task (api#297). */
+  timed_out_at_read?: boolean;
 }
 
 export interface RequestObservations {

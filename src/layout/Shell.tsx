@@ -194,12 +194,12 @@ function Navigation() {
   const showAssignments = hasPermission('user_role.edit');
   const showWorkflows = hasPermission('workflow.edit');
   const showPolicies = hasPermission('policy.edit');
-  const showIntegrations = hasPermission('integration.edit');
+  const showProviderConnections = hasPermission('integration.edit');
   const showSignIn = hasPermission('auth.sso.edit');
   const showScopedPolicies = hasPermission('policy.author');
   const showGateways = hasPermission('gateway.list');
   const anyAdmin =
-    showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showIntegrations || showSignIn || showGateways;
+    showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showProviderConnections || showSignIn || showGateways;
 
   // Requests count, hidden at 0, from the same queries and rules as the
   // pages so the numbers never disagree: for approvers, the requests
@@ -280,8 +280,7 @@ function Navigation() {
           {showWorkflows && <NavItem to="/admin/workflows" label="Workflows" />}
           {showPolicies && <NavItem to="/admin/policies" label="Policies" />}
           {showPolicies && <NavItem to="/admin/platform-settings" label="Platform settings" />}
-          {showIntegrations && <NavItem to="/admin/provider-connections" label="Provider connections" />}
-          {showIntegrations && <NavItem to="/admin/integrations" label="Integrations" />}
+          {showProviderConnections && <NavItem to="/admin/provider-connections" label="Provider connections" />}
           {showGateways && <NavItem to="/admin/gateways" label="Gateways" />}
           {showSignIn && <NavItem to="/admin/sign-in" label="Sign-in" />}
         </NavGroup>

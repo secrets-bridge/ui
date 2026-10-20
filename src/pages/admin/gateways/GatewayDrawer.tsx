@@ -39,7 +39,6 @@ import {
   TASK_STATE_LABEL,
   TASK_STATE_TONE,
   VERDICT_REASON,
-  isOverPrivileged,
   words,
 } from '../../../lib/gatewayStatus';
 import { requestRef } from '../../../lib/requestRef';
@@ -148,7 +147,7 @@ function Body({ d, onMintToken }: { d: GatewayDetail; onMintToken: (g: Gateway) 
 
   return (
     <div className="flex flex-col gap-6">
-      {isOverPrivileged(g.last_status) && g.status !== 'revoked' && (
+      {g.over_privileged && g.status !== 'revoked' && (
         <Banner tone="error" title="This Gateway reports more Argo CD rights than read-only.">
           Its evidence is not used while it is over-privileged. Reduce its Argo CD role to read-only, or disable it.
         </Banner>
@@ -476,14 +475,18 @@ function Bindings({ d, envLabel }: { d: GatewayDetail; envLabel: (id: string) =>
 function Tasks({ gateway }: { gateway: Gateway }) {
   const tasks = useGatewayTasks(gateway.id, 25);
   const items = tasks.data?.items ?? [];
+  // counts and total cover every task of the Gateway, not only this page.
   const counts = Object.entries(tasks.data?.counts ?? {}).filter(([, n]) => !!n);
+  const total = tasks.data?.total ?? 0;
   return (
     <Section
       title="Recent tasks"
       aside={
-        counts.length > 0 ? (
+        total > 0 ? (
           <span className="text-caption text-muted">
-            {counts.map(([s, n]) => `${n} ${(TASK_STATE_LABEL as Record<string, string>)[s]?.toLowerCase() ?? s}`).join(' · ')} (latest 25)
+            {total} {total === 1 ? 'task' : 'tasks'} in all:{' '}
+            {counts.map(([s, n]) => `${n} ${(TASK_STATE_LABEL as Record<string, string>)[s]?.toLowerCase() ?? s}`).join(' · ')}
+            {items.length < total ? ` · latest ${items.length} shown` : ''}
           </span>
         ) : undefined
       }

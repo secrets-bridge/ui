@@ -10,8 +10,7 @@
  * `active` and `archived` and every request, grant and mapping that
  * names the project stays valid. Environments are hard-deleted (role
  * grants name them by name, so recreating one restores the match).
- * Every environment created here appears in the Integrations and
- * Assignments pickers.
+ * Every environment created here appears in the Assignments picker.
  */
 
 import { useEffect, useRef, useState } from 'react';

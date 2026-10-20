@@ -3,9 +3,6 @@
  *
  * Used by:
  *   - the Projects admin page (this slice)
- *   - the Integrations form's environment dropdown (pattern-2 scoping
- *     for ArgoCD endpoints — landed when the form updates to bind
- *     endpoints to env_ids)
  *   - the future Assignments form's scope picker
  *
  * Cache strategy: projects + environments change rarely; staleTime 30s

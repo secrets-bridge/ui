@@ -110,7 +110,11 @@ function TaskBlock({ task: t }: { task: RequestObservationTask }) {
         <span className="font-medium text-ink">Gateway {t.gateway_name}</span>
         <ToneStatus tone={ROLLUP_TONE[t.verdict] ?? 'neutral'}>{ROLLUP_LABEL[t.verdict] ?? t.verdict}</ToneStatus>
         <span className="text-caption text-muted">
-          task {(TASK_STATE_LABEL[t.state] ?? t.state).toLowerCase()} · {t.terminal_at ? `closed ${formatExact(t.terminal_at)}` : `deadline ${formatExact(t.deadline_at)}`}
+          task {(TASK_STATE_LABEL[t.state] ?? t.state).toLowerCase()} · {t.terminal_at
+            ? `closed ${formatExact(t.terminal_at)}`
+            : t.timed_out_at_read
+              ? `deadline passed ${formatExact(t.deadline_at)}`
+              : `deadline ${formatExact(t.deadline_at)}`}
         </span>
       </div>
       {t.verdict_reason && <p className="px-3.5 pt-2.5 text-ui font-normal text-muted">{words(t.verdict_reason, VERDICT_REASON)}</p>}

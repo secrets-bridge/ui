@@ -294,7 +294,6 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
             <Timeline entries={timeline} />
           </Panel>
 
-          <GitOpsCard query={gitops} />
           {observable && (
             <ObservationPanel
               data={observations.data}
@@ -303,6 +302,7 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
               requestStatus={r.status}
             />
           )}
+          <GitOpsCard query={gitops} />
         </div>
 
         <div className="flex min-w-0 flex-col gap-6">

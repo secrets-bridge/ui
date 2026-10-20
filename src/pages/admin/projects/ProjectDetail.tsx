@@ -202,8 +202,9 @@ function Counts({ project, tab, setTab }: { project: Project; tab: string; setTa
 
 function EnvironmentsPanel({ project }: { project: Project }) {
   const { hasPermission } = useAuth();
-  // Observation source needs gateway.bind (api#294).
-  const canObserve = hasPermission('gateway.bind');
+  // Reading the observation source needs gateway.list; changing it
+  // needs gateway.bind (api#299).
+  const canObserve = hasPermission('gateway.list');
   const envs = useEnvironmentsForProject(project.id);
   const createEnv = useCreateEnvironment();
   const deleteEnv = useDeleteEnvironment();

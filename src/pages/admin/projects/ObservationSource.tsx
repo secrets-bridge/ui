@@ -1,6 +1,8 @@
 /**
- * An environment's observation source (gateway.bind): who observes a
- * change after the agent has written it.
+ * An environment's observation source: who observes a change after the
+ * agent has written it. Reading needs gateway.list, changing it
+ * gateway.bind. The options are Gateway and None; the control plane no
+ * longer observes Argo CD itself (secrets-bridge/gateway#13).
  *
  *   GET /admin/environments/:id/observation-source
  *   PUT /admin/environments/:id/observation-source {observation_source}
@@ -15,28 +17,33 @@ import { useState } from 'react';
 import { ApiError } from '../../../api/client';
 import { type ObservationSource, useObservationSource, useSetObservationSource } from '../../../api/gateways';
 import type { Environment } from '../../../api/types';
+import { useAuth } from '../../../auth/AuthContext';
 import { SOURCE_LABEL, SOURCE_MEANING } from '../../../lib/gatewayStatus';
 import { Banner } from '../../../ui/Banner';
 import { Button } from '../../../ui/Button';
 import { Dialog } from '../../../ui/Dialog';
 import { useToast } from '../../../ui/toastContext';
 
-const SOURCES: ObservationSource[] = ['control_plane', 'gateway', 'none'];
+const SOURCES: ObservationSource[] = ['gateway', 'none'];
 
 export function ObservationSourceCell({ env }: { env: Environment }) {
+  const { hasPermission } = useAuth();
+  const canChange = hasPermission('gateway.bind');
   const source = useObservationSource(env.id);
   const [editing, setEditing] = useState(false);
   if (source.isLoading) return <span className="text-muted">…</span>;
   if (source.isError) {
     return <span className="text-caption text-bad">{source.error instanceof ApiError ? `${source.error.status}: ${source.error.message}` : 'Network error'}</span>;
   }
-  const current = source.data ?? 'control_plane';
+  const current = source.data ?? 'none';
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       <span>{SOURCE_LABEL[current] ?? current}</span>
-      <Button variant="quiet" size="sm" onClick={() => setEditing(true)} aria-label={`Change observation for ${env.name}`}>
-        Change…
-      </Button>
+      {canChange && (
+        <Button variant="quiet" size="sm" onClick={() => setEditing(true)} aria-label={`Change observation for ${env.name}`}>
+          Change…
+        </Button>
+      )}
       {editing && <ObservationSourceDialog env={env} current={current} onClose={() => setEditing(false)} />}
     </span>
   );
