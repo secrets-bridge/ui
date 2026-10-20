@@ -5,9 +5,11 @@ import { defineConfig, devices } from '@playwright/test';
 declare const process: { env: Record<string, string | undefined> };
 
 // Artifact rules (ui#152): no trace, video or screenshot, on success or
-// failure, and no page snapshot attached to a failure. Only e2e/.out is
-// written, the CI leak scan greps all of it for every generated secret,
-// and only the JSON summary is uploaded.
+// failure, and no page snapshot kept for a failure (PLAYWRIGHT_NO_COPY_PROMPT
+// stops the one taken when a page closes; drop-error-context.ts deletes the
+// one a failing matcher writes). Only e2e/.out is written, the CI leak scan
+// greps all of it for every generated secret, and only the JSON summary is
+// uploaded.
 process.env.PLAYWRIGHT_NO_COPY_PROMPT = '1';
 
 const port = process.env.E2E_UI_PORT ?? '4173';
@@ -23,7 +25,7 @@ export default defineConfig({
   retries: 0,
   timeout: 90_000,
   expect: { timeout: 10_000 },
-  reporter: [['list'], ['json', { outputFile: './.out/summary.json' }]],
+  reporter: [['./support/drop-error-context.ts'], ['list'], ['json', { outputFile: './.out/summary.json' }]],
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     trace: 'off',

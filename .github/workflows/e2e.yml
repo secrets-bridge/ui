@@ -5,8 +5,9 @@ name: e2e
 # the published api image from main.
 #
 # Every password, key and canary is generated per run by
-# e2e/scripts/stack.sh and masked. Trace, video, screenshots and failure
-# page snapshots are off. The state dir lives in runner.temp and is never
+# e2e/scripts/stack.sh and masked. Trace, video and screenshots are off,
+# and a failure's page snapshot is deleted as soon as the test ends
+# (e2e/support/drop-error-context.ts). The state dir lives in runner.temp and is never
 # uploaded; the only artifact is the JSON summary, and only after a leak
 # scan of all test output and the api log found nothing.
 
