@@ -9,7 +9,8 @@
 #   stack.sh down   stop the containers and remove the state dir
 #
 # Every password, key and canary is generated here, per run. Values are
-# passed to docker by name (-e VAR), never on a command line, masked in
+# passed to docker by name (-e VAR) and to jq on stdin (printf is a
+# builtin), never on a command line where ps could see them, masked in
 # GitHub Actions, and kept only in $E2E_STATE (mode 700), which is never
 # uploaded. Postgres and Redis come from the caller (CI service
 # containers, or anything local) through E2E_DATABASE_URL and
@@ -107,7 +108,7 @@ seed() {
   # shellcheck disable=SC1091
   source "$E2E_STATE/secrets.env"
   local st
-  st=$(jq -n --arg e "$E2E_ADMIN_EMAIL" --arg p "$E2E_ADMIN_PASSWORD" '{email:$e,password:$p}' |
+  st=$(printf '%s\n%s\n' "$E2E_ADMIN_EMAIL" "$E2E_ADMIN_PASSWORD" | jq -Rn '{email: input, password: input}' |
     curl -sS -o /dev/null -w '%{http_code}' -X POST "$API/api/v1/auth/login" -c "$E2E_STATE/admin.jar" -H 'Content-Type: application/json' --data-binary @-)
   need "$st" 200 admin-login
 
@@ -163,10 +164,10 @@ seed() {
   local vs
   vs=$(curl -sS -o /dev/null -w '%{http_code}' -H @"$E2E_STATE/vault.hdr" -X POST "$VAULT/v1/sys/mounts/sbkv" -d '{"type":"kv","options":{"version":"2"}}')
   need "$vs" 204 vault-mount
-  vs=$(jq -n --arg u "$E2E_VALUE_USER" --arg p "$E2E_VALUE_PASS" '{data:{DB_USER:$u, DB_PASSWORD:$p}}' |
+  vs=$(printf '%s\n%s\n' "$E2E_VALUE_USER" "$E2E_VALUE_PASS" | jq -Rn '{data:{DB_USER: input, DB_PASSWORD: input}}' |
     curl -sS -o /dev/null -w '%{http_code}' -H @"$E2E_STATE/vault.hdr" -X POST "$VAULT/v1/sbkv/data/team-alpha/e2e/db" --data-binary @-)
   need "$vs" 200 vault-secret
-  vs=$(jq -n --arg k "$E2E_KEEP" '{data:{UNTOUCHED:$k}}' |
+  vs=$(printf '%s\n' "$E2E_KEEP" | jq -Rn '{data:{UNTOUCHED: input}}' |
     curl -sS -o /dev/null -w '%{http_code}' -H @"$E2E_STATE/vault.hdr" -X POST "$VAULT/v1/sbkv/data/team-beta/e2e/app" --data-binary @-)
   need "$vs" 200 vault-destination
 
