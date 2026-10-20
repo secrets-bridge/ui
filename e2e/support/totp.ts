@@ -1,5 +1,6 @@
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
-import { call, keepOutOfArtifacts } from './stack';
+import { call, keepOutOfArtifacts, statePath } from './stack';
 
 // RFC 6238 (SHA-1, 30 s, 6 digits) with WebCrypto, so the suite needs no
 // TOTP package. Codes are computed here and typed into the page; they
@@ -45,20 +46,47 @@ async function codeAt(key: string, counter: number): Promise<string> {
  * last one used, because the api refuses a code it has already accepted.
  */
 export class Authenticator {
-  private lastStep = -1;
-  constructor(private readonly key: string) {}
+  private lastStep: number;
+  constructor(
+    private readonly key: string,
+    private readonly file?: string,
+    lastStep = -1,
+  ) {
+    this.lastStep = lastStep;
+  }
 
   async next(): Promise<string> {
     while (step(Date.now()) <= this.lastStep) {
       await new Promise((r) => setTimeout(r, 1_000));
     }
     this.lastStep = step(Date.now());
+    this.save();
     return codeAt(this.key, this.lastStep);
+  }
+
+  /** Persists the key and last step so a later spec file reuses the factor without replaying a code. */
+  save(): void {
+    if (this.file) writeFileSync(this.file, `${this.key} ${this.lastStep}`, { mode: 0o600 });
   }
 }
 
+/**
+ * The account's TOTP factor: enrolled through /me/mfa the first time any
+ * spec needs it, then reused from the state dir. Accounts are shared
+ * across spec files and a second factor can't be added without a fresh
+ * first one, so each account gets exactly one.
+ */
+export async function secondFactor(page: Page, email: string): Promise<Authenticator> {
+  const file = statePath(`totp-${email}`);
+  if (existsSync(file)) {
+    const [key, last] = readFileSync(file, 'utf8').trim().split(' ');
+    return new Authenticator(key, file, Number(last));
+  }
+  return enrollTotp(page, file);
+}
+
 /** Adds an authenticator app on /me/mfa the way a person does, reading the setup key off the page. */
-export async function enrollTotp(page: Page): Promise<Authenticator> {
+export async function enrollTotp(page: Page, file?: string): Promise<Authenticator> {
   await page.goto('/me/mfa');
   await page.getByRole('button', { name: /^Add authenticator app/ }).click();
   const drawer = page.getByRole('dialog');
@@ -68,7 +96,7 @@ export async function enrollTotp(page: Page): Promise<Authenticator> {
   const key = ((await drawer.locator('details code').textContent()) ?? '').replace(/\s+/g, '');
   if (!key) throw new Error('no setup key on the page');
   keepOutOfArtifacts(key);
-  const auth = new Authenticator(key);
+  const auth = new Authenticator(key, file);
   await drawer.locator('#totp-code').fill(await auth.next());
   await drawer.getByRole('button', { name: 'Add app' }).click();
   await drawer.waitFor({ state: 'hidden' });

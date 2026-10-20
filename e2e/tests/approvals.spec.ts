@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { adminPassword, as, call, fx, signIn, userPassword } from '../support/stack';
-import { enrollTotp, stepUp } from '../support/totp';
+import { secondFactor, stepUp } from '../support/totp';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -24,7 +24,7 @@ test('an approval with a stale second factor asks for it again and only then rec
   const id = await submitRead(requester, 'e2e step-up check for an approval');
 
   const approver = await as(browser, fx.users.approver);
-  const auth = await enrollTotp(approver);
+  const auth = await secondFactor(approver, fx.users.approver);
   // A new session has no second factor yet: sign out and back in.
   await call(approver, 'POST', '/api/v1/auth/logout');
   await signIn(approver, fx.users.approver, userPassword);
@@ -46,7 +46,7 @@ test('an approval with a stale second factor asks for it again and only then rec
 
 test("nobody, admin included, can approve or reject their own request", async ({ browser }) => {
   const admin = await as(browser, fx.users.admin, adminPassword);
-  const auth = await enrollTotp(admin);
+  const auth = await secondFactor(admin, fx.users.admin);
   await stepUp(admin, auth);
   const id = await submitRead(admin, 'e2e separation of duties check');
 

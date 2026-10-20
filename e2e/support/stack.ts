@@ -23,6 +23,8 @@ export const fx: Fixtures = JSON.parse(need('E2E_FIXTURES'));
 export const adminPassword = need('E2E_ADMIN_PASSWORD');
 export const userPassword = need('E2E_USER_PASSWORD');
 export const canary = need('E2E_CANARY');
+/** The two values stored in Vault for fx.secretRef (DB_USER, DB_PASSWORD). */
+export const vaultValues = [need('E2E_VALUE_USER'), need('E2E_VALUE_PASS')];
 
 /**
  * Records a value the test read from the page (a TOTP setup key) so the
@@ -31,6 +33,11 @@ export const canary = need('E2E_CANARY');
  */
 export function keepOutOfArtifacts(value: string): void {
   appendFileSync(`${need('E2E_STATE')}/test-secrets`, value + '\n', { mode: 0o600 });
+}
+
+/** A path in the state dir (mode 700, never uploaded) for per-run test state. */
+export function statePath(name: string): string {
+  return `${need('E2E_STATE')}/${name}`;
 }
 
 export async function signIn(page: Page, email: string, password: string): Promise<void> {

@@ -1,8 +1,9 @@
 name: e2e
 
 # Browser security regressions (ui#152): this branch's production build,
-# served by vite preview, against a throwaway stack of Postgres, Redis and
-# the published api image from main.
+# served by vite preview, against a throwaway stack of Postgres, Redis, a
+# dev Vault, and the published api and agent images from main. The agent
+# enrolls and discovers the Vault secret, so reveals run the real path.
 #
 # Every password, key and canary is generated per run by
 # e2e/scripts/stack.sh and masked. Trace, video and screenshots are off,
@@ -44,6 +45,8 @@ jobs:
       E2E_DATABASE_URL: postgres://e2e:e2e-service-db@127.0.0.1:5432/e2e?sslmode=disable
       E2E_REDIS_URL: redis://127.0.0.1:6379/0
       E2E_API_IMAGE: ghcr.io/secrets-bridge/api:dev
+      E2E_AGENT_IMAGE: ghcr.io/secrets-bridge/agent:dev
+      E2E_VAULT_IMAGE: hashicorp/vault@sha256:e0acd3c681bdf57f002d7214e5d050b876e1704678005c6b0406dd96a65be919 # 2.2
       E2E_API_PORT: "8080"
       VITE_API_PROXY_TARGET: http://127.0.0.1:8080
       PLAYWRIGHT_NO_COPY_PROMPT: "1"
