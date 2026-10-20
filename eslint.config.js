@@ -54,4 +54,15 @@ export default [
       ],
     },
   },
+  // Playwright specs and helpers (ui#152): node-side test code, not React.
+  // Playwright's fixture callback is named `use`, which the hooks rules
+  // would read as a React hook.
+  {
+    files: ['e2e/**/*.ts'],
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+      'react-hooks/exhaustive-deps': 'off',
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ];
