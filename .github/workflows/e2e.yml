@@ -1,0 +1,107 @@
+name: e2e
+
+# Browser security regressions (ui#152): this branch's production build,
+# served by vite preview, against a throwaway stack of Postgres, Redis and
+# the published api image from main.
+#
+# Every password, key and canary is generated per run by
+# e2e/scripts/stack.sh and masked. Trace, video and screenshots are off,
+# and a failure's page snapshot is deleted as soon as the test ends
+# (e2e/support/drop-error-context.ts). The state dir lives in runner.temp and is never
+# uploaded; the only artifact is the JSON summary, and only after a leak
+# scan of all test output and the api log found nothing.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  security-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          # The service database is created for this job and destroyed with
+          # it; this password guards nothing outside the runner.
+          POSTGRES_USER: e2e
+          POSTGRES_PASSWORD: e2e-service-db
+          POSTGRES_DB: e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U e2e" --health-interval 2s --health-timeout 5s --health-retries 30
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      E2E_DATABASE_URL: postgres://e2e:e2e-service-db@127.0.0.1:5432/e2e?sslmode=disable
+      E2E_REDIS_URL: redis://127.0.0.1:6379/0
+      E2E_API_IMAGE: ghcr.io/secrets-bridge/api:dev
+      E2E_API_PORT: "8080"
+      VITE_API_PROXY_TARGET: http://127.0.0.1:8080
+      PLAYWRIGHT_NO_COPY_PROMPT: "1"
+    steps:
+      - name: state dir
+        # Outside the workspace, so no upload step can pick it up.
+        run: echo "E2E_STATE=$RUNNER_TEMP/e2e-state" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      - name: install
+        run: npm ci --no-audit --no-fund
+      - name: typecheck e2e
+        run: npx tsc -p e2e/tsconfig.json
+      - name: tools
+        run: |
+          command -v psql >/dev/null || sudo apt-get install -y --no-install-recommends postgresql-client
+          python3 -m pip install --user --quiet bcrypt==5.0.0
+      - name: browser
+        run: npx playwright install --with-deps chromium
+      - name: build
+        run: npm run build
+      - name: stack up
+        run: e2e/scripts/stack.sh up
+      - name: seed
+        run: e2e/scripts/stack.sh seed
+      - name: tests
+        id: tests
+        continue-on-error: true
+        run: |
+          set -a
+          # shellcheck disable=SC1091
+          source "$E2E_STATE/secrets.env"
+          set +a
+          E2E_FIXTURES="$(cat "$E2E_STATE/fixtures.json")"
+          export E2E_FIXTURES
+          npm run e2e
+      - name: leak scan
+        id: scan
+        if: always()
+        run: e2e/scripts/stack.sh scan
+      - name: summary
+        if: always() && steps.scan.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-summary
+          path: e2e/.out/summary.json
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: result
+        if: always()
+        run: |
+          echo "tests: ${{ steps.tests.outcome }}, leak scan: ${{ steps.scan.outcome }}"
+          [[ "${{ steps.tests.outcome }}" == success && "${{ steps.scan.outcome }}" == success ]]
+      - name: stack down
+        if: always()
+        run: e2e/scripts/stack.sh down

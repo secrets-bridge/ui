@@ -31,6 +31,10 @@ docker build -t sb-ui:dev .
 
 For a full local stack (api, Postgres, Redis, ingress), use the platform `docker-compose.yml` described in the docs.
 
+### Browser security suite (`e2e/`, ui#152)
+
+Playwright specs for the session cookie, RBAC denial, MFA step-up, separation of duties, prod direct reveal and value leaks, run by `.github/workflows/e2e.yml` on every PR against a throwaway stack (empty Postgres and Redis, the published api image, this build behind `vite preview`). Locally: point `E2E_DATABASE_URL` / `E2E_REDIS_URL` at an empty database, run `e2e/scripts/stack.sh up` and `seed`, source `$E2E_STATE/secrets.env`, export `E2E_FIXTURES="$(cat $E2E_STATE/fixtures.json)"`, then `npm run build && npm run e2e`, and `stack.sh scan` / `down` after. A stack is good for one run (the tests enroll second factors), so reseed between runs. Keep the artifact rules: no trace, video, screenshot or page snapshot (a failing matcher always writes one, so `support/drop-error-context.ts` stays first in the reporter list and deletes it), generated secrets only, and wait for real content before asserting something is absent.
+
 ## Rules for this repo
 
 - **No tokens or secret values in browser storage**: no localStorage, sessionStorage, IndexedDB or JS-readable cookies. Auth is the api's HttpOnly session cookie, so a reload restores the session from it. When that session expires or is revoked, the next 401 clears the query cache and sends the tab to `/login`.
