@@ -13,6 +13,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ApiError } from '../../../api/client';
+import { missingFactorText } from '../../../api/mfaErrors';
 import {
   type Gateway,
   type GatewayBinding,
@@ -55,7 +56,8 @@ import { useToast } from '../../../ui/toastContext';
 import { BindingDrawer } from './BindingDrawer';
 import { GatewayStatusWord } from './GatewayStatusWord';
 
-const errText = (e: unknown) => (e instanceof ApiError ? `${e.status}: ${e.message}` : 'Network error.');
+const errText = (e: unknown) =>
+  missingFactorText(e, 'nothing changed') ?? (e instanceof ApiError ? `${e.status}: ${e.message}` : 'Network error.');
 
 export function GatewayDrawer({ id, onClose, onMintToken }: { id: string; onClose: () => void; onMintToken: (g: Gateway) => void }) {
   const { hasPermission } = useAuth();

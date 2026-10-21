@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { as, call, fx, keepOutOfArtifacts, statePath } from '../support/stack';
+import { as, call, fx, keepOutOfArtifacts, requestRef, statePath } from '../support/stack';
 import { Authenticator, secondFactor, stepUp } from '../support/totp';
 
 // An action that needs a second factor, from an account that has none,
@@ -22,6 +22,22 @@ async function submitRead(page: Page, why: string): Promise<string> {
 
 async function status(page: Page, id: string): Promise<string> {
   return String((await call(page, 'GET', `/api/v1/requests/${id}`)).body.status);
+}
+
+async function submitCrossTeam(page: Page, why: string): Promise<string> {
+  const r = await call(page, 'POST', '/api/v1/requests/cross-team', {
+    project_id: fx.project,
+    environment: 'dev',
+    target_team_id: fx.otherTeam,
+    target_project_id: fx.otherProject,
+    target_environment_id: fx.otherEnv,
+    destination_provider_connection_id: fx.connection,
+    destination_secret_ref: fx.destinationRef,
+    destination_keys: ['CT_KEY1', 'CT_KEY2'],
+    justification: why,
+  });
+  expect(r.status, 'cross-team submit').toBe(201);
+  return String(r.body.id ?? r.body.request_id);
 }
 
 async function openApprove(page: Page, id: string): Promise<void> {
@@ -97,4 +113,25 @@ test('a factor removed in another tab mid step-up offers to add one instead of h
   await add.getByRole('button', { name: 'Cancel' }).click();
   await expect(add).toBeHidden();
   expect(await status(page, id), 'nothing recorded').toBe('pending');
+});
+
+test('cancelling the second factor on Refuse leaves a plain sentence, not the raw 412', async ({ browser }) => {
+  // After the test above the newcomer has no factor again. It is also a
+  // value provider in the other team, so it can refuse there.
+  const requester = await as(browser, fx.users.requester);
+  const id = await submitCrossTeam(requester, 'e2e refuse with no second factor');
+
+  const page = await as(browser, fx.users.newcomer);
+  await page.goto(`/inbox/${id}`);
+  await page.getByRole('button', { name: 'Refuse…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: `Refuse ${requestRef(id)}?` });
+  await dialog.locator('#refuse-reason').fill('team beta does not own these values');
+  await dialog.getByRole('button', { name: 'Refuse request' }).click();
+
+  const add = page.getByRole('dialog', { name: 'Add a second factor' });
+  await expect(add).toBeVisible();
+  await add.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog.getByText("This needs a second factor, so it wasn't refused.")).toBeVisible();
+  await expect(dialog.getByText('mfa_enrollment_required')).toHaveCount(0);
+  expect(await status(page, id), 'nothing refused').toBe('pending_values');
 });

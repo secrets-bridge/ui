@@ -6,6 +6,7 @@
  */
 
 import { ApiError } from './client';
+import { missingFactorText } from './mfaErrors';
 
 const CODE_MESSAGES: Record<string, string> = {
   invalid_input: 'Check the highlighted field.',
@@ -75,7 +76,8 @@ export function ssoErrorText(err: unknown): string {
   if (code && CODE_MESSAGES[code]) return CODE_MESSAGES[code];
   if (err instanceof ApiError) {
     if (err.status === 401) return 'Your second factor wasn’t confirmed, so nothing changed.';
-    if (err.status === 412) return 'This needs a second factor, so nothing changed. Save again to confirm with your second factor.';
+    const noFactor = missingFactorText(err, 'nothing changed', 'Save again');
+    if (noFactor) return noFactor;
     return `${err.status}: ${err.message}`;
   }
   return err instanceof Error ? err.message : String(err);

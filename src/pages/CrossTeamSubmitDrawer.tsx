@@ -19,6 +19,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
+import { missingFactorText } from '../api/mfaErrors';
 import {
   buildCrossTeamSubmitBody,
   crossTeamErrorMessage,
@@ -127,11 +128,12 @@ export function CrossTeamSubmitDrawer({ sourceProject, sourceEnvironmentID, onCl
       onClose();
     } catch (err) {
       setServerError(
-        err instanceof ApiError
-          ? `${err.status}: ${crossTeamErrorMessage(extractCrossTeamErrorCode(err.body)) ?? err.message}`
-          : err instanceof Error
-            ? err.message
-            : String(err),
+        missingFactorText(err, 'nothing was sent') ??
+          (err instanceof ApiError
+            ? `${err.status}: ${crossTeamErrorMessage(extractCrossTeamErrorCode(err.body)) ?? err.message}`
+            : err instanceof Error
+              ? err.message
+              : String(err)),
       );
     }
   };

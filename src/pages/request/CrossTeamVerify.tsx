@@ -15,6 +15,7 @@
 import { useState, type ReactNode } from 'react';
 
 import { ApiError } from '../../api/client';
+import { missingFactorText } from '../../api/mfaErrors';
 import { crossTeamErrorMessage, extractCrossTeamErrorCode, useVerifyCrossTeam } from '../../api/crossTeam';
 import { useTeams } from '../../api/teams';
 import type { AccessRequest } from '../../api/types';
@@ -191,9 +192,10 @@ function VoteDialog({ r, lane, decision, onClose }: { r: AccessRequest; lane: La
       </Field>
       {verify.isError && (
         <Banner tone="error" title="Vote not recorded.">
-          {verify.error instanceof ApiError
-            ? `${verify.error.status}: ${crossTeamErrorMessage(extractCrossTeamErrorCode(verify.error.body)) ?? verify.error.message}`
-            : 'Network error.'}
+          {missingFactorText(verify.error, 'no vote was recorded') ??
+            (verify.error instanceof ApiError
+              ? `${verify.error.status}: ${crossTeamErrorMessage(extractCrossTeamErrorCode(verify.error.body)) ?? verify.error.message}`
+              : 'Network error.')}
         </Banner>
       )}
     </Dialog>

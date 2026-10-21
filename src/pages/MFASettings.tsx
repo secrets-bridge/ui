@@ -39,6 +39,7 @@
  */
 
 import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
 import { type MFAFactor, useDeleteFactor, useMFAFactors } from '../api/mfa';
@@ -57,6 +58,11 @@ type EnrollMode = 'totp' | 'webauthn' | null;
 export function MFASettings() {
   const list = useMFAFactors();
   const factors = list.data ?? [];
+  // Sent here because a page wouldn't load without a second factor
+  // (the login gate, ui#171).
+  const location = useLocation();
+  const navigate = useNavigate();
+  const required = (location.state as { factorRequired?: boolean } | null)?.factorRequired === true;
 
   const [enrollMode, setEnrollMode] = useState<EnrollMode>(null);
   const [deleteTarget, setDeleteTarget] = useState<MFAFactor | null>(null);
@@ -107,6 +113,25 @@ export function MFASettings() {
           </>
         }
       />
+
+      {required && list.data && factors.length === 0 && (
+        <Banner title="Add a second factor to continue." className="mb-4">
+          This install asks for one before anything else. Once it's added, you're asked for it once and can carry on.
+        </Banner>
+      )}
+      {required && factors.length > 0 && (
+        <Banner
+          title="Your second factor is added."
+          className="mb-4"
+          action={
+            <Button variant="secondary" size="sm" onClick={() => navigate('/', { replace: true })}>
+              Continue
+            </Button>
+          }
+        >
+          Continue and confirm with it once.
+        </Banner>
+      )}
 
       {list.isLoading && <p className="text-muted">Loading your factors…</p>}
       {list.isError && (

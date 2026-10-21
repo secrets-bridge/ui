@@ -139,7 +139,7 @@ seed() {
   # Team members: the requester and approver in alpha, the value provider
   # in beta (the inbox is per team).
   local m
-  for m in "$ta:$requester" "$ta:$approver" "$ta:$lead" "$tb:$filler"; do
+  for m in "$ta:$requester" "$ta:$approver" "$ta:$lead" "$tb:$filler" "$tb:$newcomer"; do
     need "$(api POST "/api/v1/teams/${m%%:*}/members" "{\"user_id\":\"${m##*:}\"}")" 201 "member-${m##*:}"
   done
 
@@ -158,7 +158,7 @@ seed() {
   # value_provider is global because fill and refuse refuse a team-scoped
   # grant today (api#166).
   local g
-  for g in "$lead:$rdev" "$lead:$rappr" "$filler:$rvp" "$filler:$rappr"; do
+  for g in "$lead:$rdev" "$lead:$rappr" "$filler:$rvp" "$filler:$rappr" "$newcomer:$rvp"; do
     need "$(api POST /api/v1/user-roles "{\"user_id\":\"${g%%:*}\",\"role_id\":\"${g##*:}\",\"scope\":{}}")" 201 "grant-${g}"
   done
 

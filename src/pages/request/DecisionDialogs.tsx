@@ -14,6 +14,7 @@
 import { useState, type ReactNode } from 'react';
 
 import { ApiError } from '../../api/client';
+import { missingFactorText } from '../../api/mfaErrors';
 import { useApproveRequest, useCancelRequest, useRejectRequest } from '../../api/requests';
 import type { AccessRequest } from '../../api/types';
 import { requestRef } from '../../lib/requestRef';
@@ -46,7 +47,8 @@ function decisionError(err: unknown): string {
   if (err.status === 403 && msg.includes('self')) return "You can't decide on your own request.";
   if (err.status === 403) return `You can't decide on this request. ${err.message}`;
   if (err.status === 401) return 'Your second factor wasn\'t confirmed, so nothing was recorded.';
-  if (err.status === 412) return 'Deciding needs a second factor, so nothing was recorded. Try again to confirm with your second factor.';
+  const noFactor = missingFactorText(err, 'nothing was recorded');
+  if (noFactor) return noFactor;
   return `${err.status}: ${err.message}`;
 }
 

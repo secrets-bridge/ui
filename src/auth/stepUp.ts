@@ -30,7 +30,9 @@
  * through `requestStepUp()` as well: the modal has the user add a
  * factor over the current page, then verify with it, and the request
  * retries. It used to navigate to /me/mfa, which dropped whatever the
- * page held, such as a half-filled form.
+ * page held, such as a half-filled form. A GET is the exception: it is
+ * a page loading under the login gate, so `requestFactorPage()` sends
+ * the user to /me/mfa instead (ui#171).
  *
  * The other MFA-shaped error routes through here too:
  *
@@ -52,9 +54,11 @@ export type StepUpPurpose = 'action' | 'reveal';
 
 type StepUpHandler = (purpose: StepUpPurpose) => void;
 type CompromisedHandler = () => void;
+type FactorPageHandler = () => void;
 
 let stepUpHandler: StepUpHandler | null = null;
 let compromisedHandler: CompromisedHandler | null = null;
+let factorPageHandler: FactorPageHandler | null = null;
 
 interface PendingStepUp {
   promise: Promise<'verified' | 'cancelled'>;
@@ -69,6 +73,10 @@ export function setStepUpHandler(fn: StepUpHandler | null): void {
 
 export function setCompromisedHandler(fn: CompromisedHandler | null): void {
   compromisedHandler = fn;
+}
+
+export function setFactorPageHandler(fn: FactorPageHandler | null): void {
+  factorPageHandler = fn;
 }
 
 /**
@@ -116,6 +124,13 @@ export function resolveStepUp(outcome: 'verified' | 'cancelled'): void {
 export function requestCompromisedFlow(): void {
   if (compromisedHandler) {
     compromisedHandler();
+  }
+}
+
+/** A page load refused for a missing factor: go to the Second factor page. Fire-and-forget. */
+export function requestFactorPage(): void {
+  if (factorPageHandler) {
+    factorPageHandler();
   }
 }
 

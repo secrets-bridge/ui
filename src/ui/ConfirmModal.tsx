@@ -6,6 +6,7 @@
  */
 
 import { ApiError } from '../api/client';
+import { missingFactorText } from '../api/mfaErrors';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
 
@@ -65,7 +66,7 @@ export function ConfirmModal({
               : 'Network error'}
           </div>
           <div className="mt-0.5 text-ink">
-            {errorText ?? (error instanceof Error ? error.message : String(error))}
+            {errorText ?? missingFactorText(error, 'nothing changed') ?? (error instanceof Error ? error.message : String(error))}
           </div>
         </div>
       )}
