@@ -32,6 +32,7 @@ import {
   isStepUpPending,
   notifySessionExpired,
   requestCompromisedFlow,
+  requestFactorPage,
   requestStepUp,
 } from '../auth/stepUp';
 
@@ -130,6 +131,14 @@ interface RequestOptions {
   blob?: { data: Blob; type: string };
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  /**
+   * Handle a 412 mfa_enrollment_required on a GET in the step-up modal,
+   * like any other request. A GET otherwise goes to the Second factor
+   * page (see request()). For a GET that is itself the gated action,
+   * such as a reveal's wrap: a new GET behind the api's fresh-MFA gate
+   * (an export or a download, say) needs this flag too.
+   */
+  firstFactorInPlace?: boolean;
 }
 
 /** The URL of an api path, for places that aren't a fetch (an <img src>). */
@@ -207,10 +216,15 @@ async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0):
     // and the modal shows the error or offers to add a factor. Outside a
     // ceremony a step-up 401 on them still goes through the modal, which
     // is how the Second factor page adds a second factor.
+    //
+    // A GET refused for a missing factor is a page loading under the
+    // login gate (SB_REQUIRE_MFA_AT_LOGIN). There's no form to keep, and
+    // the modal would open again on every page, so the user goes to the
+    // Second factor page instead, unless the GET opted in.
     const ceremony = isMFACeremonyPath(path);
-    const inPlace = apiErr.stepUp
-      ? !(ceremony && isStepUpPending())
-      : needsFirstFactor(apiErr) && !ceremony;
+    const firstFactor = needsFirstFactor(apiErr) && !ceremony;
+    const toFactorPage = firstFactor && (opts.method ?? 'GET') === 'GET' && !opts.firstFactorInPlace;
+    const inPlace = apiErr.stepUp ? !(ceremony && isStepUpPending()) : firstFactor && !toFactorPage;
     if (inPlace && attempt === 0) {
       const outcome = await requestStepUp();
       if (outcome === 'verified') {
@@ -219,8 +233,10 @@ async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0):
       throw apiErr;
     }
 
-    // A compromised factor navigates away to /login. Fire-and-forget
-    // routing, then throw so the caller still sees the error.
+    // A compromised factor navigates away to /login, and a page load
+    // with no factor to /me/mfa. Fire-and-forget routing, then throw so
+    // the caller still sees the error.
+    if (toFactorPage) requestFactorPage();
     routeNonStepUpSignals(apiErr);
 
     // UI-N-05: any other 401 means the session cookie is gone (expired,

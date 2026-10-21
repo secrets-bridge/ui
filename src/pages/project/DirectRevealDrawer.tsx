@@ -13,6 +13,7 @@
 import { useState } from 'react';
 
 import { ApiError } from '../../api/client';
+import { missingFactorText } from '../../api/mfaErrors';
 import { useDirectReveal } from '../../api/devSecrets';
 import { revealErrorMessage } from '../../api/revealErrors';
 import type { MyEnvironment, MyProject } from '../../api/types';
@@ -204,6 +205,8 @@ export function DirectRevealDrawer({ project, env, secret, onClose, onCreated, o
 }
 
 function mapError(err: unknown): { field?: string; text: string; policy?: boolean } {
+  const noFactor = missingFactorText(err, 'nothing was requested');
+  if (noFactor) return { text: noFactor };
   if (!(err instanceof ApiError)) return { text: err instanceof Error ? err.message : String(err) };
   const friendly = revealErrorMessage(err);
   if (err.message === 'requested key is not permitted by the binding allowlist') return { field: 'keys', text: friendly ?? err.message };

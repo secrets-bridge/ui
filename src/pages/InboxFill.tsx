@@ -21,6 +21,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
+import { missingFactorText } from '../api/mfaErrors';
 import { crossTeamErrorMessage, extractCrossTeamErrorCode, useFillCrossTeam, useRefuseCrossTeam } from '../api/crossTeam';
 import { useRequest } from '../api/requests';
 import type { AccessRequest } from '../api/types';
@@ -49,7 +50,9 @@ export function InboxFill() {
   return <InboxFillView />;
 }
 
-function describe(err: unknown): string {
+function describe(err: unknown, nothing: string): string {
+  const noFactor = missingFactorText(err, nothing);
+  if (noFactor) return noFactor;
   if (err instanceof ApiError) return `${err.status}: ${crossTeamErrorMessage(extractCrossTeamErrorCode(err.body)) ?? err.message}`;
   return err instanceof Error ? err.message : String(err);
 }
@@ -182,7 +185,7 @@ function FillForm({ r }: { r: AccessRequest }) {
       });
       navigate('/inbox');
     } catch (err) {
-      setError(describe(err));
+      setError(describe(err, 'nothing was sent'));
     } finally {
       fill.reset();
       for (const k of Object.keys(encoded)) encoded[k] = '';
@@ -316,7 +319,7 @@ function RefuseDialog({ r, onClose }: { r: AccessRequest; onClose: () => void })
       </Field>
       {refuse.isError && (
         <Banner tone="error" title="Not refused.">
-          {describe(refuse.error)}
+          {describe(refuse.error, "it wasn't refused")}
         </Banner>
       )}
     </Dialog>

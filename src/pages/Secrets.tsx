@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
+import { missingFactorText } from '../api/mfaErrors';
 import { type Secret, type SecretsFilter, useSecrets } from '../api/secrets';
 import { useMyProjects } from '../api/tenancy';
 import { useAuth } from '../auth/AuthContext';
@@ -287,7 +288,8 @@ export function Secrets() {
             </Button>
           }
         >
-          {list.error instanceof ApiError ? `${list.error.status}: ${list.error.message}` : String(list.error)}
+          {missingFactorText(list.error, "the catalog didn't load") ??
+            (list.error instanceof ApiError ? `${list.error.status}: ${list.error.message}` : String(list.error))}
         </Banner>
       )}
 

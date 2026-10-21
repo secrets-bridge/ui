@@ -19,6 +19,7 @@
 import { useState } from 'react';
 
 import { ApiError } from '../../api/client';
+import { missingFactorText } from '../../api/mfaErrors';
 import { type CreateGatewayInput, type Gateway, type GatewayListItem, useCreateGateway, useGateways } from '../../api/gateways';
 import { useEnvironments, useProjects } from '../../api/tenancy';
 import { useAuth } from '../../auth/AuthContext';
@@ -312,6 +313,8 @@ function CreateGatewayDrawer({ onClose, onCreated }: { onClose: () => void; onCr
 }
 
 function createErrorText(err: unknown): string {
+  const noFactor = missingFactorText(err, 'no Gateway was created');
+  if (noFactor) return noFactor;
   if (!(err instanceof ApiError)) return 'Network error. Try again.';
   if (err.status === 409) return '409: A Gateway with this name already exists.';
   if (err.status === 403) return "403: You don't have permission to create Gateways (gateway.mint).";

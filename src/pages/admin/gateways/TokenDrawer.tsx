@@ -13,6 +13,7 @@
 import { useState } from 'react';
 
 import { ApiError } from '../../../api/client';
+import { missingFactorText } from '../../../api/mfaErrors';
 import { type Gateway, useMintGatewayToken } from '../../../api/gateways';
 import { copySecret, useClearCopiedSecretOnUnmount } from '../../../lib/secretClipboard';
 import { formatClock, formatRemaining } from '../../../lib/time';
@@ -216,6 +217,8 @@ function ShownOnce({ issued, copied, onCopied, closeWarned }: { issued: Issued; 
 }
 
 function mintErrorText(err: unknown): string {
+  const noFactor = missingFactorText(err, 'no token was made');
+  if (noFactor) return noFactor;
   if (!(err instanceof ApiError)) return 'Network error. Try again.';
   if (err.status === 409) return '409: This Gateway has already enrolled. A token is only for a pending Gateway.';
   if (err.status === 404) return '404: This Gateway no longer exists.';

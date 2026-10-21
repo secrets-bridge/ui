@@ -14,6 +14,7 @@
 import { useState } from 'react';
 
 import { ApiError } from '../../../api/client';
+import { missingFactorText } from '../../../api/mfaErrors';
 import { type CreateBindingInput, type Gateway, type GatewayConnector, useCreateBinding } from '../../../api/gateways';
 import { useProviderConnectionsAdmin } from '../../../api/providerConnections';
 import { useEnvironments, useEnvironmentsForProject, useProjects, useProjectSecrets } from '../../../api/tenancy';
@@ -263,9 +264,10 @@ export function BindingDrawer({ gateway, connector, onClose }: { gateway: Gatewa
 
         {create.isError && (
           <Banner tone="error" title="No binding was created.">
-            {create.error instanceof ApiError
-              ? `${create.error.status}: ${BIND_ERRORS[create.error.message] ?? create.error.message}`
-              : 'Network error. Try again.'}
+            {missingFactorText(create.error, 'no binding was created') ??
+              (create.error instanceof ApiError
+                ? `${create.error.status}: ${BIND_ERRORS[create.error.message] ?? create.error.message}`
+                : 'Network error. Try again.')}
           </Banner>
         )}
       </form>

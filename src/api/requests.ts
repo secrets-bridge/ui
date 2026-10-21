@@ -168,8 +168,11 @@ export async function revealWrap(
   requestId: string,
   wrapId: string,
 ): Promise<RevealedWrap> {
+  // The wrap fetch is the gated action, so a missing factor is handled
+  // in the step-up modal, not by leaving the page.
   return api.get<RevealedWrap>(
     `/api/v1/requests/${requestId}/wraps/${wrapId}`,
+    { firstFactorInPlace: true },
   );
 }
 

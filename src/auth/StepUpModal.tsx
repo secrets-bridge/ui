@@ -42,6 +42,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '../api/client';
@@ -57,6 +58,7 @@ import { TOTPEnrollDrawer, WebAuthnEnrollDrawer } from './FactorEnroll';
 import {
   resolveStepUp,
   setCompromisedHandler,
+  setFactorPageHandler,
   setStepUpHandler,
   type StepUpPurpose,
 } from './stepUp';
@@ -66,6 +68,7 @@ type Stage = 'picker' | 'totp' | 'webauthn' | 'enroll' | 'enroll-totp' | 'enroll
 export function StepUpModalProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState<StepUpPurpose | null>(null);
   const { logout } = useAuth();
+  const navigate = useNavigate();
 
   // Closing the modal MUST resolve the pending step-up promise so
   // client.ts can decide whether to retry (verified) or throw the
@@ -86,11 +89,20 @@ export function StepUpModalProvider({ children }: { children: React.ReactNode })
       void logout().catch(() => undefined);
       window.location.assign('/login');
     });
+    setFactorPageHandler(() => {
+      // A page load refused for a missing factor (the login gate). Several
+      // queries fail at once, so go once, and replace the entry so Back
+      // doesn't land on the page that sent the user here.
+      if (window.location.pathname !== '/me/mfa') {
+        navigate('/me/mfa', { replace: true, state: { factorRequired: true } });
+      }
+    });
     return () => {
       setStepUpHandler(null);
       setCompromisedHandler(null);
+      setFactorPageHandler(null);
     };
-  }, [logout]);
+  }, [logout, navigate]);
 
   // A step-up still pending when the provider goes away (sign-out, say)
   // is cancelled, so the request waiting on it, and the body it holds,
@@ -172,6 +184,10 @@ function StepUpModal({
   // invalidating waits for the active refetch.
   const afterEnroll = async (factor: MFAFactor) => {
     const refreshed = qc.invalidateQueries({ queryKey: mfaKey.factors });
+    // The confirm step's wording reads the kind, so set it now, not after
+    // the refetch, or it says "security key" for an app until then.
+    setPickedKind(factor.kind);
+    setPickedFactor(factor);
     setAdded(true);
     setStage('picker');
     await refreshed;
