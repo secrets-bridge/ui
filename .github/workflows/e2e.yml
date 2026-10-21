@@ -87,12 +87,13 @@ jobs:
           set +a
           E2E_FIXTURES="$(cat "$E2E_STATE/fixtures.json")"
           export E2E_FIXTURES
-          # A copy of the console goes into e2e/.out, so the leak scan
-          # checks what the reporters printed too. The job log shows the
-          # same lines, with the recorded values masked.
-          mkdir -p e2e/.out
+          # A copy of the console goes into the state dir (mode 700, never
+          # uploaded), so the leak scan checks what the reporters printed
+          # too. Its mask lines hold the recorded values, so it stays out
+          # of e2e/.out. The job log shows the same lines, values masked.
+          umask 077
           set -o pipefail
-          npm run e2e 2>&1 | tee e2e/.out/console.log
+          npm run e2e 2>&1 | tee "$E2E_STATE/console.log"
       - name: leak scan
         id: scan
         if: always()

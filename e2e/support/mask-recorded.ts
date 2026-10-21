@@ -12,6 +12,11 @@ import type { Reporter } from '@playwright/test/reporter';
 // and masks each new one before the list reporter prints anything about
 // it. Outside Actions nothing swallows the command and it would print
 // the values to the terminal, so there it does nothing.
+//
+// Each command starts on a fresh line: one that isn't at the start of a
+// line is printed as plain text, value and all. The value is escaped the
+// way workflow commands want it (% CR LF), so a `%` can't make Actions
+// mask a different string.
 export default class MaskRecorded implements Reporter {
   private readonly masked = new Set<string>();
 
@@ -35,7 +40,12 @@ export default class MaskRecorded implements Reporter {
     for (const value of readFileSync(file, 'utf8').split('\n')) {
       if (!value || this.masked.has(value)) continue;
       this.masked.add(value);
-      process.stdout.write(`::add-mask::${value}\n`);
+      process.stdout.write(`\n::add-mask::${escapeCommandData(value)}\n`);
     }
   }
+}
+
+// Workflow command data escaping, as the runner unescapes it.
+function escapeCommandData(value: string): string {
+  return value.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
 }
