@@ -21,15 +21,17 @@ interface Props {
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Above page dialogs (z-50), for a drawer the step-up modal opens. */
+  elevated?: boolean;
 }
 
-export function Drawer({ title, subtitle, onClose, children, footer, wide }: Props) {
+export function Drawer({ title, subtitle, onClose, children, footer, wide, elevated }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
   useModalFocus(ref, onClose);
 
   return createPortal(
-    <div className="fixed inset-0 z-40 flex justify-end">
+    <div className={(elevated ? 'z-[60]' : 'z-40') + ' fixed inset-0 flex justify-end'}>
       <div className="absolute inset-0 bg-scrim" onClick={onClose} aria-hidden="true" />
       <div
         ref={ref}

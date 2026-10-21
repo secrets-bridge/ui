@@ -118,6 +118,9 @@ seed() {
   approver=$(mkuser e2e-approver@example.com Approver)
   outsider=$(mkuser e2e-outsider@example.com Outsider)
   filler=$(mkuser e2e-filler@example.com Filler)
+  # An approver who starts with no second factor and adds one from the
+  # Approve dialog (enroll.spec.ts).
+  newcomer=$(mkuser e2e-newcomer@example.com Newcomer)
 
   need "$(api POST /api/v1/teams '{"name":"e2e-alpha","description":"requesting team"}')" 201 team-alpha
   local ta; ta=$(jq -r .id "$E2E_STATE/last.json")
@@ -149,6 +152,7 @@ seed() {
   need "$(api POST /api/v1/user-roles "{\"user_id\":\"$requester\",\"role_id\":\"$rdev\",\"scope\":{}}")" 201 grant-requester
   need "$(api POST /api/v1/user-roles "{\"user_id\":\"$outsider\",\"role_id\":\"$rdev\",\"scope\":{\"project_id\":\"$q\"}}")" 201 grant-outsider
   need "$(api POST /api/v1/user-roles "{\"user_id\":\"$approver\",\"role_id\":\"$rappr\",\"scope\":{}}")" 201 grant-approver
+  need "$(api POST /api/v1/user-roles "{\"user_id\":\"$newcomer\",\"role_id\":\"$rappr\",\"scope\":{}}")" 201 grant-newcomer
   # The lead and the value provider can both approve, so the only thing
   # that stops them verifying a cross-team request is separation of duties.
   # value_provider is global because fill and refuse refuse a team-scoped
@@ -231,11 +235,12 @@ seed() {
         --arg eqdev "$eqdev" --arg tb "$tb" --arg c "$c" \
         --arg admin "$E2E_ADMIN_EMAIL" --arg requester e2e-requester@example.com \
         --arg approver e2e-approver@example.com --arg outsider e2e-outsider@example.com --arg filler e2e-filler@example.com --arg lead e2e-lead@example.com \
+        --arg newcomer e2e-newcomer@example.com \
     '{project:$p, otherProject:$q, envDev:$edev, envProd:$eprod, secretId:$sid, secretRef:"team-alpha/e2e/db",
       otherEnv:$eqdev, otherTeam:$tb, connection:$c, destinationRef:"team-beta/e2e/app",
-      users:{admin:$admin, requester:$requester, approver:$approver, outsider:$outsider, filler:$filler, lead:$lead}}' > "$E2E_STATE/fixtures.json"
+      users:{admin:$admin, requester:$requester, approver:$approver, outsider:$outsider, filler:$filler, lead:$lead, newcomer:$newcomer}}' > "$E2E_STATE/fixtures.json"
   rm -f "$E2E_STATE/admin.jar" "$E2E_STATE/last.json"
-  echo "seeded: 5 users, 2 teams, 2 projects, 3 environments, an enrolled agent, 2 discovered and bound secrets, 1 reveal policy"
+  echo "seeded: 6 users, 2 teams, 2 projects, 3 environments, an enrolled agent, 2 discovered and bound secrets, 1 reveal policy"
 }
 
 scan() {

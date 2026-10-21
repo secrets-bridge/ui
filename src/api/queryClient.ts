@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 
+import { ApiError } from './client';
+
 import { setSessionExpiredHandler } from '../auth/stepUp';
 import { handleSessionExpired } from '../auth/sessionExpiry';
 
@@ -44,7 +46,11 @@ export const queryClient = new QueryClient({
       staleTime: 30_000,
       gcTime: 5 * 60_000,
       refetchOnWindowFocus: false,
-      retry: 1,
+      // Once, except when the api asked for a second factor (a step-up
+      // 401 or a 412 for a missing one). The fetch already opened the
+      // step-up modal; retrying would open it again after a Cancel.
+      retry: (failureCount, error) =>
+        failureCount < 1 && !(error instanceof ApiError && (error.stepUp || error.status === 412)),
     },
     mutations: {
       retry: 0,

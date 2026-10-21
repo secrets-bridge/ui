@@ -75,6 +75,7 @@ export function ssoErrorText(err: unknown): string {
   if (code && CODE_MESSAGES[code]) return CODE_MESSAGES[code];
   if (err instanceof ApiError) {
     if (err.status === 401) return 'Your second factor wasn’t confirmed, so nothing changed.';
+    if (err.status === 412) return 'This needs a second factor, so nothing changed. Save again to confirm with your second factor.';
     return `${err.status}: ${err.message}`;
   }
   return err instanceof Error ? err.message : String(err);

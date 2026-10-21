@@ -21,9 +21,11 @@ interface Props {
   fallbackFocus?: () => HTMLElement | null;
   /** Block closing from Escape and the scrim (e.g. while a call is in flight). */
   dismissible?: boolean;
+  /** Above page dialogs, for the step-up modal, which can open over one. */
+  elevated?: boolean;
 }
 
-export function Dialog({ title, children, actions, onClose, fallbackFocus, dismissible = true }: Props) {
+export function Dialog({ title, children, actions, onClose, fallbackFocus, dismissible = true, elevated }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const close = () => {
@@ -32,7 +34,7 @@ export function Dialog({ title, children, actions, onClose, fallbackFocus, dismi
   useModalFocus(ref, close, fallbackFocus);
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className={(elevated ? 'z-[60]' : 'z-50') + ' fixed inset-0 flex items-center justify-center p-4'}>
       <div className="absolute inset-0 bg-scrim" onClick={close} aria-hidden="true" />
       <div
         ref={ref}

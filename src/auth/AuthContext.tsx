@@ -10,8 +10,9 @@
  * - The SPA NEVER sees the token value. There is no localStorage /
  *   sessionStorage path; reload reissues the same /users/me with
  *   the cookie the browser already holds.
- * - The identity surface is `GET /users/me`. While that's in flight
- *   `meStatus === 'loading'`, after it lands `'ready'`, on 401
+ * - The identity surface is `GET /users/me`. While the first load is
+ *   in flight `meStatus === 'loading'`, after it lands `'ready'`
+ *   (a background refetch keeps `'ready'`), on 401
  *   `'idle'` (unauthenticated) — we don't surface a generic error
  *   for 401 because that's the "you need to sign in" state.
  * - Logout calls `POST /auth/logout` (local) or
@@ -106,8 +107,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // directly; the regex over error.message used to live here but the
   // api returns {"error":"authentication required"} on 401 so the
   // message-based check always failed and 401s mapped to 'error'.
+  //
+  // Only a load with no identity yet counts as loading. A background
+  // refetch (after adding a factor, for one) keeps the identity we
+  // have: RequireAuth renders a placeholder while loading, so treating
+  // the refetch as loading unmounted the whole console and dropped open
+  // forms and dialogs, the step-up modal included.
   const meStatus: AuthState['meStatus'] = (() => {
-    if (meQuery.isLoading || meQuery.isFetching) return 'loading';
+    if (meQuery.isLoading || (meQuery.isFetching && !meQuery.data)) return 'loading';
     if (meQuery.isError) {
       const err = meQuery.error;
       if (err instanceof ApiError && err.status === 401) return 'idle';

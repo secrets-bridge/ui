@@ -26,34 +26,34 @@
  * opens, ONE verify ceremony fires, and ALL N retries fan out
  * together. The promise is stored at module scope until resolved.
  *
- * Slice I2 routes the OTHER two MFA-shaped errors through here too:
+ * `412 mfa_enrollment_required` (the user has zero factors) goes
+ * through `requestStepUp()` as well: the modal has the user add a
+ * factor over the current page, then verify with it, and the request
+ * retries. It used to navigate to /me/mfa, which dropped whatever the
+ * page held, such as a half-filled form.
  *
- *   412 mfa_enrollment_required  — user has zero factors. SPA
- *                                  navigates to /me/mfa instead of
- *                                  opening a modal the user can't
- *                                  satisfy. Fire-and-forget; the
- *                                  original request throws.
+ * The other MFA-shaped error routes through here too:
+ *
  *   401 factor_compromised       — clone-detection trip from
  *                                  /auth/mfa/verify (api Slice H4
  *                                  via storage.ErrSignCountRegression).
  *                                  All sessions are revoked
  *                                  server-side; the SPA hard-
- *                                  navigates to /login. Same
- *                                  fire-and-forget pattern.
+ *                                  navigates to /login.
+ *                                  Fire-and-forget; the original
+ *                                  request throws.
  *
- * These two have stable error-body strings the api returns
- * verbatim; client.ts matches on them and routes here.
+ * Both have stable error-body strings the api returns verbatim;
+ * client.ts matches on them.
  */
 
 /** What the step-up is for; changes the dialog's wording only. */
 export type StepUpPurpose = 'action' | 'reveal';
 
 type StepUpHandler = (purpose: StepUpPurpose) => void;
-type EnrollmentRequiredHandler = () => void;
 type CompromisedHandler = () => void;
 
 let stepUpHandler: StepUpHandler | null = null;
-let enrollmentHandler: EnrollmentRequiredHandler | null = null;
 let compromisedHandler: CompromisedHandler | null = null;
 
 interface PendingStepUp {
@@ -65,10 +65,6 @@ let pendingStepUp: PendingStepUp | null = null;
 
 export function setStepUpHandler(fn: StepUpHandler | null): void {
   stepUpHandler = fn;
-}
-
-export function setEnrollmentRequiredHandler(fn: EnrollmentRequiredHandler | null): void {
-  enrollmentHandler = fn;
 }
 
 export function setCompromisedHandler(fn: CompromisedHandler | null): void {
@@ -100,6 +96,11 @@ export function requestStepUp(purpose: StepUpPurpose = 'action'): Promise<'verif
   return promise;
 }
 
+/** Whether the step-up modal is open, i.e. a step-up promise is pending. */
+export function isStepUpPending(): boolean {
+  return pendingStepUp !== null;
+}
+
 /**
  * Resolve the currently-pending step-up. Called by the modal at
  * each exit point (verify success → 'verified', any cancel path →
@@ -109,12 +110,6 @@ export function requestStepUp(purpose: StepUpPurpose = 'action'): Promise<'verif
 export function resolveStepUp(outcome: 'verified' | 'cancelled'): void {
   if (pendingStepUp) {
     pendingStepUp.resolve(outcome);
-  }
-}
-
-export function requestEnrollment(): void {
-  if (enrollmentHandler) {
-    enrollmentHandler();
   }
 }
 
