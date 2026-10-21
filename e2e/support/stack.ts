@@ -14,7 +14,7 @@ export type Fixtures = {
   otherTeam: string;
   connection: string;
   destinationRef: string;
-  users: { admin: string; requester: string; approver: string; outsider: string; filler: string; lead: string };
+  users: { admin: string; requester: string; approver: string; outsider: string; filler: string; lead: string; newcomer: string };
 };
 
 function need(name: string): string {
@@ -80,7 +80,7 @@ export async function as(browser: Browser, email: string, password = userPasswor
 }
 
 /** The api's answer, as JSON, to a call made with the page's own session cookie. */
-export async function call(page: Page, method: 'GET' | 'POST', path: string, data?: unknown) {
+export async function call(page: Page, method: 'GET' | 'POST' | 'DELETE', path: string, data?: unknown) {
   const res = await page.request.fetch(path, { method, data });
   let body: Record<string, unknown> = {};
   try {

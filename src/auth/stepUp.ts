@@ -96,6 +96,11 @@ export function requestStepUp(purpose: StepUpPurpose = 'action'): Promise<'verif
   return promise;
 }
 
+/** Whether the step-up modal is open, i.e. a step-up promise is pending. */
+export function isStepUpPending(): boolean {
+  return pendingStepUp !== null;
+}
+
 /**
  * Resolve the currently-pending step-up. Called by the modal at
  * each exit point (verify success → 'verified', any cancel path →

@@ -92,6 +92,12 @@ export function StepUpModalProvider({ children }: { children: React.ReactNode })
     };
   }, [logout]);
 
+  // A step-up still pending when the provider goes away (sign-out, say)
+  // is cancelled, so the request waiting on it, and the body it holds,
+  // don't outlive the provider. Its own effect, so it runs on unmount
+  // only, never mid-ceremony.
+  useEffect(() => () => resolveStepUp('cancelled'), []);
+
   return (
     <>
       {children}
@@ -162,9 +168,10 @@ function StepUpModal({
   }, [qc]);
 
   // Enrolling doesn't verify the session, so the new factor is used
-  // once more. The list must include it before that step reads it.
+  // once more. The list must include it before that step reads it;
+  // invalidating waits for the active refetch.
   const afterEnroll = async (factor: MFAFactor) => {
-    const refreshed = qc.refetchQueries({ queryKey: mfaKey.factors });
+    const refreshed = qc.invalidateQueries({ queryKey: mfaKey.factors });
     setAdded(true);
     setStage('picker');
     await refreshed;
@@ -172,16 +179,17 @@ function StepUpModal({
   };
 
   if (stage === 'enroll-totp') {
-    return <TOTPEnrollDrawer onClose={() => setStage('enroll')} onEnrolled={(f) => void afterEnroll(f)} />;
+    return <TOTPEnrollDrawer elevated onClose={() => setStage('enroll')} onEnrolled={(f) => void afterEnroll(f)} />;
   }
   if (stage === 'enroll-webauthn') {
-    return <WebAuthnEnrollDrawer onClose={() => setStage('enroll')} onEnrolled={(f) => void afterEnroll(f)} />;
+    return <WebAuthnEnrollDrawer elevated onClose={() => setStage('enroll')} onEnrolled={(f) => void afterEnroll(f)} />;
   }
   if (stage === 'enroll') {
     const webAuthn = canUseWebAuthn();
     return (
       <Dialog
         title="Add a second factor"
+        elevated
         onClose={onCancel}
         actions={
           <>
@@ -215,6 +223,7 @@ function StepUpModal({
   return (
     <Dialog
       title="Confirm it's you"
+      elevated
       onClose={onCancel}
       actions={
         <Button variant="secondary" onClick={onCancel}>
@@ -224,9 +233,7 @@ function StepUpModal({
     >
       <p className="text-muted">
         {added
-          ? purpose === 'reveal'
-            ? 'Your second factor is added. Use it once more to reveal the values. Nothing is retrieved until you confirm.'
-            : "Your second factor is added. Use it once more to finish. After that, you won't be asked again for 15 minutes."
+          ? addedText(pickedKind, purpose)
           : purpose === 'reveal'
             ? 'Enter your authentication code to reveal the values. Nothing is retrieved until you confirm, and closing this retrieves nothing.'
             : "This action needs your second factor. After you confirm, you won't be asked again for 15 minutes."}
@@ -251,6 +258,16 @@ function StepUpModal({
       )}
     </Dialog>
   );
+}
+
+// What the confirm step says right after a factor was added here. An
+// authenticator app needs its next code: the api refuses one it has
+// already accepted, and the code typed to add the app counts.
+function addedText(kind: MFAFactorKind | null, purpose: StepUpPurpose): string {
+  const what = kind === 'totp' ? 'Your authenticator app is added. Wait for its next code and enter it' : 'Your security key is added. Use it once more';
+  return purpose === 'reveal'
+    ? `${what} to reveal the values. Nothing is retrieved until you confirm.`
+    : `${what} to finish. After that, you won't be asked again for 15 minutes.`;
 }
 
 // --- picker ---------------------------------------------------------

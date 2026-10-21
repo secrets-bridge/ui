@@ -32,11 +32,13 @@ import { Field, Input } from '../ui/Field';
 interface EnrollProps {
   onClose: () => void;
   onEnrolled?: (factor: MFAFactor) => void;
+  /** Opened by the step-up modal, possibly over a page dialog. */
+  elevated?: boolean;
 }
 
 // --- TOTP enrollment drawer -----------------------------------------
 
-export function TOTPEnrollDrawer({ onClose, onEnrolled }: EnrollProps) {
+export function TOTPEnrollDrawer({ onClose, onEnrolled, elevated }: EnrollProps) {
   const [label, setLabel] = useState('');
   const [code, setCode] = useState('');
   const [challenge, setChallenge] = useState<TOTPEnrollResponse | null>(null);
@@ -84,6 +86,7 @@ export function TOTPEnrollDrawer({ onClose, onEnrolled }: EnrollProps) {
 
   return (
     <Drawer
+      elevated={elevated}
       title="Add authenticator app"
       subtitle="Any app that shows 6-digit codes works, such as 1Password, Bitwarden or Google Authenticator."
       onClose={onClose}
@@ -188,7 +191,7 @@ export function TOTPEnrollDrawer({ onClose, onEnrolled }: EnrollProps) {
 
 // --- WebAuthn enrollment drawer -------------------------------------
 
-export function WebAuthnEnrollDrawer({ onClose, onEnrolled }: EnrollProps) {
+export function WebAuthnEnrollDrawer({ onClose, onEnrolled, elevated }: EnrollProps) {
   const [label, setLabel] = useState('');
   const [stage, setStage] = useState<'label' | 'browser' | 'done'>('label');
   const [browserError, setBrowserError] = useState<string | null>(null);
@@ -242,6 +245,7 @@ export function WebAuthnEnrollDrawer({ onClose, onEnrolled }: EnrollProps) {
 
   return (
     <Drawer
+      elevated={elevated}
       title="Add security key / passkey"
       onClose={onClose}
       footer={

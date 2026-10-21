@@ -29,6 +29,7 @@
  */
 
 import {
+  isStepUpPending,
   notifySessionExpired,
   requestCompromisedFlow,
   requestStepUp,
@@ -199,7 +200,18 @@ async function request<T>(path: string, opts: RequestOptions = {}, attempt = 0):
     // 412 mfa_enrollment_required (no factor yet) takes the same path:
     // the modal has the user add a factor over the current page, then
     // confirm with it, so the page and its form stay as they were.
-    if ((apiErr.stepUp || needsFirstFactor(apiErr)) && attempt === 0) {
+    //
+    // The ceremony's own calls (challenge, verify, adding a factor) are
+    // left out while the modal is open: they would wait on the modal's
+    // own promise, which only settles when they do. They throw instead,
+    // and the modal shows the error or offers to add a factor. Outside a
+    // ceremony a step-up 401 on them still goes through the modal, which
+    // is how the Second factor page adds a second factor.
+    const ceremony = isMFACeremonyPath(path);
+    const inPlace = apiErr.stepUp
+      ? !(ceremony && isStepUpPending())
+      : needsFirstFactor(apiErr) && !ceremony;
+    if (inPlace && attempt === 0) {
       const outcome = await requestStepUp();
       if (outcome === 'verified') {
         return request<T>(path, opts, attempt + 1);
@@ -233,17 +245,22 @@ function needsFirstFactor(err: ApiError): boolean {
   return err.status === 412 && (err.message ?? '').toLowerCase().includes('mfa_enrollment_required');
 }
 
+/** The step-up ceremony's routes: challenge and verify, and the user's own factors. */
+function isMFACeremonyPath(path: string): boolean {
+  return path.startsWith('/api/v1/auth/mfa/') || path.startsWith('/api/v1/users/me/mfa/');
+}
+
 /**
  * Route the MFA-shaped error that DOESN'T retry through the SPA
  * singletons before the caller's try/catch sees it.
  *
  * Step-up (`401 + WWW-Authenticate: step-up`) and a missing first
  * factor (`412 mfa_enrollment_required`) are handled inline in
- * `request()` because they can RECOVER without leaving the page —
- * modal opens, user verifies (adding a factor first if needed),
- * request retries. A compromised factor navigates away to /login, so
- * there's nothing to await — fire-and-forget routing, then the
- * original error still throws so the caller sees it.
+ * `request()` because they can RECOVER without leaving the page: the
+ * modal opens, the user verifies (adding a factor first if needed) and
+ * the request retries. A compromised factor navigates away to /login, so
+ * there's nothing to await: fire-and-forget routing, then the original
+ * error still throws so the caller sees it.
  *
  * Lives in this layer (not in TanStack onError) so direct fetch
  * helpers (e.g. `revealWrap`) trigger the same SPA-wide flow as

@@ -46,7 +46,7 @@ function decisionError(err: unknown): string {
   if (err.status === 403 && msg.includes('self')) return "You can't decide on your own request.";
   if (err.status === 403) return `You can't decide on this request. ${err.message}`;
   if (err.status === 401) return 'Your second factor wasn\'t confirmed, so nothing was recorded.';
-  if (err.status === 412) return 'Deciding needs a second factor, so nothing was recorded. Try again to add one.';
+  if (err.status === 412) return 'Deciding needs a second factor, so nothing was recorded. Try again to confirm with your second factor.';
   return `${err.status}: ${err.message}`;
 }
 
