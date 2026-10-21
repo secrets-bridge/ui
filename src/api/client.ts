@@ -135,7 +135,8 @@ interface RequestOptions {
    * Handle a 412 mfa_enrollment_required on a GET in the step-up modal,
    * like any other request. A GET otherwise goes to the Second factor
    * page (see request()). For a GET that is itself the gated action,
-   * such as a reveal's wrap.
+   * such as a reveal's wrap: a new GET behind the api's fresh-MFA gate
+   * (an export or a download, say) needs this flag too.
    */
   firstFactorInPlace?: boolean;
 }
