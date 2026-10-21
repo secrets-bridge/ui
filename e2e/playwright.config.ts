@@ -25,7 +25,7 @@ export default defineConfig({
   retries: 0,
   timeout: 90_000,
   expect: { timeout: 10_000 },
-  reporter: [['./support/drop-error-context.ts'], ['list'], ['json', { outputFile: './.out/summary.json' }]],
+  reporter: [['./support/drop-error-context.ts'], ['./support/mask-recorded.ts'], ['list'], ['json', { outputFile: './.out/summary.json' }]],
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     trace: 'off',
