@@ -19,6 +19,16 @@ on `main`.
   ingress routing chooses the host at runtime.
 
 ### Changed
+- Agent onboarding v2 (skills#116). Enroll an agent now creates a
+  one-time token that you copy once, then shows the
+  `secrets-bridge-agent enroll` command that reads it on stdin, creates
+  the X25519 private key on your machine and pipes the credential into
+  AWS Secrets Manager, Vault or a Kubernetes Secret, an optional
+  ExternalSecret, and the chart install with `identity.existingSecret`.
+  The private key and agent secret never reach the browser. The agent
+  details show the registered key fingerprint and version, and Rotate
+  key creates a one-time rotation token behind a fresh second factor.
+  The old token-in-a-Secret, enroll-on-first-boot and PVC flow is gone.
 - Major dependency upgrades: vite 8 with @vitejs/plugin-react 6,
   react-router-dom 7, tailwindcss 4 (CSS-first config in
   `src/index.css`, `tailwind.config.js` removed, PostCSS via

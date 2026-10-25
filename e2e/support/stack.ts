@@ -14,6 +14,8 @@ export type Fixtures = {
   otherTeam: string;
   connection: string;
   destinationRef: string;
+  /** The seeded agent's id. Its secret and private key stay in $E2E_STATE/agent-creds. */
+  agent: string;
   users: { admin: string; requester: string; approver: string; outsider: string; filler: string; lead: string; newcomer: string };
 };
 

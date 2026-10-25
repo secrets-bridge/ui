@@ -88,7 +88,7 @@ src/
     RequestAccessDrawer.tsx                       read and change requests
     MyProjects.tsx + ProjectEnv.tsx + project/    environments, direct reveal, provider connections
     Secrets.tsx          catalog with filters and a details drawer
-    Agents.tsx + agents/ agent table, details, revoke, enrollment (token shown once)
+    Agents.tsx + agents/ agent table, details, key rotation, revoke, onboarding (token copied once)
     Audit.tsx            append-only event log in pages of 50 (own events only when not admin)
     Inbox.tsx + InboxFill.tsx + CrossTeamSubmitDrawer.tsx   cross-team requests
     Me.tsx + MFASettings.tsx                      profile and second factor
@@ -140,7 +140,7 @@ npm run dev
 | `/projects` | Your projects and environments | authenticated |
 | `/projects/:id/env/:env_id` | Secrets bound to an environment, direct reveal, request access | project access |
 | `/inbox` + `/inbox/:id` | Cross-team requests waiting for your values; fill or refuse | `secret.value.provide` |
-| `/agents` | Agents, their status and heartbeats; enrollment and revoke | `agent.list` (enroll: `agent.mint`) |
+| `/agents` | Agents, their status, heartbeats and key fingerprints; onboarding, key rotation and revoke | `agent.list` (enroll and rotate: `agent.mint`) |
 | `/secrets` | Catalog with filters | `secret.list` |
 | `/audit` | Event log in pages of 50 (own events when not admin) | `audit.read` |
 | `/me` + `/me/mfa` | Profile, and second-factor settings | authenticated |

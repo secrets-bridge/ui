@@ -3,12 +3,19 @@
  * provider connection, with its status, cluster, version and last
  * heartbeat (GET /admin/agents, value-free).
  *
- * - "Enroll an agent" (agent.mint) opens the enrollment drawer: pick a
- *   connection and cluster, get a one-time token shown once, and the
- *   commands that install the agent chart with it (ui#93).
- * - A row opens the agent's details. Revoke (agent.revoke) asks for an
- *   optional reason, which goes to the audit log; heartbeats from a
- *   revoked agent are refused at once.
+ * - "Enroll an agent" (agent.mint) opens the onboarding drawer: pick a
+ *   connection and cluster, create a one-time token you can copy once,
+ *   run the enrollment command on your own machine (it creates the
+ *   private key there and stores the credential in your secret store),
+ *   then deploy the chart with `identity.existingSecret` (skills#116).
+ * - A row opens the agent's details: its id, health, and the fingerprint
+ *   and version of its registered X25519 wire key. Never a private key or
+ *   an agent secret: the console doesn't have them.
+ * - Rotate key (agent.mint, fresh second factor) creates a one-time
+ *   rotation token for `secrets-bridge-agent rotate-key`.
+ * - Revoke (agent.revoke) asks for an optional reason, which goes to the
+ *   audit log; heartbeats from a revoked agent are refused at once, and
+ *   open rotation tokens stop working.
  *
  * `?connection=<id>` filters the table to one connection; the provider
  * connections page links here with it.
@@ -36,6 +43,7 @@ import { PageHeader } from '../ui/PageHeader';
 import { useToast } from '../ui/toastContext';
 import { AgentStatusWord } from './agents/AgentStatusWord';
 import { EnrollAgentDrawer } from './agents/EnrollAgentDrawer';
+import { RotateKeyDrawer } from './agents/RotateKeyDrawer';
 
 export function Agents() {
   const { hasPermission } = useAuth();
@@ -98,6 +106,19 @@ export function Agents() {
       className: 'whitespace-nowrap',
     },
     { key: 'version', header: 'Version', render: (a) => (a.agent_version ? <span className="font-mono text-mono">{a.agent_version}</span> : <span className="text-muted">—</span>) },
+    {
+      key: 'key',
+      header: 'Wire key',
+      render: (a) =>
+        a.public_key_fingerprint ? (
+          <span className="font-mono text-mono-small" title={a.public_key_fingerprint}>
+            {shortFingerprint(a.public_key_fingerprint)}
+            <span className="block text-caption text-muted">version {a.public_key_version ?? 1}</span>
+          </span>
+        ) : (
+          <span className="text-muted">Not registered</span>
+        ),
+    },
   ];
 
   return (
@@ -194,7 +215,7 @@ export function Agents() {
             rows={rows}
             rowKey={(a) => a.id}
             onRowClick={(a) => setOpenId(a.id)}
-            minWidth={760}
+            minWidth={880}
             stacked={(a) => (
               <div className="flex flex-col gap-1">
                 <p className="flex items-center justify-between gap-3">
@@ -218,10 +239,18 @@ export function Agents() {
   );
 }
 
+/** `sha256:` and the first 16 hex digits, for the table; the drawer shows all of it. */
+function shortFingerprint(fp: string): string {
+  const hex = fp.startsWith('sha256:') ? fp.slice(7) : fp;
+  return `sha256:${hex.slice(0, 16)}…`;
+}
+
 function AgentDrawer({ agent: a, now, onClose }: { agent: AdminAgent; now: number; onClose: () => void }) {
   const { hasPermission } = useAuth();
   const [revoking, setRevoking] = useState(false);
+  const [rotating, setRotating] = useState(false);
   const canRevoke = hasPermission('agent.revoke') && a.status !== 'revoked';
+  const canRotate = hasPermission('agent.mint') && a.status !== 'revoked' && !!a.public_key_fingerprint;
   const rows: [string, ReactNode][] = [
     ['Status', <span key="s"><AgentStatusWord status={a.status} /><span className="mt-0.5 block text-caption text-muted">{MEANING[a.status]}</span></span>],
     ['Connection', a.provider_connection_name ? `${a.provider_connection_name} · ${providerLabel(a.provider_type)}` : 'Not bound'],
@@ -235,6 +264,20 @@ function AgentDrawer({ agent: a, now, onClose }: { agent: AdminAgent; now: numbe
   if (a.revoked_at) rows.push(['Revoked', formatExact(a.revoked_at, true)]);
   if (a.last_status && a.last_status !== a.status) rows.push(['Last report', a.last_status]);
   rows.push(['Agent id', <span key="id" className="break-all font-mono text-mono">{a.id}</span>]);
+  rows.push([
+    'Wire key',
+    a.public_key_fingerprint ? (
+      <span key="fp">
+        <span className="break-all font-mono text-mono-small">{a.public_key_fingerprint}</span>
+        <span className="mt-0.5 block text-caption text-muted">
+          {(a.public_key_algorithm || 'x25519').toUpperCase()} public key, version {a.public_key_version ?? 1}. Its private key stays with the
+          agent; this console never has it.
+        </span>
+      </span>
+    ) : (
+      'Not registered'
+    ),
+  ]);
 
   return (
     <Drawer
@@ -242,20 +285,21 @@ function AgentDrawer({ agent: a, now, onClose }: { agent: AdminAgent; now: numbe
       subtitle="Agent details. Nothing here is a credential."
       onClose={onClose}
       footer={
-        canRevoke ? (
-          <>
-            <Button variant="secondary" onClick={onClose}>
-              Close
-            </Button>
-            <Button variant="danger" onClick={() => setRevoking(true)}>
-              Revoke…
-            </Button>
-          </>
-        ) : (
+        <>
           <Button variant="secondary" onClick={onClose}>
             Close
           </Button>
-        )
+          {canRotate && (
+            <Button variant="secondary" onClick={() => setRotating(true)}>
+              Rotate key…
+            </Button>
+          )}
+          {canRevoke && (
+            <Button variant="danger" onClick={() => setRevoking(true)}>
+              Revoke…
+            </Button>
+          )}
+        </>
       }
     >
       <dl className="m-0">
@@ -267,6 +311,7 @@ function AgentDrawer({ agent: a, now, onClose }: { agent: AdminAgent; now: numbe
         ))}
       </dl>
       {revoking && <RevokeDialog agent={a} onClose={() => setRevoking(false)} />}
+      {rotating && <RotateKeyDrawer agent={a} onClose={() => setRotating(false)} />}
     </Drawer>
   );
 }
@@ -306,8 +351,9 @@ function RevokeDialog({ agent, onClose }: { agent: AdminAgent; onClose: () => vo
       }
     >
       <p className="text-muted">
-        The control plane refuses this agent's heartbeats and job claims from now on. A job it is running fails when it
-        reports back. This can't be undone; enroll a new agent to replace it.
+        The control plane refuses this agent's heartbeats and job claims from now on, and any open key rotation token stops
+        working. A job it is running fails when it reports back. This can't be undone; enroll a new agent to replace it, and
+        delete the old credential from your secret store.
       </p>
       <Field id="revoke-reason" label="Reason (optional)" hint="Recorded in the audit log.">
         {(p) => <Textarea {...p} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} data-autofocus />}
