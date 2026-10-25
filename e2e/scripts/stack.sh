@@ -4,7 +4,8 @@
 #   stack.sh up     start a dev Vault and the published api against an
 #                   empty Postgres + Redis
 #   stack.sh seed   users, roles, projects, environments, a Vault secret,
-#                   an enrolled agent, discovery, a binding, a reveal policy
+#                   an agent enrolled with the v2 challenge flow
+#                   (enroll-agent.mjs), discovery, a binding, a reveal policy
 #   stack.sh scan   fail if any generated secret or canary is in test output
 #   stack.sh down   stop the containers and remove the state dir
 #
@@ -179,19 +180,32 @@ seed() {
   local c; c=$(jq -r .id "$E2E_STATE/last.json")
   need "$(api POST "/api/v1/provider-connections/$c/bindings" "{\"project_id\":\"$p\",\"purpose\":\"destination\"}")" 201 connection-binding
   need "$(api POST "/api/v1/provider-connections/$c/agent-enrollment-token" '{"name":"e2e-agent","expected_cluster_name":"e2e-cluster","expected_provider_type":"vault"}')" 201 enrollment-token
-  SB_ENROLLMENT_TOKEN=$(jq -j .enrollment_token "$E2E_STATE/last.json")
-  mask "$SB_ENROLLMENT_TOKEN"
+  # Enrollment v2 (skills#116): the operator side creates the X25519 key,
+  # answers the sealed challenge and writes agent_id, agent_secret and
+  # private_key (0400, in a 0700 dir) to the state dir. The token goes on
+  # stdin; jq -j writes it straight into the pipe, never to a variable on
+  # a command line. The agent then only reads that dir, read-only, the
+  # way the chart mounts identity.existingSecret.
+  local creds=$E2E_STATE/agent-creds
+  rm -rf "$creds"
+  mask "$(jq -j .enrollment_token "$E2E_STATE/last.json")"
+  jq -j .enrollment_token "$E2E_STATE/last.json" |
+    node "$(dirname "$0")/enroll-agent.mjs" --cp "$API" --name e2e-agent --cluster-name e2e-cluster --provider-type vault --out-dir "$creds"
   : > "$E2E_STATE/last.json"
-  export SB_ENROLLMENT_TOKEN SB_VAULT_TOKEN=$E2E_VAULT_TOKEN
+  mask "$(cat "$creds/agent_secret")"
+  mask "$(cat "$creds/private_key")"
+  export SB_VAULT_TOKEN=$E2E_VAULT_TOKEN
   docker rm -f "$AGENT" >/dev/null 2>&1 || true
-  docker run -d --name "$AGENT" --network host --tmpfs /var/lib/sb-agent:rw,uid=65532,gid=65532,mode=0700 \
+  # Same uid as the files' owner, so the 0400 files are readable and the
+  # agent's own mode check (nothing for group or others) passes.
+  docker run -d --name "$AGENT" --network host --user "$(id -u):$(id -g)" \
+    -v "$creds:/etc/secrets-bridge/agent:ro" \
     -e SB_CP_ENDPOINT="$API" -e SB_INSECURE_TRANSPORT=true \
-    -e SB_ENROLLMENT_ENABLED=true -e SB_ENROLLMENT_TOKEN -e SB_IDENTITY_FILE=/var/lib/sb-agent/identity.json \
-    -e SB_AGENT_NAME=e2e-agent -e SB_PROVIDER_TYPE=vault -e SB_CLUSTER_NAME=e2e-cluster \
+    -e SB_PROVIDER_TYPE=vault -e SB_CLUSTER_NAME=e2e-cluster \
     -e SB_VAULT_ADDR="$VAULT" -e SB_VAULT_TOKEN -e SB_VAULT_KV_MOUNT=sbkv \
     -e SB_CLAIM_INTERVAL=2s -e SB_HEARTBEAT_INTERVAL=15s \
     "$E2E_AGENT_IMAGE" >/dev/null
-  unset SB_ENROLLMENT_TOKEN SB_VAULT_TOKEN
+  unset SB_VAULT_TOKEN
   local ok=""
   for _ in $(seq 60); do
     api GET "/api/v1/provider-connections/$c/agents" >/dev/null
@@ -235,12 +249,12 @@ seed() {
         --arg eqdev "$eqdev" --arg tb "$tb" --arg c "$c" \
         --arg admin "$E2E_ADMIN_EMAIL" --arg requester e2e-requester@example.com \
         --arg approver e2e-approver@example.com --arg outsider e2e-outsider@example.com --arg filler e2e-filler@example.com --arg lead e2e-lead@example.com \
-        --arg newcomer e2e-newcomer@example.com \
+        --arg newcomer e2e-newcomer@example.com --arg agent "$(cat "$creds/agent_id")" \
     '{project:$p, otherProject:$q, envDev:$edev, envProd:$eprod, secretId:$sid, secretRef:"team-alpha/e2e/db",
-      otherEnv:$eqdev, otherTeam:$tb, connection:$c, destinationRef:"team-beta/e2e/app",
+      otherEnv:$eqdev, otherTeam:$tb, connection:$c, destinationRef:"team-beta/e2e/app", agent:$agent,
       users:{admin:$admin, requester:$requester, approver:$approver, outsider:$outsider, filler:$filler, lead:$lead, newcomer:$newcomer}}' > "$E2E_STATE/fixtures.json"
   rm -f "$E2E_STATE/admin.jar" "$E2E_STATE/last.json"
-  echo "seeded: 6 users, 2 teams, 2 projects, 3 environments, an enrolled agent, 2 discovered and bound secrets, 1 reveal policy"
+  echo "seeded: 6 users, 2 teams, 2 projects, 3 environments, an agent enrolled with v2, 2 discovered and bound secrets, 1 reveal policy"
 }
 
 scan() {
@@ -255,6 +269,12 @@ scan() {
   # recorded (TOTP setup keys, via keepOutOfArtifacts).
   local values=("$SB_WRAP_MASTER_KEY" "$E2E_ADMIN_PASSWORD" "$E2E_USER_PASSWORD" "$E2E_CANARY"
     "$E2E_VAULT_TOKEN" "$E2E_VALUE_USER" "$E2E_VALUE_PASS" "$E2E_KEEP" "$E2E_FILL_1" "$E2E_FILL_2")
+  # The seeded agent's secret and private key: neither may show up in any
+  # page, response the tests saved, or log.
+  local f
+  for f in agent_secret private_key; do
+    [[ -f $E2E_STATE/agent-creds/$f ]] && values+=("$(cat "$E2E_STATE/agent-creds/$f")")
+  done
   if [[ -f $E2E_STATE/test-secrets ]]; then
     while IFS= read -r line; do [[ -n $line ]] && values+=("$line"); done < "$E2E_STATE/test-secrets"
   fi

@@ -1,17 +1,21 @@
 /**
- * Agent administration (Agent Onboarding MVP, api#177).
+ * Agent administration (enrollment v2, skills#116).
  *
  *   GET  /api/v1/admin/agents                                    agent.list
  *   POST /api/v1/admin/agents/:id/revoke  {reason?}              agent.revoke
+ *   POST /api/v1/admin/agents/:id/key-rotation                   agent.mint + fresh second factor
  *   POST /api/v1/provider-connections/:id/agent-enrollment-token agent.mint
  *
- * The list is the value-free admin projection: no secret hash, public
- * key or credential. The enrollment token comes back exactly once, in
- * the response to the POST; the api keeps only its hash. The SPA holds
- * it in component state while the enrollment drawer is open and drops
- * it on close. Direct mint (POST /agents) is a break-glass switch that
- * is off by default (api#183), so the console onboards only through
- * enrollment.
+ * The list is the value-free admin projection: the agent's identity, its
+ * health and the fingerprint and version of its registered X25519 wire
+ * key. It never carries the agent secret, its hash or a private key: the
+ * operator's machine creates those (`secrets-bridge-agent enroll`), and
+ * they never reach the browser or the control plane.
+ *
+ * The enrollment token and the rotation token come back exactly once, in
+ * the response to their POST; the api keeps only a hash. The SPA holds
+ * either in component state until it is copied, and drops it on copy,
+ * close and unmount.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -36,6 +40,12 @@ export interface AdminAgent {
   last_status?: string;
   revoked_at?: string;
   created_at: string;
+  /** `sha256:` + hex SHA-256 of the 32 raw public key bytes. Not a secret. */
+  public_key_fingerprint?: string;
+  /** Starts at 1 on enrollment, +1 on each key rotation. */
+  public_key_version?: number;
+  /** Always `x25519` today. A wire-encryption key, not a TLS certificate. */
+  public_key_algorithm?: string;
 }
 
 export const agentsKey = {
@@ -87,5 +97,26 @@ export function useCreateEnrollmentToken() {
         `/api/v1/provider-connections/${encodeURIComponent(connectionId)}/agent-enrollment-token`,
         body,
       ),
+  });
+}
+
+export interface KeyRotationToken {
+  rotation_token: string;
+  expires_at: string;
+}
+
+/**
+ * Creates a one-time rotation token for an agent's wire key (TTL 15
+ * minutes, hashed on the api). The api asks for a fresh second factor;
+ * `client.ts` opens the step-up modal and retries. The response carries
+ * the token, so this is a sensitive mutation: call `reset()` once the
+ * result is in component state.
+ */
+export function useCreateKeyRotation() {
+  const qc = useQueryClient();
+  return useSensitiveMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      api.post<KeyRotationToken>(`/api/v1/admin/agents/${encodeURIComponent(id)}/key-rotation`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: agentsKey.all }),
   });
 }
