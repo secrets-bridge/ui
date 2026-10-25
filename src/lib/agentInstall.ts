@@ -27,6 +27,14 @@ export const AGENT_NAMESPACE = 'secrets-bridge';
 export const AGENT_IDENTITY_SECRET = 'secrets-bridge-agent-identity';
 export const AGENT_CLI = 'secrets-bridge-agent';
 
+/**
+ * Every kubectl apply of the agent Secret is server-side. Client-side apply
+ * copies the whole object, plaintext agent_secret and private_key included,
+ * into the kubectl.kubernetes.io/last-applied-configuration annotation,
+ * outside .data. Server-side apply keeps no such copy.
+ */
+export const SERVER_SIDE_APPLY = 'apply --server-side --field-manager=secrets-bridge-agent';
+
 /** Where the operator keeps the agent's credential and private key. */
 export type CredentialStore = 'aws-sm' | 'vault' | 'kubectl' | 'manifest';
 
@@ -89,7 +97,7 @@ function sink(store: CredentialStore, path: string, connection?: ProviderConnect
         into: [`  | kubectl -n ${AGENT_NAMESPACE} create secret generic ${AGENT_IDENTITY_SECRET} \\`, '      --from-env-file=/dev/stdin'],
       };
     case 'manifest':
-      return { format: 'k8s-secret', into: [`  | kubectl -n ${AGENT_NAMESPACE} apply -f -`] };
+      return { format: 'k8s-secret', into: [`  | kubectl -n ${AGENT_NAMESPACE} ${SERVER_SIDE_APPLY} -f -`] };
   }
 }
 
@@ -135,15 +143,20 @@ export interface RotateCommandInput {
 /** `secrets-bridge-agent rotate-key`, rotation token on stdin, the new bundle piped into the store. */
 export function rotateCommand({ endpoint, store, path, connection }: RotateCommandInput): string {
   const out = sink(store, path, connection);
-  // kubectl create refuses an existing Secret; replace it in place.
+  // kubectl create refuses an existing Secret; replace it in place with a
+  // server-side apply. --force-conflicts takes over the data fields that
+  // `kubectl create` (or another field manager) set at enrollment.
+  const ssa = `  | kubectl -n ${AGENT_NAMESPACE} ${SERVER_SIDE_APPLY} --force-conflicts -f -`;
   const into =
     store === 'kubectl'
       ? [
           `  | kubectl -n ${AGENT_NAMESPACE} create secret generic ${AGENT_IDENTITY_SECRET} \\`,
           '      --from-env-file=/dev/stdin --dry-run=client -o yaml \\',
-          `  | kubectl -n ${AGENT_NAMESPACE} apply -f -`,
+          ssa,
         ]
-      : out.into;
+      : store === 'manifest'
+        ? [ssa]
+        : out.into;
   const flags = [
     `--cp-endpoint ${installValue(endpoint, '<control-plane-url>')}`,
     '--credentials-dir <credentials-dir>',

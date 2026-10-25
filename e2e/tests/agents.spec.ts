@@ -49,6 +49,18 @@ async function traces(page: Page, value: string) {
 }
 const NONE = { dom: false, local: false, session: false, cookie: false, indexedDB: false };
 
+/**
+ * The kubectl apply steps of a command that are not server-side. Client-side
+ * apply copies a Secret, plaintext agent_secret and private_key included,
+ * into the kubectl.kubernetes.io/last-applied-configuration annotation.
+ */
+function clientSideApplies(command: string): string[] {
+  return command
+    .replace(/\\\n/g, ' ')
+    .split(/[|\n]/)
+    .filter((step) => /\bkubectl\b.*\bapply\b/.test(step) && !/\s--server-side\b/.test(step));
+}
+
 /** `sha256:<hex>` of the X25519 public key that belongs to a base64 private key (WebCrypto). */
 async function fingerprintOf(privB64: string): Promise<string> {
   const raw = Uint8Array.from(atob(privB64), (c) => c.charCodeAt(0));
@@ -104,6 +116,10 @@ test('an admin onboards an agent: the token is copied once and never stored, and
     const text = (await command.textContent()) ?? '';
     expect(text.includes('--token-file -'), `${store}: token on stdin`).toBe(true);
     expect(text.includes(token), `${store}: the command holds the token`).toBe(false);
+    expect(clientSideApplies(text), `${store}: a client-side kubectl apply`).toEqual([]);
+    if (store === 'Secret manifest') {
+      expect(text.includes('kubectl -n secrets-bridge apply --server-side --field-manager=secrets-bridge-agent -f -'), 'manifest: server-side apply').toBe(true);
+    }
   }
   await expect(steps.getByText('Never commit this manifest.')).toBeVisible();
   const helm = (await steps.getByLabel('Helm command', { exact: true }).textContent()) ?? '';
@@ -176,9 +192,17 @@ test('creating a rotation token asks for a fresh second factor, and the token is
   await expect.poll(() => tokens.length, { message: 'one rotation token' }).toBe(1);
   const token = tokens[0];
   expect(await traces(page, token), 'the rotation token before copy').toEqual(NONE);
-  const command = (await steps.getByLabel('Rotation command', { exact: true }).textContent()) ?? '';
-  expect(command.includes('rotate-key') && command.includes('--rotation-token-file -'), 'rotate-key reads the token from stdin').toBe(true);
-  expect(command.includes(token), 'the command holds the token').toBe(false);
+  const rotation = steps.getByLabel('Rotation command', { exact: true });
+  for (const store of ['AWS Secrets Manager', 'Vault', 'Kubernetes Secret', 'Secret manifest']) {
+    await steps.getByRole('tab', { name: store }).click();
+    const command = (await rotation.textContent()) ?? '';
+    expect(command.includes('rotate-key') && command.includes('--rotation-token-file -'), `${store}: rotate-key reads the token from stdin`).toBe(true);
+    expect(command.includes(token), `${store}: the command holds the token`).toBe(false);
+    expect(clientSideApplies(command), `${store}: a client-side kubectl apply`).toEqual([]);
+    if (store === 'Kubernetes Secret' || store === 'Secret manifest') {
+      expect(command.includes('apply --server-side --field-manager=secrets-bridge-agent --force-conflicts -f -'), `${store}: server-side apply`).toBe(true);
+    }
+  }
 
   await steps.getByRole('button', { name: 'Copy token' }).click();
   await expect(steps.getByRole('button', { name: 'Copied', exact: true })).toBeDisabled();

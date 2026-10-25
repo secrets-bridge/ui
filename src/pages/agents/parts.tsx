@@ -157,8 +157,9 @@ export function StorePicker({
           </p>
         ) : (
           <Banner title="Never commit this manifest.">
-            It holds the private key and the agent secret in plain base64. Pipe it into kubectl apply as shown and don't redirect
-            it to a file, a Git repository or a CI log.
+            It holds the private key and the agent secret in plain text. Pipe it into kubectl apply --server-side as shown and don't
+            redirect it to a file, a Git repository or a CI log. Client-side kubectl apply would copy both into the
+            last-applied-configuration annotation.
           </Banner>
         )}
       </TabPanel>
