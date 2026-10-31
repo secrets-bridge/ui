@@ -1,7 +1,10 @@
 /**
- * Bind an advertised Argo CD target to a secret scope in a project
- * environment (POST /admin/gateway-bindings, gateway.bind, fresh second
- * factor). Release 1 binds Argo CD targets only.
+ * Bind an Argo CD target to a secret scope in a project environment
+ * (POST /admin/gateway-bindings, gateway.bind, fresh second factor).
+ * Release 1 binds Argo CD targets only. It opens two ways: from a
+ * connector in the Gateway drawer, choosing one of its advertised static
+ * targets, or from the target catalog, with the target and project
+ * already chosen.
  *
  * The secret scope is one of:
  *   - a catalog secret bound to the project (secret_id), or
@@ -9,21 +12,29 @@
  *     secret_ref).
  * A change executed in that scope and environment starts an observation
  * task for this Gateway. The api checks every reference again.
+ *
+ * Without a global gateway.bind, production and other environments
+ * aren't offered, because the api refuses them for a team-scoped caller
+ * (production_binding_platform_only). A team-scoped caller binds a
+ * catalog secret only: listing provider connections is global.
  */
 
 import { useState } from 'react';
 
 import { ApiError } from '../../../api/client';
 import { missingFactorText } from '../../../api/mfaErrors';
-import { type CreateBindingInput, type Gateway, type GatewayConnector, useCreateBinding } from '../../../api/gateways';
+import { type CatalogItem, type CreateBindingInput, type Gateway, type GatewayConnector, useCreateBinding } from '../../../api/gateways';
 import { useProviderConnectionsAdmin } from '../../../api/providerConnections';
 import { useEnvironments, useEnvironmentsForProject, useProjects, useProjectSecrets } from '../../../api/tenancy';
+import type { Environment } from '../../../api/types';
+import { useAuth } from '../../../auth/AuthContext';
 import { providerLabel } from '../../../lib/providers';
 import { Banner } from '../../../ui/Banner';
 import { Button } from '../../../ui/Button';
 import { Drawer } from '../../../ui/Drawer';
 import { Field, Input, Select } from '../../../ui/Field';
 import { useToast } from '../../../ui/toastContext';
+import { TargetIdentity } from '../../gateways/TargetIdentity';
 
 const DEADLINES = [
   { seconds: 900, label: '15 minutes' },
@@ -48,25 +59,48 @@ const BIND_ERRORS: Record<string, string> = {
   observation_timeout_out_of_range: 'The deadline must be between 1 minute and 24 hours.',
   provider_connection_not_found: 'That provider connection no longer exists.',
   environment_not_found: 'That environment no longer exists.',
+  target_not_found: 'That target is no longer available to your team.',
+  target_missing: 'The Application is gone from Argo CD.',
+  target_identity_changed: 'The Application was recreated. A platform admin has to re-confirm it first.',
+  target_team_mismatch: "That target's AppProject doesn't map to this project's team.",
+  production_binding_platform_only: 'Only a platform admin can bind into a production environment.',
+  gateway_bound_target_limit: 'This Gateway has reached its limit of bound targets.',
 };
 
-export function BindingDrawer({ gateway, connector, onClose }: { gateway: Gateway; connector: GatewayConnector; onClose: () => void }) {
+/** The environments a caller without a global gateway.bind can bind into. */
+const teamBindable = (e: Environment) => ['dev', 'staging', 'uat'].includes(e.type) && e.kind === 'non_prod';
+
+export type BindingSource =
+  | { kind: 'connector'; gateway: Gateway; connector: GatewayConnector }
+  | { kind: 'catalog'; item: CatalogItem; projectId: string };
+
+export function BindingDrawer({ source, onClose }: { source: BindingSource; onClose: () => void }) {
+  const { hasGlobalPermission } = useAuth();
+  const globalBind = hasGlobalPermission('gateway.bind');
+  const canUseConnections = hasGlobalPermission('integration.edit');
   const create = useCreateBinding();
   const toast = useToast();
   const projects = useProjects();
   const allEnvs = useEnvironments();
-  const pinned = gateway.environment_id ? (allEnvs.data ?? []).find((e) => e.id === gateway.environment_id) : undefined;
+  const gateway = source.kind === 'connector' ? source.gateway : undefined;
+  const connector = source.kind === 'connector' ? source.connector : undefined;
+  const item = source.kind === 'catalog' ? source.item : undefined;
+  const pinnedId = gateway?.environment_id;
+  const pinned = pinnedId ? (allEnvs.data ?? []).find((e) => e.id === pinnedId) : undefined;
 
   const [projectTyped, setProjectId] = useState('');
-  const projectId = pinned?.project_id ?? projectTyped;
+  const projectId = item ? (source as { projectId: string }).projectId : (pinned?.project_id ?? projectTyped);
   const envs = useEnvironmentsForProject(projectId || undefined);
+  const envOptions = (envs.data ?? []).filter((e) => globalBind || teamBindable(e));
+  const hiddenEnvs = (envs.data ?? []).length - envOptions.length;
   const [envTyped, setEnvId] = useState('');
-  const envId = gateway.environment_id ?? envTyped;
-  const targets = (connector.targets ?? []).filter((t) => !t.stale);
-  const [targetId, setTargetId] = useState(targets.length === 1 ? targets[0].target_id : '');
+  const envId = pinnedId ?? envTyped;
+  const targets = (connector?.targets ?? []).filter((t) => !t.stale);
+  const [targetTyped, setTargetId] = useState(targets.length === 1 ? targets[0].target_id : '');
+  const targetId = item?.target_id ?? targetTyped;
   const [scope, setScope] = useState<'secret' | 'connection'>('secret');
   const secrets = useProjectSecrets(scope === 'secret' && projectId ? projectId : undefined);
-  const connections = useProviderConnectionsAdmin();
+  const connections = useProviderConnectionsAdmin(canUseConnections);
   const [secretId, setSecretId] = useState('');
   const [connectionId, setConnectionId] = useState('');
   const [secretRef, setSecretRef] = useState('');
@@ -95,17 +129,17 @@ export function BindingDrawer({ gateway, connector, onClose }: { gateway: Gatewa
       return;
     }
     const body: CreateBindingInput = {
-      gateway_id: gateway.id,
+      gateway_id: item?.gateway_id ?? gateway!.id,
       project_id: projectId,
       environment_id: envId,
-      argocd_connector_id: connector.id,
+      argocd_connector_id: item?.connector_uuid ?? connector!.id,
       argocd_target_id: targetId,
       observation_timeout_seconds: deadline,
       ...(scope === 'secret' ? { secret_id: secretId } : { provider_connection_id: connectionId, secret_ref: secretRef }),
     };
     try {
       await create.mutateAsync(body);
-      toast(`Bound ${targetId} to the environment.`);
+      toast(`Bound ${item?.name ?? targetId} to the environment.`);
       onClose();
     } catch {
       // Shown in the banner below.
@@ -115,7 +149,7 @@ export function BindingDrawer({ gateway, connector, onClose }: { gateway: Gatewa
   return (
     <Drawer
       title="Bind a target"
-      subtitle={`Gateway ${gateway.name} · Argo CD connector ${connector.connector_id}`}
+      subtitle={gateway ? `Gateway ${gateway.name} · Argo CD connector ${connector!.connector_id}` : `Argo CD connector ${item!.connector_id}`}
       onClose={onClose}
       footer={
         <>
@@ -137,21 +171,33 @@ export function BindingDrawer({ gateway, connector, onClose }: { gateway: Gatewa
         }}
         className="flex flex-col gap-[18px]"
       >
-        <Field id="gb-target" label="Argo CD target" hint="An application the Gateway advertises." error={show('target')}>
-          {(p) => (
-            <Select {...p} value={targetId} onChange={(e) => setTargetId(e.target.value)} data-autofocus>
-              <option value="">Choose a target</option>
-              {targets.map((t) => (
-                <option key={t.target_id} value={t.target_id}>
-                  {t.target_id}
-                  {t.name ? ` (${t.namespace ? `${t.namespace}/` : ''}${t.name})` : ''}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
+        {item ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-label font-medium text-ink">Argo CD target</p>
+            <TargetIdentity targetId={item.target_id} name={item.name} appProject={item.app_project} namespace={item.namespace} isStatic={item.source === 'static'} />
+            {item.look_alike && (
+              <Banner tone="note" title="Another target has this name.">
+                It's in a different AppProject or namespace. Check that this is the one you mean.
+              </Banner>
+            )}
+          </div>
+        ) : (
+          <Field id="gb-target" label="Argo CD target" hint="An application the Gateway advertises." error={show('target')}>
+            {(p) => (
+              <Select {...p} value={targetTyped} onChange={(e) => setTargetId(e.target.value)} data-autofocus>
+                <option value="">Choose a target</option>
+                {targets.map((t) => (
+                  <option key={t.target_id} value={t.target_id}>
+                    {t.target_id}
+                    {t.name ? ` (${t.namespace ? `${t.namespace}/` : ''}${t.name})` : ''}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        )}
 
-        {gateway.environment_id ? (
+        {pinnedId ? (
           <p className="text-ui font-normal text-muted">
             This Gateway is pinned to{' '}
             <span className="text-ink">
@@ -161,33 +207,44 @@ export function BindingDrawer({ gateway, connector, onClose }: { gateway: Gatewa
           </p>
         ) : (
           <>
-            <Field id="gb-project" label="Project" error={show('project')}>
+            {item ? (
+              <p className="text-ui font-normal text-muted">
+                Project <span className="text-ink">{(projects.data ?? []).find((p) => p.id === projectId)?.name ?? 'chosen on the page'}</span>
+              </p>
+            ) : (
+              <Field id="gb-project" label="Project" error={show('project')}>
+                {(p) => (
+                  <Select
+                    {...p}
+                    value={projectTyped}
+                    onChange={(e) => {
+                      setProjectId(e.target.value);
+                      setEnvId('');
+                      setSecretId('');
+                    }}
+                  >
+                    <option value="">{projects.isLoading ? 'Loading projects…' : 'Choose a project'}</option>
+                    {[...(projects.data ?? [])]
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((pr) => (
+                        <option key={pr.id} value={pr.id}>
+                          {pr.name}
+                        </option>
+                      ))}
+                  </Select>
+                )}
+              </Field>
+            )}
+            <Field
+              id="gb-env"
+              label="Environment"
+              hint={hiddenEnvs > 0 ? 'Production and other environments need a platform admin.' : undefined}
+              error={show('env')}
+            >
               {(p) => (
-                <Select
-                  {...p}
-                  value={projectTyped}
-                  onChange={(e) => {
-                    setProjectId(e.target.value);
-                    setEnvId('');
-                    setSecretId('');
-                  }}
-                >
-                  <option value="">{projects.isLoading ? 'Loading projects…' : 'Choose a project'}</option>
-                  {[...(projects.data ?? [])]
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((pr) => (
-                      <option key={pr.id} value={pr.id}>
-                        {pr.name}
-                      </option>
-                    ))}
-                </Select>
-              )}
-            </Field>
-            <Field id="gb-env" label="Environment" error={show('env')}>
-              {(p) => (
-                <Select {...p} value={envTyped} onChange={(e) => setEnvId(e.target.value)} disabled={!projectId}>
+                <Select {...p} value={envTyped} onChange={(e) => setEnvId(e.target.value)} disabled={!projectId} data-autofocus={item ? true : undefined}>
                   <option value="">{projectId ? 'Choose an environment' : 'Choose a project first'}</option>
-                  {(envs.data ?? []).map((e) => (
+                  {envOptions.map((e) => (
                     <option key={e.id} value={e.id}>
                       {e.name}
                     </option>
@@ -198,17 +255,19 @@ export function BindingDrawer({ gateway, connector, onClose }: { gateway: Gatewa
           </>
         )}
 
-        <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-          <legend className="mb-1 text-label font-medium text-ink">Secret scope</legend>
-          <label className="flex items-center gap-2 text-ui font-normal">
-            <input type="radio" name="gb-scope" checked={scope === 'secret'} onChange={() => setScope('secret')} />
-            A catalog secret bound to the project
-          </label>
-          <label className="flex items-center gap-2 text-ui font-normal">
-            <input type="radio" name="gb-scope" checked={scope === 'connection'} onChange={() => setScope('connection')} />
-            A provider connection and a secret path
-          </label>
-        </fieldset>
+        {canUseConnections && (
+          <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+            <legend className="mb-1 text-label font-medium text-ink">Secret scope</legend>
+            <label className="flex items-center gap-2 text-ui font-normal">
+              <input type="radio" name="gb-scope" checked={scope === 'secret'} onChange={() => setScope('secret')} />
+              A catalog secret bound to the project
+            </label>
+            <label className="flex items-center gap-2 text-ui font-normal">
+              <input type="radio" name="gb-scope" checked={scope === 'connection'} onChange={() => setScope('connection')} />
+              A provider connection and a secret path
+            </label>
+          </fieldset>
+        )}
 
         {scope === 'secret' ? (
           <Field id="gb-secret" label="Secret" hint="Only secrets bound to the project for this environment are listed." error={show('secret')}>

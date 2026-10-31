@@ -11,12 +11,13 @@ export type Fixtures = {
   secretId: string;
   secretRef: string;
   otherEnv: string;
+  team: string;
   otherTeam: string;
   connection: string;
   destinationRef: string;
   /** The seeded agent's id. Its secret and private key stay in $E2E_STATE/agent-creds. */
   agent: string;
-  users: { admin: string; requester: string; approver: string; outsider: string; filler: string; lead: string; newcomer: string };
+  users: { admin: string; requester: string; approver: string; outsider: string; filler: string; lead: string; newcomer: string; alphaAdmin: string; betaAdmin: string };
 };
 
 function need(name: string): string {
@@ -84,8 +85,8 @@ export async function as(browser: Browser, email: string, password = userPasswor
 }
 
 /** The api's answer, as JSON, to a call made with the page's own session cookie. */
-export async function call(page: Page, method: 'GET' | 'POST' | 'DELETE', path: string, data?: unknown) {
-  const res = await page.request.fetch(path, { method, data });
+export async function call(page: Page, method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: string, data?: unknown, headers?: Record<string, string>) {
+  const res = await page.request.fetch(path, { method, data, headers });
   let body: Record<string, unknown> = {};
   try {
     body = await res.json();

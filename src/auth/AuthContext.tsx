@@ -23,6 +23,9 @@
  * Hard rules retained from earlier slices:
  * - Permission gating is FAIL-CLOSED: until /users/me resolves,
  *   `hasPermission(...)` is `false` for every key.
+ * - `hasPermission` is true for a grant at any scope. Where the api asks
+ *   for a global grant (`auth.Require`), gate on `hasGlobalPermission`,
+ *   or a team-scoped holder is offered something that answers 403.
  * - Identity carries no token field — there is nothing to leak.
  */
 
@@ -42,6 +45,9 @@ export interface Identity {
   // Until /users/me resolves this stays empty; every nav gate +
   // gated button stays hidden (fail-closed).
   permissions: string[];
+  // The subset held through an unscoped grant. Empty until /users/me
+  // resolves, and on an api older than global_permissions.
+  global_permissions: string[];
   // True when the user has at least one MFA factor enrolled (api
   // Slice H5 + api#67). UI uses this to nudge users toward /me/mfa
   // and to surface the "Add factor" badge in the sidebar. Until
@@ -62,6 +68,7 @@ interface AuthState {
   // `error` = non-401 fetch failure (UI surfaces a retry banner).
   meStatus: 'idle' | 'loading' | 'ready' | 'error';
   hasPermission: (perm: string) => boolean;
+  hasGlobalPermission: (perm: string) => boolean;
   // After a successful login (local or OIDC), call this to force
   // the auth context to refetch /users/me. The cookie was set
   // server-side; the SPA simply needs to re-read identity.
@@ -96,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: meQuery.data.email,
         display_name: meQuery.data.display_name || meQuery.data.email,
         permissions: meQuery.data.permissions,
+        global_permissions: meQuery.data.global_permissions ?? [],
         mfa_enrolled: meQuery.data.mfa_enrolled,
         pending_approval: meQuery.data.pending_approval === true,
       }
@@ -152,16 +160,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [identity],
   );
 
+  const hasGlobalPermission = useCallback(
+    (perm: string) => {
+      if (!identity) return false;
+      return identity.global_permissions.includes(perm);
+    },
+    [identity],
+  );
+
   const value = useMemo<AuthState>(
     () => ({
       identity,
       me: sessionGone ? null : (meQuery.data ?? null),
       meStatus,
       hasPermission,
+      hasGlobalPermission,
       refresh,
       logout,
     }),
-    [identity, meQuery.data, sessionGone, meStatus, hasPermission, refresh, logout],
+    [identity, meQuery.data, sessionGone, meStatus, hasPermission, hasGlobalPermission, refresh, logout],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

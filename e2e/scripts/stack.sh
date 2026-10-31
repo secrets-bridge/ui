@@ -122,6 +122,11 @@ seed() {
   # An approver who starts with no second factor and adds one from the
   # Approve dialog (enroll.spec.ts).
   newcomer=$(mkuser e2e-newcomer@example.com Newcomer)
+  # Team admins for gateway-discovery.spec.ts: gateway.bind scoped to one
+  # team, with secret.list so the console can list that team's projects.
+  local alphaadmin betaadmin
+  alphaadmin=$(mkuser e2e-alpha-admin@example.com 'Alpha admin')
+  betaadmin=$(mkuser e2e-beta-admin@example.com 'Beta admin')
 
   need "$(api POST /api/v1/teams '{"name":"e2e-alpha","description":"requesting team"}')" 201 team-alpha
   local ta; ta=$(jq -r .id "$E2E_STATE/last.json")
@@ -154,6 +159,10 @@ seed() {
   need "$(api POST /api/v1/user-roles "{\"user_id\":\"$outsider\",\"role_id\":\"$rdev\",\"scope\":{\"project_id\":\"$q\"}}")" 201 grant-outsider
   need "$(api POST /api/v1/user-roles "{\"user_id\":\"$approver\",\"role_id\":\"$rappr\",\"scope\":{}}")" 201 grant-approver
   need "$(api POST /api/v1/user-roles "{\"user_id\":\"$newcomer\",\"role_id\":\"$rappr\",\"scope\":{}}")" 201 grant-newcomer
+  local rteam
+  rteam=$(psqlq "INSERT INTO roles (name, permissions, is_system) VALUES ('e2e-target-admin', '[\"gateway.bind\",\"secret.list\"]'::jsonb, false) RETURNING id")
+  need "$(api POST /api/v1/user-roles "{\"user_id\":\"$alphaadmin\",\"role_id\":\"$rteam\",\"scope\":{\"team_id\":\"$ta\"}}")" 201 grant-alpha-admin
+  need "$(api POST /api/v1/user-roles "{\"user_id\":\"$betaadmin\",\"role_id\":\"$rteam\",\"scope\":{\"team_id\":\"$tb\"}}")" 201 grant-beta-admin
   # The lead and the value provider can both approve, so the only thing
   # that stops them verifying a cross-team request is separation of duties.
   # value_provider is global because fill and refuse refuse a team-scoped
@@ -246,15 +255,16 @@ seed() {
   need "$(api POST /api/v1/policies "{\"name\":\"e2e-direct-reveal\",\"selector\":{\"project_id\":\"$p\",\"environment_kind\":\"non_prod\",\"operation\":\"reveal\"},\"workflow_id\":\"$wf\",\"priority\":100,\"enabled\":true,\"direct_reveal_allowed\":true,\"requires_mfa\":true,\"reveal_ttl_seconds\":10}")" 201 reveal-policy
 
   jq -n --arg p "$p" --arg q "$q" --arg edev "$edev" --arg eprod "$eprod" --arg sid "$sid" \
-        --arg eqdev "$eqdev" --arg tb "$tb" --arg c "$c" \
+        --arg eqdev "$eqdev" --arg ta "$ta" --arg tb "$tb" --arg c "$c" \
         --arg admin "$E2E_ADMIN_EMAIL" --arg requester e2e-requester@example.com \
         --arg approver e2e-approver@example.com --arg outsider e2e-outsider@example.com --arg filler e2e-filler@example.com --arg lead e2e-lead@example.com \
         --arg newcomer e2e-newcomer@example.com --arg agent "$(cat "$creds/agent_id")" \
+        --arg alphaAdmin e2e-alpha-admin@example.com --arg betaAdmin e2e-beta-admin@example.com \
     '{project:$p, otherProject:$q, envDev:$edev, envProd:$eprod, secretId:$sid, secretRef:"team-alpha/e2e/db",
-      otherEnv:$eqdev, otherTeam:$tb, connection:$c, destinationRef:"team-beta/e2e/app", agent:$agent,
-      users:{admin:$admin, requester:$requester, approver:$approver, outsider:$outsider, filler:$filler, lead:$lead, newcomer:$newcomer}}' > "$E2E_STATE/fixtures.json"
+      otherEnv:$eqdev, team:$ta, otherTeam:$tb, connection:$c, destinationRef:"team-beta/e2e/app", agent:$agent,
+      users:{admin:$admin, requester:$requester, approver:$approver, outsider:$outsider, filler:$filler, lead:$lead, newcomer:$newcomer, alphaAdmin:$alphaAdmin, betaAdmin:$betaAdmin}}' > "$E2E_STATE/fixtures.json"
   rm -f "$E2E_STATE/admin.jar" "$E2E_STATE/last.json"
-  echo "seeded: 6 users, 2 teams, 2 projects, 3 environments, an agent enrolled with v2, 2 discovered and bound secrets, 1 reveal policy"
+  echo "seeded: 8 users, 2 teams, 2 projects, 3 environments, an agent enrolled with v2, 2 discovered and bound secrets, 1 reveal policy"
 }
 
 scan() {

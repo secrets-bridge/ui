@@ -49,6 +49,49 @@ export const CONNECTOR_STATUS_TONE: Record<string, Tone> = {
   missing: 'neutral',
 };
 
+/** Why a connector left approval, or why it can't be used right now. */
+export const CONNECTOR_REASON: Record<string, string> = {
+  scope_changed: "The Gateway's scope changed. Its bindings are paused until the connector is approved again.",
+  scope_mismatch_between_replicas: 'The Gateway replicas disagree on the scope. Tasks wait until they agree.',
+  snapshot_stale: "The Gateway's catalog is out of date. It refuses tasks on discovered targets until the next one arrives.",
+};
+
+export const TARGET_STATUS_LABEL: Record<string, string> = {
+  present: 'Present',
+  missing: 'Missing',
+  stale: 'Stale',
+  identity_changed: 'Identity changed',
+};
+
+export const TARGET_STATUS_TONE: Record<string, Tone> = {
+  present: 'ok',
+  missing: 'warn',
+  stale: 'warn',
+  identity_changed: 'warn',
+};
+
+export const SUSPENDED_LABEL: Record<string, string> = {
+  target_missing: 'Target missing',
+  mapping_removed: 'Mapping removed',
+  scope_changed: 'Scope changed',
+  identity_changed: 'Identity changed',
+};
+
+/**
+ * The next step for a suspended binding. Nothing resumes on its own
+ * except scope_changed, which resumes on re-approval.
+ */
+export const SUSPENDED_NEXT_STEP: Record<string, string> = {
+  target_missing: 'The Application is gone from Argo CD. Delete this binding, and bind again if it comes back.',
+  mapping_removed: "The target's AppProject no longer maps to this project's team. Delete this binding, and bind again after the mapping is fixed.",
+  scope_changed: 'Resumes when a platform admin approves the new scope.',
+  identity_changed: 'The Application was recreated. A platform admin re-confirms the new one to resume.',
+};
+
+/** A team admin can't delete a binding once the target is hidden from them. */
+export const SUSPENDED_HIDDEN_TARGET =
+  "Your team can't see this target any more, so a platform admin has to delete the binding.";
+
 export const CONNECTOR_KIND_LABEL: Record<string, string> = {
   argocd: 'Argo CD',
   eso: 'External Secrets',

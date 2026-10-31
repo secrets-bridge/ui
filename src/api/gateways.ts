@@ -10,9 +10,14 @@
  *   POST   /admin/gateways/:id/revoke {reason?}               gateway.revoke, fresh MFA
  *   PUT    /admin/gateways/:id/enabled {enabled}              gateway.revoke, fresh MFA
  *   POST   /admin/gateways/:id/connectors/:cid/approve        gateway.bind, fresh MFA
+ *   GET    /admin/gateways/:id/connectors/:cid/project-teams  gateway.list
+ *   PUT    /admin/gateways/:id/connectors/:cid/project-teams  gateway.bind, fresh MFA
+ *   POST   .../connectors/:cid/targets/:tid/confirm-identity  gateway.bind, fresh MFA
+ *   GET    /gateway-catalog                                   global gateway.list or gateway.bind, or team-scoped gateway.bind
+ *   GET    /gateway-bindings                                  same; a team-scoped caller gets its teams' projects
  *   GET    /admin/gateway-bindings?gateway_id=                gateway.list
- *   POST   /admin/gateway-bindings                            gateway.bind, fresh MFA
- *   DELETE /admin/gateway-bindings/:id                        gateway.bind, fresh MFA
+ *   POST   /admin/gateway-bindings                            gateway.bind at global or team scope, fresh MFA
+ *   DELETE /admin/gateway-bindings/:id                        gateway.bind at global or team scope, fresh MFA
  *   GET    /admin/environments/:id/observation-source         gateway.list
  *   PUT    /admin/environments/:id/observation-source         gateway.bind, fresh MFA
  *   GET    /requests/:id/observations                         same read check as the request
@@ -25,7 +30,7 @@
  * copies the token into component state and calls reset().
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { api } from './client';
 import { useSensitiveMutation } from './sensitiveMutation';
@@ -96,6 +101,8 @@ export interface GatewayTarget {
   refresh_interval_seconds?: number;
   progress_deadline_seconds?: number;
   stale: boolean;
+  /** unpinned, pinned or identity_changed (bindings suspended until re-confirmed). */
+  identity_status?: string;
 }
 
 export type GatewayConnectorStatus = 'advertised' | 'approved' | 'disabled' | 'missing';
@@ -111,6 +118,19 @@ export interface GatewayConnector {
   approved_by?: string;
   approved_at?: string;
   last_advertised_at?: string;
+  /** scope_changed, scope_mismatch_between_replicas or snapshot_stale. */
+  status_reason?: string;
+  /** What every live replica reports now; an approve body carries it. */
+  scope_digest?: string;
+  /** The live replicas disagree on the scope. */
+  scope_mismatch?: boolean;
+  approved_scope_digest?: string;
+  /** The scope of the latest upload, which allowed_projects came from. */
+  discovery_scope_digest?: string;
+  discovery_enabled?: boolean;
+  discovery_generation?: number;
+  last_discovery_at?: string;
+  allowed_projects?: string[];
 }
 
 export interface GatewayBinding {
@@ -126,6 +146,8 @@ export interface GatewayBinding {
   argocd_target_id?: string;
   observation_timeout_seconds: number;
   enabled: boolean;
+  /** target_missing, mapping_removed, scope_changed or identity_changed. */
+  suspended_reason?: string;
   created_by: string;
   created_at: string;
 }
@@ -195,6 +217,9 @@ export const gatewaysKey = {
   tasks: (id: string) => ['gateways', 'tasks', id] as const,
   source: (envId: string) => ['gateways', 'observation-source', envId] as const,
   observations: (requestId: string) => ['requests', requestId, 'observations'] as const,
+  catalog: (f: CatalogFilter) => ['gateways', 'catalog', f] as const,
+  bindings: (f: BindingFilter) => ['gateways', 'bindings', f] as const,
+  projectTeams: (gatewayId: string, connectorId: string) => ['gateways', 'project-teams', gatewayId, connectorId] as const,
 };
 
 const gw = (id: string) => `/api/v1/admin/gateways/${encodeURIComponent(id)}`;
@@ -292,12 +317,159 @@ export function useSetGatewayEnabled() {
   });
 }
 
+const connector = (gatewayId: string, connectorId: string) => `${gw(gatewayId)}/connectors/${encodeURIComponent(connectorId)}`;
+
+/**
+ * Approve a connector. scopeDigest is the digest the admin was shown:
+ * the api refuses another with scope_digest_changed, so an admin never
+ * approves a scope they didn't see. A contract 1 Gateway reports none.
+ */
 export function useApproveConnector() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ gatewayId, connectorId }: { gatewayId: string; connectorId: string }) =>
-      api.post<GatewayConnector>(`${gw(gatewayId)}/connectors/${encodeURIComponent(connectorId)}/approve`),
-    onSuccess: (_d, v) => qc.invalidateQueries({ queryKey: gatewaysKey.one(v.gatewayId) }),
+    mutationFn: ({ gatewayId, connectorId, scopeDigest }: { gatewayId: string; connectorId: string; scopeDigest?: string }) =>
+      api.post<GatewayConnector>(`${connector(gatewayId, connectorId)}/approve`, scopeDigest ? { scope_digest: scopeDigest } : undefined),
+    onSuccess: () => qc.invalidateQueries({ queryKey: gatewaysKey.all }),
+  });
+}
+
+/** Keep a target's new identity. Its suspended bindings resume. */
+export function useConfirmTargetIdentity() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ gatewayId, connectorId, targetId }: { gatewayId: string; connectorId: string; targetId: string }) =>
+      api.post<GatewayConnector>(`${connector(gatewayId, connectorId)}/targets/${encodeURIComponent(targetId)}/confirm-identity`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: gatewaysKey.all }),
+  });
+}
+
+// --- AppProject to team mapping ---------------------------------------------
+
+export interface ProjectTeamMapping {
+  app_project: string;
+  team_ids: string[] | null;
+}
+
+export interface ProjectTeams {
+  mappings: ProjectTeamMapping[] | null;
+  /** The AppProjects of the latest upload. */
+  allowed_projects: string[] | null;
+  /** The latest upload's AppProjects are all mapped. */
+  complete: boolean;
+}
+
+export function useProjectTeams(gatewayId: string, connectorId: string, enabled = true) {
+  return useQuery({
+    queryKey: gatewaysKey.projectTeams(gatewayId, connectorId),
+    queryFn: () => api.get<ProjectTeams>(`${connector(gatewayId, connectorId)}/project-teams`),
+    enabled,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** A full replace. A change that uncovers a binding suspends it. */
+export function usePutProjectTeams() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ gatewayId, connectorId, mappings }: { gatewayId: string; connectorId: string; mappings: ProjectTeamMapping[] }) =>
+      api.put<ProjectTeams>(`${connector(gatewayId, connectorId)}/project-teams`, { mappings }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: gatewaysKey.all }),
+  });
+}
+
+// --- the catalog and the team-filtered bindings -----------------------------
+
+/** Every filter runs on the server, before paging. */
+export interface CatalogFilter {
+  gateway_id?: string;
+  connector_uuid?: string;
+  /** Only the targets this project can bind. */
+  project_id?: string;
+  app_project?: string;
+  namespace?: string;
+  q?: string;
+  status?: string;
+}
+
+export type CatalogSource = 'discovered' | 'static';
+
+/** One target. A view never shows its name without the rest (ADR 0002 C5). */
+export interface CatalogItem {
+  gateway_id: string;
+  connector_uuid: string;
+  connector_id: string;
+  target_id: string;
+  source: CatalogSource;
+  status: string;
+  /** Absent on a static target. */
+  app_project?: string;
+  namespace?: string;
+  name?: string;
+  first_seen_at: string;
+  last_seen_at?: string;
+  is_new: boolean;
+  look_alike: boolean;
+  binding_count: number;
+  team_ids?: string[];
+}
+
+interface CatalogPage {
+  items: CatalogItem[] | null;
+  next_cursor?: string;
+}
+
+function queryString(f: object): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(f)) if (v !== undefined && v !== '') q.set(k, String(v));
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
+export function useGatewayCatalog(filter: CatalogFilter, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: gatewaysKey.catalog(filter),
+    queryFn: ({ pageParam }) => api.get<CatalogPage>(`/api/v1/gateway-catalog${queryString({ ...filter, cursor: pageParam })}`),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.next_cursor || undefined,
+    enabled,
+    retry: false,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export interface BindingFilter {
+  gateway_id?: string;
+  project_id?: string;
+  suspended?: boolean;
+}
+
+/**
+ * A binding with its target. app_project, namespace and name are absent
+ * when the caller can't see the target, which happens to a team once a
+ * mapping or scope change takes the target away. Such a binding stays
+ * listed so the team can see why it stopped, and a team-scoped delete of
+ * it answers 404.
+ */
+export interface GatewayBindingItem extends GatewayBinding {
+  app_project?: string;
+  namespace?: string;
+  name?: string;
+}
+
+interface BindingPage {
+  items: GatewayBindingItem[] | null;
+  next_cursor?: string;
+}
+
+export function useTeamBindings(filter: BindingFilter, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: gatewaysKey.bindings(filter),
+    queryFn: ({ pageParam }) => api.get<BindingPage>(`/api/v1/gateway-bindings${queryString({ ...filter, cursor: pageParam })}`),
+    initialPageParam: '',
+    getNextPageParam: (last) => last.next_cursor || undefined,
+    enabled,
+    retry: false,
+    refetchOnWindowFocus: true,
   });
 }
 

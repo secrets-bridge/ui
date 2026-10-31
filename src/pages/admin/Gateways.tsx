@@ -40,8 +40,8 @@ import { GatewayStatusWord } from './gateways/GatewayStatusWord';
 import { TokenDrawer } from './gateways/TokenDrawer';
 
 export function Gateways() {
-  const { hasPermission } = useAuth();
-  const allowed = hasPermission('gateway.list');
+  const { hasGlobalPermission } = useAuth();
+  const allowed = hasGlobalPermission('gateway.list');
   const list = useGateways({ enabled: allowed });
   const now = useNow(15_000);
   const [creating, setCreating] = useState(false);
@@ -134,7 +134,7 @@ export function Gateways() {
             : 'A Gateway observes Argo CD from inside the workload boundary, read-only, and reports what it saw for executed changes.'
         }
         actions={
-          hasPermission('gateway.mint') ? (
+          hasGlobalPermission('gateway.mint') ? (
             <Button variant="primary" onClick={() => setCreating(true)}>
               Create gateway
             </Button>

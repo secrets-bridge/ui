@@ -44,6 +44,7 @@ import { Workflows } from './pages/admin/Workflows';
 
 // Admin-only and rarely opened: loaded on first visit.
 const Gateways = lazy(() => import('./pages/admin/Gateways').then((m) => ({ default: m.Gateways })));
+const Targets = lazy(() => import('./pages/gateways/Targets').then((m) => ({ default: m.Targets })));
 
 export function App() {
   return (
@@ -104,6 +105,14 @@ export function App() {
             element={
               <Suspense fallback={<p className="text-muted">Loading…</p>}>
                 <Gateways />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/gateways"
+            element={
+              <Suspense fallback={<p className="text-muted">Loading…</p>}>
+                <Targets />
               </Suspense>
             }
           />

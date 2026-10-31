@@ -5,8 +5,10 @@
  *
  * Actions, each behind its own permission and a fresh second factor:
  * create or revoke an enrollment token (gateway.mint), approve an
- * advertised Argo CD connector and create or delete bindings
- * (gateway.bind), disable, enable or revoke the Gateway (gateway.revoke).
+ * advertised Argo CD connector, map its AppProjects to teams and create
+ * or delete bindings (gateway.bind), disable, enable or revoke the
+ * Gateway (gateway.revoke). All of them need a global grant; a team
+ * works on `/gateways` instead.
  */
 
 import { useState, type ReactNode } from 'react';
@@ -17,10 +19,8 @@ import { missingFactorText } from '../../../api/mfaErrors';
 import {
   type Gateway,
   type GatewayBinding,
-  type GatewayConnector,
   type GatewayDetail,
   type GatewayEnrollmentTokenMeta,
-  useApproveConnector,
   useDeleteBinding,
   useGateway,
   useGatewayTasks,
@@ -32,11 +32,14 @@ import { useEnvironments, useProjects } from '../../../api/tenancy';
 import { useAuth } from '../../../auth/AuthContext';
 import {
   CONNECTOR_KIND_LABEL,
+  CONNECTOR_REASON,
   CONNECTOR_STATUS_LABEL,
   CONNECTOR_STATUS_TONE,
   GATEWAY_STATUS_MEANING,
   ROLLUP_LABEL,
   ROLLUP_TONE,
+  SUSPENDED_LABEL,
+  SUSPENDED_NEXT_STEP,
   TASK_STATE_LABEL,
   TASK_STATE_TONE,
   VERDICT_REASON,
@@ -53,18 +56,20 @@ import { Drawer } from '../../../ui/Drawer';
 import { Field, Input } from '../../../ui/Field';
 import { ToneStatus } from '../../../ui/Status';
 import { useToast } from '../../../ui/toastContext';
+import { ApproveConnectorDialog } from './ApproveConnectorDialog';
 import { BindingDrawer } from './BindingDrawer';
 import { GatewayStatusWord } from './GatewayStatusWord';
+import { ProjectMappingDrawer } from './ProjectMappingDrawer';
 
 const errText = (e: unknown) =>
   missingFactorText(e, 'nothing changed') ?? (e instanceof ApiError ? `${e.status}: ${e.message}` : 'Network error.');
 
 export function GatewayDrawer({ id, onClose, onMintToken }: { id: string; onClose: () => void; onMintToken: (g: Gateway) => void }) {
-  const { hasPermission } = useAuth();
+  const { hasGlobalPermission } = useAuth();
   const detail = useGateway(id);
   const [confirm, setConfirm] = useState<'disable' | 'enable' | 'revoke' | null>(null);
   const g = detail.data?.gateway;
-  const canRevoke = hasPermission('gateway.revoke') && !!g && g.status !== 'revoked';
+  const canRevoke = hasGlobalPermission('gateway.revoke') && !!g && g.status !== 'revoked';
 
   return (
     <Drawer
@@ -201,12 +206,12 @@ function tokenState(t: GatewayEnrollmentTokenMeta, now: number): { word: string;
 }
 
 function Tokens({ gateway, tokens, onMintToken }: { gateway: Gateway; tokens: GatewayEnrollmentTokenMeta[]; onMintToken: (g: Gateway) => void }) {
-  const { hasPermission } = useAuth();
+  const { hasGlobalPermission } = useAuth();
   const now = useNow(30_000);
   const revoke = useRevokeGatewayToken();
   const toast = useToast();
   const [revoking, setRevoking] = useState<GatewayEnrollmentTokenMeta | null>(null);
-  const canMint = hasPermission('gateway.mint');
+  const canMint = hasGlobalPermission('gateway.mint');
   if (!tokens.length && gateway.status !== 'pending') return null;
   return (
     <Section
@@ -306,13 +311,16 @@ function Replicas({ d }: { d: GatewayDetail }) {
 // --- connectors -----------------------------------------------------------------
 
 function Connectors({ d }: { d: GatewayDetail }) {
-  const { hasPermission } = useAuth();
-  const approve = useApproveConnector();
-  const toast = useToast();
-  const [approving, setApproving] = useState<GatewayConnector | null>(null);
-  const [binding, setBinding] = useState<GatewayConnector | null>(null);
-  const canBind = hasPermission('gateway.bind') && d.gateway.status !== 'revoked';
+  const { hasGlobalPermission } = useAuth();
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [bindingId, setBindingId] = useState<string | null>(null);
+  const [mappingId, setMappingId] = useState<string | null>(null);
+  const canBind = hasGlobalPermission('gateway.bind') && d.gateway.status !== 'revoked';
   const connectors = d.connectors ?? [];
+  // By id, so a dialog sees the connector as the next heartbeat leaves it.
+  const approving = connectors.find((c) => c.id === approvingId);
+  const binding = connectors.find((c) => c.id === bindingId);
+  const mapping = connectors.find((c) => c.id === mappingId);
 
   return (
     <Section title="Advertised connectors">
@@ -323,6 +331,7 @@ function Connectors({ d }: { d: GatewayDetail }) {
           {connectors.map((c) => {
             const targets = c.targets ?? [];
             const bindable = c.kind === 'argocd' && c.status === 'approved' && targets.some((t) => !t.stale);
+            const discovery = c.kind === 'argocd' && (c.discovery_enabled || !!c.allowed_projects?.length);
             return (
               <Item key={c.id}>
                 <p className="flex flex-wrap items-center justify-between gap-2">
@@ -332,13 +341,18 @@ function Connectors({ d }: { d: GatewayDetail }) {
                     <ToneStatus tone={CONNECTOR_STATUS_TONE[c.status] ?? 'neutral'}>{words(c.status, CONNECTOR_STATUS_LABEL)}</ToneStatus>
                   </span>
                   <span className="flex gap-2">
+                    {canBind && discovery && (
+                      <Button variant="secondary" size="sm" onClick={() => setMappingId(c.id)}>
+                        Map teams…
+                      </Button>
+                    )}
                     {canBind && c.status === 'advertised' && c.kind === 'argocd' && (
-                      <Button variant="secondary" size="sm" onClick={() => setApproving(c)}>
+                      <Button variant="secondary" size="sm" onClick={() => setApprovingId(c.id)}>
                         Approve…
                       </Button>
                     )}
                     {canBind && bindable && (
-                      <Button variant="secondary" size="sm" onClick={() => setBinding(c)}>
+                      <Button variant="secondary" size="sm" onClick={() => setBindingId(c.id)}>
                         Bind a target
                       </Button>
                     )}
@@ -348,6 +362,21 @@ function Connectors({ d }: { d: GatewayDetail }) {
                   {c.approved_at ? `Approved ${formatExact(c.approved_at)}` : 'Not approved'}
                   {c.last_advertised_at ? ` · last advertised ${formatExact(c.last_advertised_at)}` : ''}
                 </p>
+                {(c.status_reason || c.scope_mismatch) && (
+                  <p className="text-caption text-ink">
+                    {words(c.status_reason ?? 'scope_mismatch_between_replicas', CONNECTOR_REASON)}
+                  </p>
+                )}
+                {discovery && (
+                  <p className="text-caption text-muted">
+                    Discovery on
+                    {c.last_discovery_at ? ` · last catalog ${formatExact(c.last_discovery_at)}` : ' · no catalog yet'}
+                    {c.allowed_projects?.length ? ` · ${c.allowed_projects.length} ${c.allowed_projects.length === 1 ? 'AppProject' : 'AppProjects'} · ` : ' · '}
+                    <Link to={`/gateways?connector=${encodeURIComponent(c.id)}`} className="text-accent hover:underline">
+                      View targets
+                    </Link>
+                  </p>
+                )}
                 {targets.length > 0 && (
                   <ul className="m-0 list-none p-0 text-caption">
                     {targets.map((t) => (
@@ -370,28 +399,18 @@ function Connectors({ d }: { d: GatewayDetail }) {
         </List>
       )}
       {approving && (
-        <ConfirmModal
-          title={`Approve ${approving.connector_id}?`}
-          body="Its advertised Argo CD targets can then be bound to an environment. Approving grants the Gateway nothing in Argo CD; it keeps the read-only rights it has."
-          confirmText="Approve connector"
-          loading={approve.isPending}
-          error={approve.error}
-          onCancel={() => {
-            approve.reset();
-            setApproving(null);
-          }}
-          onConfirm={async () => {
-            try {
-              await approve.mutateAsync({ gatewayId: d.gateway.id, connectorId: approving.id });
-              toast(`Approved ${approving.connector_id}.`);
-              setApproving(null);
-            } catch {
-              // Shown in the dialog.
-            }
+        <ApproveConnectorDialog
+          gatewayId={d.gateway.id}
+          connector={approving}
+          onClose={() => setApprovingId(null)}
+          onMapTeams={() => {
+            setApprovingId(null);
+            setMappingId(approving.id);
           }}
         />
       )}
-      {binding && <BindingDrawer gateway={d.gateway} connector={binding} onClose={() => setBinding(null)} />}
+      {mapping && <ProjectMappingDrawer gatewayId={d.gateway.id} connector={mapping} onClose={() => setMappingId(null)} />}
+      {binding && <BindingDrawer source={{ kind: 'connector', gateway: d.gateway, connector: binding }} onClose={() => setBindingId(null)} />}
     </Section>
   );
 }
@@ -399,13 +418,13 @@ function Connectors({ d }: { d: GatewayDetail }) {
 // --- bindings -------------------------------------------------------------------
 
 function Bindings({ d, envLabel }: { d: GatewayDetail; envLabel: (id: string) => string }) {
-  const { hasPermission } = useAuth();
+  const { hasGlobalPermission } = useAuth();
   const del = useDeleteBinding();
   const toast = useToast();
   const [deleting, setDeleting] = useState<GatewayBinding | null>(null);
   const bindings = d.bindings ?? [];
   const connectorName = new Map((d.connectors ?? []).map((c) => [c.id, c.connector_id]));
-  const canBind = hasPermission('gateway.bind');
+  const canBind = hasGlobalPermission('gateway.bind');
 
   return (
     <Section title="Bindings">
@@ -416,7 +435,10 @@ function Bindings({ d, envLabel }: { d: GatewayDetail; envLabel: (id: string) =>
           {bindings.map((b) => (
             <Item key={b.id}>
               <p className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-medium text-ink">{envLabel(b.environment_id)}</span>
+                <span className="flex flex-wrap items-center gap-x-3">
+                  <span className="font-medium text-ink">{envLabel(b.environment_id)}</span>
+                  {b.suspended_reason && <ToneStatus tone="warn">{words(b.suspended_reason, SUSPENDED_LABEL)}</ToneStatus>}
+                </span>
                 {canBind && (
                   <Button variant="danger" size="sm" onClick={() => setDeleting(b)}>
                     Delete…
@@ -441,6 +463,7 @@ function Bindings({ d, envLabel }: { d: GatewayDetail; envLabel: (id: string) =>
                 Deadline {Math.round(b.observation_timeout_seconds / 60)} minutes · {b.enabled ? 'enabled' : 'disabled'} · created{' '}
                 {formatExact(b.created_at)}
               </p>
+              {b.suspended_reason && <p className="text-caption text-ink">{SUSPENDED_NEXT_STEP[b.suspended_reason]}</p>}
             </Item>
           ))}
         </List>

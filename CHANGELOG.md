@@ -12,6 +12,8 @@ on `main`.
 ## [Unreleased]
 
 ### Added
+- Argo CD targets (`/gateways`, ui#173, ADR 0002 S5): the discovered target catalog and a team's bindings, filtered by the server to the caller's teams, for team-scoped `gateway.bind` holders and platform admins. A target never appears by name alone. A project narrows the list to what it can bind, and production environments aren't offered to a team admin. Suspended bindings show their reason and next step.
+- Connector approval for discovery: map AppProjects to teams in their own drawer, and approve the reviewed scope by its digest. Approve waits until the replicas agree, the next catalog has arrived and every AppProject has a team.
 - Docker image publishing workflow — multi-arch (amd64 + arm64),
   pushed to `ghcr.io/secrets-bridge/ui`. Tags: rolling `dev` on every
   push to `main`; semver tags + `latest` activate post-`v0.1.0`.
@@ -19,6 +21,7 @@ on `main`.
   ingress routing chooses the host at runtime.
 
 ### Changed
+- `hasGlobalPermission` joins `hasPermission`. The Gateway admin pages gate on it, so a team-scoped grant no longer shows links and buttons that answer 403.
 - Agent onboarding v2 (skills#116). Enroll an agent now creates a
   one-time token that you copy once, then shows the
   `secrets-bridge-agent enroll` command that reads it on stdin, creates
