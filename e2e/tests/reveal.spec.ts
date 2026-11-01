@@ -69,6 +69,7 @@ test('values show only after an explicit reveal with a fresh second factor, and 
   await panel.getByRole('button', { name: 'Hide now' }).click();
   await expect(panel).toBeHidden();
   expect(await onPage(requester), 'values left on the page after Hide now').toBe(false);
+  await expect(requester.getByRole('button', { name: 'Request again' })).toBeVisible();
 
   // A reload never reveals by itself.
   await requester.reload();

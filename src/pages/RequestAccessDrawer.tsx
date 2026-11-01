@@ -18,8 +18,9 @@
  * first. On success the drawer closes and the caller shows a toast
  * with a link to the new request; every count refreshes.
  *
- * "Request again" opens it pre-filled, as long as the secret is still
- * bound to that environment.
+ * "Request again" opens it pre-filled with the same operation, keys and
+ * reason, as long as the secret is still bound to that environment. New
+ * values are never carried over: a change request asks for them again.
  */
 
 import { useMemo, useState } from 'react';
@@ -42,11 +43,15 @@ import { KeyPicker } from '../ui/KeyPicker';
 
 const WHY_MIN = 15;
 
+type Op = 'read' | 'patch';
+
 export interface RequestPrefill {
+  op?: Op;
   projectId?: string;
   envName?: string;
   secretRef?: string;
   keys?: string[];
+  why?: string;
 }
 
 interface Props {
@@ -54,8 +59,6 @@ interface Props {
   onClose: () => void;
   onCreated: (id: string) => void;
 }
-
-type Op = 'read' | 'patch';
 
 export function RequestAccessDrawer({ prefill, onClose, onCreated }: Props) {
   const me = useMe();
@@ -66,16 +69,18 @@ export function RequestAccessDrawer({ prefill, onClose, onCreated }: Props) {
     return env?.id;
   };
 
-  const [op, setOp] = useState<Op>('read');
+  const [op, setOp] = useState<Op>(prefill?.op ?? 'read');
   const [scope, setScope] = useState(() =>
     prefill?.projectId && prefill.envName ? `${prefill.projectId}::${prefill.envName}` : '',
   );
   const [secretRef, setSecretRef] = useState(prefill?.secretRef ?? '');
   const [picked, setPicked] = useState<string[]>(prefill?.keys ?? []);
-  const [allKeys, setAllKeys] = useState(true);
-  const [typedKeys, setTypedKeys] = useState('');
+  // Named keys stay named: on an all-keys binding they must not widen to
+  // every key.
+  const [allKeys, setAllKeys] = useState(!prefill?.keys?.length);
+  const [typedKeys, setTypedKeys] = useState((prefill?.keys ?? []).join(', '));
   const [values, setValues] = useState<Record<string, string>>({});
-  const [why, setWhy] = useState('');
+  const [why, setWhy] = useState(prefill?.why ?? '');
   const [tried, setTried] = useState(false);
   const [serverError, setServerError] = useState<{ field?: string; text: string } | null>(null);
 
@@ -110,7 +115,8 @@ export function RequestAccessDrawer({ prefill, onClose, onCreated }: Props) {
   // --- validation ---------------------------------------------------
   const whyLen = why.trim().length;
   const errors: Record<string, string> = {};
-  if (!scope) errors.scope = 'Choose a project and environment.';
+  // A pre-filled scope the person no longer has counts as not chosen.
+  if (!scopeOpt) errors.scope = 'Choose a project and environment.';
   else if (!effectiveRef) errors.secret = 'Choose a secret.';
   if (secret) {
     if (keysForSubmit !== undefined && keysForSubmit.length === 0) {

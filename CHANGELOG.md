@@ -38,6 +38,9 @@ on `main`.
   `@tailwindcss/postcss`), zod 4, @hookform/resolvers 5, eslint 10
   and eslint-plugin-react-hooks 7. The rendered UI is unchanged.
 
+### Fixed
+- Request again reopens the same kind of request. A change request came back as a read and a cross-team request opened the plain drawer; both now keep their operation, keys and reason, and new values are never carried over. Named keys no longer widen to every key on a binding that allows them all. A failed request on the Overview offers Request again.
+
 ---
 
 ## How to cut a release (post-v0.1.0)
