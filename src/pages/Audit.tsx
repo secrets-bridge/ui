@@ -146,7 +146,7 @@ export function Audit() {
       key: 'action',
       header: 'Action',
       render: (e) => (
-        <button type="button" onClick={() => setOpenId(e.id)} className="text-left font-mono text-mono text-accent hover:underline">
+        <button type="button" onClick={() => setOpenId(e.id)} className="text-left font-mono text-mono text-accent-ink hover:underline">
           {e.action}
         </button>
       ),
@@ -253,7 +253,7 @@ export function Audit() {
               stacked={(e) => (
                 <div className="flex flex-col gap-1">
                   <p className="flex items-center justify-between gap-3">
-                    <button type="button" onClick={() => setOpenId(e.id)} className="text-left font-mono text-mono text-accent hover:underline">
+                    <button type="button" onClick={() => setOpenId(e.id)} className="text-left font-mono text-mono text-accent-ink hover:underline">
                       {e.action}
                     </button>
                     <ToneStatus tone={TONE[e.status] ?? 'neutral'}>{WORD[e.status] ?? e.status}</ToneStatus>
@@ -343,7 +343,7 @@ function EventDrawer({
       <span key="r" className="break-all font-mono text-mono">
         {e.resource || '—'}
         {requestId && (
-          <Link to={`/requests/${requestId}`} className="mt-1 block font-sans text-ui font-medium text-accent hover:underline">
+          <Link to={`/requests/${requestId}`} className="mt-1 block font-sans text-ui font-medium text-accent-ink hover:underline">
             Open request {requestRef(requestId)}
           </Link>
         )}
@@ -382,7 +382,7 @@ function EventDrawer({
       </dl>
       <h3 className="mb-2 mt-5 text-body font-semibold text-ink">Metadata</h3>
       {meta ? (
-        <pre className="overflow-x-auto rounded-md border border-border bg-sunken px-3 py-2.5 font-mono text-mono-small leading-relaxed text-ink">
+        <pre className="overflow-x-auto rounded-lg border border-border bg-field px-3 py-2.5 font-mono text-mono-small leading-relaxed text-ink">
           {JSON.stringify(meta, null, 2)}
         </pre>
       ) : (

@@ -24,7 +24,7 @@ import { useModalFocus } from '../ui/useModalFocus';
 import { VersionChip } from '../ui/VersionChip';
 
 /**
- * Console shell: a 216px sidebar and the page. At 900px and below the
+ * Console shell: a 240px sidebar and the page. At 900px and below the
  * sidebar becomes a menu button in a top bar that opens the same
  * navigation in a modal panel.
  *
@@ -95,39 +95,41 @@ export function Shell() {
     <div className="flex min-h-full bg-bg">
       <a
         href="#main"
-        className="sr-only z-[70] rounded-md bg-surface px-3 py-2 text-ui font-semibold text-accent focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+        className="sr-only z-[70] rounded-md bg-surface px-3 py-2 text-ui font-semibold text-accent-ink focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
       >
         Skip to content
       </a>
 
       <aside
         aria-label="Console"
-        className="sticky top-0 flex h-screen w-sidebar shrink-0 flex-col border-r border-border bg-bg px-2.5 pb-2.5 pt-3.5 max-[900px]:hidden"
+        className="sticky top-0 flex h-screen w-sidebar shrink-0 flex-col border-r border-border bg-side px-3 pb-3.5 pt-[18px] max-[900px]:hidden"
       >
         <SidebarContent onSignOut={openSignOut} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 hidden h-[52px] items-center gap-1.5 border-b border-border bg-bg pl-1.5 pr-2.5 max-[900px]:flex">
+        <header className="sticky top-0 z-10 hidden h-14 items-center gap-1.5 border-b border-border bg-side pl-1.5 pr-2.5 max-[900px]:flex">
           <button
             type="button"
             aria-label="Open navigation"
             aria-expanded={navOpen}
             onClick={() => setNavOpen(true)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-ink hover:bg-sunken"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-ink hover:bg-hover"
           >
             <MenuIcon />
           </button>
           <NavLink to="/" aria-label="Secrets Bridge console, overview" className="px-1">
-            <Logo size={20} textSize={15} />
+            <Logo size={22} textSize={17} />
           </NavLink>
           <span className="flex-1" />
           <ThemeToggle className="h-11 w-11" />
           {identity && <Avatar name={identity.display_name} />}
         </header>
 
-        <main ref={mainRef} id="main" tabIndex={-1} className="flex-1 px-7 pb-12 pt-6 max-[900px]:px-4 max-[900px]:pt-5">
-          <Outlet />
+        <main ref={mainRef} id="main" tabIndex={-1} className="flex-1 px-8 pb-14 pt-7 max-[900px]:px-4 max-[900px]:pb-10 max-[900px]:pt-5">
+          <div className="w-full max-w-[1240px]">
+            <Outlet />
+          </div>
         </main>
       </div>
 
@@ -158,8 +160,8 @@ export function Shell() {
 function SidebarContent({ onSignOut }: { onSignOut: () => void }) {
   return (
     <>
-      <NavLink to="/" aria-label="Secrets Bridge console, overview" className="mb-3.5 block px-2 pt-1">
-        <Logo size={20} textSize={15} />
+      <NavLink to="/" aria-label="Secrets Bridge console, overview" className="mb-[22px] block px-2 pt-0.5">
+        <Logo size={24} textSize={18} />
       </NavLink>
       <Navigation />
       <SidebarFooter onSignOut={onSignOut} />
@@ -236,13 +238,13 @@ function Navigation() {
   const waitingBadge = showUsers ? waiting.data?.total : undefined;
 
   return (
-    <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
-      <NavItem to="/" end label="Overview" icon={<OverviewIcon size={16} />} />
+    <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pb-3">
+      <NavItem to="/" end label="Overview" icon={<OverviewIcon />} />
       {showRequests && (
         <NavItem
           to="/requests"
           label="Requests"
-          icon={<RequestIcon size={16} />}
+          icon={<RequestIcon />}
           count={requestsCount}
           countLabel={requestsCountLabel}
         />
@@ -251,14 +253,19 @@ function Navigation() {
         <NavItem
           to="/inbox"
           label="Inbox"
-          icon={<InboxIcon size={16} />}
+          icon={<InboxIcon />}
           count={inboxBadge}
           countLabel={`${inboxBadge ?? 0} waiting for your team's values`}
         />
       )}
-      {showSecrets && <NavItem to="/secrets" label="Secrets" icon={<CatalogIcon size={16} />} />}
-      {showAgents && <NavItem to="/agents" label="Agents" icon={<AgentIcon size={16} />} />}
-      {showAudit && <NavItem to="/audit" label="Audit" icon={<AuditIcon size={16} />} />}
+
+      {(showSecrets || showAgents || showAudit) && (
+        <NavGroup label="Catalog and records">
+          {showSecrets && <NavItem to="/secrets" label="Secrets" icon={<CatalogIcon />} />}
+          {showAgents && <NavItem to="/agents" label="Agents" icon={<AgentIcon />} />}
+          {showAudit && <NavItem to="/audit" label="Audit" icon={<AuditIcon />} />}
+        </NavGroup>
+      )}
 
       <NavGroup label="Projects">
         <NavItem to="/projects" end label="My projects" />
@@ -301,8 +308,8 @@ function Navigation() {
 
 function NavGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="mt-4 flex flex-col gap-0.5">
-      <p className="px-2 pb-1 text-label text-muted">{label}</p>
+    <div className="mt-[22px] flex flex-col gap-0.5">
+      <p className="px-2.5 pb-1.5 text-[12px] font-medium leading-4 text-muted">{label}</p>
       {children}
     </div>
   );
@@ -329,18 +336,18 @@ function NavItem({
       to={to}
       end={end}
       className={({ isActive }) =>
-        'group flex h-8 shrink-0 items-center gap-[9px] rounded-sm px-2 text-body max-[900px]:h-11 ' +
-        (isActive ? 'bg-sunken font-semibold text-ink' : 'font-medium text-ink hover:bg-sunken')
+        'group flex h-9 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-ui font-medium max-[900px]:h-11 ' +
+        (isActive ? 'bg-raised text-ink' : 'text-muted hover:bg-hover hover:text-ink')
       }
     >
       {icon && (
-        <span className="text-muted group-aria-[current=page]:text-accent">{icon}</span>
+        <span className="group-aria-[current=page]:text-accent-ink">{icon}</span>
       )}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       {count !== undefined && count > 0 && (
         <span
           aria-label={countLabel}
-          className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-sm bg-accent px-[5px] font-mono text-[11px] font-medium text-on-accent"
+          className="inline-flex h-5 min-w-[22px] items-center justify-center rounded-sm bg-accent px-1.5 font-mono text-[11.5px] font-semibold text-on-accent"
         >
           {count}
         </span>
@@ -354,41 +361,45 @@ function SidebarFooter({ onSignOut }: { onSignOut: () => void }) {
   const navigate = useNavigate();
   if (!identity) return null;
   return (
-    <div className="mt-2 border-t border-border pt-2.5">
-      <div className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2 pl-1.5 pr-0.5">
-        <Avatar name={identity.display_name} small />
-        <button
-          type="button"
-          onClick={() => navigate('/me')}
-          className="flex min-w-0 flex-col rounded-sm text-left leading-tight hover:underline"
-          title="Your profile"
-        >
-          <span className="truncate text-ui font-medium text-ink">{identity.display_name}</span>
-          <span className="truncate text-label font-normal text-muted">{roleLabelFor(identity.permissions)}</span>
-        </button>
-        <ThemeToggle />
-      </div>
-
-      {!identity.mfa_enrolled && (
+    <div className="flex flex-col gap-2.5 pt-2">
+      {identity.mfa_enrolled ? (
         <button
           type="button"
           onClick={() => navigate('/me/mfa')}
-          className="mt-2.5 w-full rounded-md border border-accent-line bg-accent-soft px-2.5 py-2 text-left text-caption text-ink hover:underline"
+          className="flex items-center gap-2 rounded-sm px-2.5 text-left text-caption text-muted hover:text-ink hover:underline"
+        >
+          <span aria-hidden="true" className="h-[9px] w-[9px] shrink-0 bg-ok" />
+          Second factor on
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => navigate('/me/mfa')}
+          className="w-full rounded-lg border border-accent-line bg-accent-soft px-2.5 py-2 text-left text-[13px] leading-[19px] text-ink hover:underline"
         >
           <span className="font-semibold">Add a second factor.</span> Approving and revealing need one.
         </button>
       )}
 
-      <div className="mt-2 flex items-center gap-3 whitespace-nowrap px-1.5 text-caption">
-        <button type="button" onClick={() => navigate('/me/mfa')} className="text-muted hover:text-ink hover:underline">
-          Second factor
+      <div className="grid grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border border-border p-2.5">
+        <Avatar name={identity.display_name} small />
+        <button
+          type="button"
+          onClick={() => navigate('/me')}
+          className="flex min-w-0 flex-col rounded-sm text-left hover:underline"
+          title="Your profile"
+        >
+          <span className="truncate text-[13.5px] font-semibold leading-[18px] text-ink">{identity.display_name}</span>
+          <span className="truncate font-mono text-mono-small text-muted">{roleLabelFor(identity.permissions)}</span>
         </button>
-        <button type="button" onClick={onSignOut} className="text-muted hover:text-ink hover:underline">
+        <ThemeToggle />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 whitespace-nowrap px-2.5">
+        <VersionChip />
+        <button type="button" onClick={onSignOut} className="text-caption text-muted hover:text-ink hover:underline">
           Sign out
         </button>
-      </div>
-      <div className="mt-2 px-1.5">
-        <VersionChip />
       </div>
     </div>
   );
@@ -419,16 +430,16 @@ function MobileNav({ onClose, onSignOut }: { onClose: () => void; onSignOut: () 
         aria-modal="true"
         aria-label="Navigation"
         tabIndex={-1}
-        className="absolute bottom-0 left-0 top-0 flex w-[min(300px,86%)] flex-col bg-surface p-3 shadow-overlay"
+        className="absolute bottom-0 left-0 top-0 flex w-[min(300px,86%)] flex-col bg-side p-3 shadow-overlay"
       >
         <div className="flex items-center justify-between px-1 pb-3.5">
-          <Logo size={20} textSize={15} product="Console" />
+          <Logo size={22} textSize={17} product="Console" />
           <button
             type="button"
             aria-label="Close navigation"
             onClick={onClose}
             data-autofocus
-            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-ink hover:bg-sunken"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-ink hover:bg-hover"
           >
             <CloseIcon />
           </button>
@@ -468,8 +479,8 @@ function Avatar({ name, small }: { name: string; small?: boolean }) {
     <span
       aria-hidden="true"
       className={
-        'inline-flex shrink-0 items-center justify-center rounded-full bg-accent-soft font-semibold text-accent ' +
-        (small ? 'h-7 w-7 text-[11px]' : 'h-8 w-8 text-[12px]')
+        'inline-flex shrink-0 items-center justify-center rounded-full border border-border bg-raised font-semibold text-ink ' +
+        (small ? 'h-[30px] w-[30px] text-[11.5px]' : 'h-8 w-8 text-[12px]')
       }
     >
       {initialsOf(name)}

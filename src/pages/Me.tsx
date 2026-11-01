@@ -37,7 +37,7 @@ export function Me() {
         <PageHeader title="Profile" />
         <p className="text-muted">
           You're not signed in.{' '}
-          <Link to="/login" className="text-accent hover:underline">
+          <Link to="/login" className="text-accent-ink hover:underline">
             Sign in
           </Link>
           .
@@ -85,8 +85,8 @@ export function Me() {
               className={
                 'mt-3 inline-flex h-(--control-md) items-center rounded-md border px-3 text-ui font-medium max-md:h-(--control-touch) ' +
                 (identity.mfa_enrolled
-                  ? 'border-edge bg-surface text-ink hover:bg-sunken'
-                  : 'border-accent bg-accent font-semibold text-on-accent hover:brightness-110')
+                  ? 'border-edge bg-surface text-ink hover:bg-hover'
+                  : 'border-accent-edge bg-accent font-semibold text-on-accent hover:bg-accent-hover')
               }
             >
               {identity.mfa_enrolled ? 'Manage factors' : 'Add a second factor'}
@@ -158,7 +158,7 @@ export function Me() {
               ) : (
                 <p className="flex flex-wrap gap-1.5">
                   {[...identity.permissions].sort().map((p) => (
-                    <span key={p} className="inline-flex h-[22px] items-center rounded-sm border border-border bg-sunken px-[7px] font-mono text-[12px]">
+                    <span key={p} className="inline-flex h-[22px] items-center rounded-sm border border-border bg-raised px-[7px] font-mono text-[12px]">
                       {p}
                     </span>
                   ))}
@@ -288,7 +288,7 @@ function GooglePanel() {
 
 function Panel({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return (
-    <section className="rounded-md border border-border bg-surface">
+    <section className="rounded-xl border border-border bg-surface">
       <h2 className="border-b border-rule px-5 py-3.5 text-block-heading text-ink">
         {title}
         {count !== undefined && <span className="ml-2 font-mono text-mono-small font-normal text-muted">{count}</span>}

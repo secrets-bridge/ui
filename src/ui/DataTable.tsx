@@ -49,7 +49,7 @@ export function DataTable<T>({ columns, rows, rowKey, label, onRowClick, stacked
         aria-label={label}
         tabIndex={0}
         className={
-          'relative overflow-x-auto rounded-md border border-border bg-surface' +
+          'relative overflow-x-auto rounded-xl border border-border bg-surface' +
           (stacked ? ' max-[700px]:hidden' : '')
         }
       >
@@ -61,7 +61,7 @@ export function DataTable<T>({ columns, rows, rowKey, label, onRowClick, stacked
                   key={c.key}
                   scope="col"
                   className={
-                    'whitespace-nowrap border-b border-border px-2.5 py-2 text-label text-muted ' +
+                    'whitespace-nowrap border-b border-border px-3.5 py-3 text-label text-muted ' +
                     (c.align === 'right' ? 'text-right' : 'text-left')
                   }
                 >
@@ -77,14 +77,14 @@ export function DataTable<T>({ columns, rows, rowKey, label, onRowClick, stacked
                 onClick={onRowClick ? (e) => !fromControl(e) && onRowClick(r) : undefined}
                 className={
                   'border-t border-rule first:border-t-0 ' +
-                  (onRowClick ? 'cursor-pointer hover:bg-sunken' : '')
+                  (onRowClick ? 'cursor-pointer hover:bg-hover' : '')
                 }
               >
                 {columns.map((c) => (
                   <td
                     key={c.key}
                     className={
-                      'px-2.5 py-[9px] text-ui font-normal ' +
+                      'px-3.5 py-3 text-ui leading-[21px] font-normal ' +
                       (alignTop ? 'align-top ' : 'align-middle ') +
                       (c.align === 'right' ? 'text-right ' : '') +
                       (c.className ?? '')
@@ -101,13 +101,13 @@ export function DataTable<T>({ columns, rows, rowKey, label, onRowClick, stacked
       {stacked && (
         <ul
           aria-label={label}
-          className="hidden rounded-md border border-border bg-surface max-[700px]:block"
+          className="hidden rounded-xl border border-border bg-surface max-[700px]:block"
         >
           {rows.map((r) => (
             <li
               key={rowKey(r)}
               onClick={onRowClick ? (e) => !fromControl(e) && onRowClick(r) : undefined}
-              className={'border-t border-rule px-2.5 py-3 first:border-t-0' + (onRowClick ? ' cursor-pointer' : '')}
+              className={'border-t border-rule px-3.5 py-3 first:border-t-0' + (onRowClick ? ' cursor-pointer' : '')}
             >
               {stacked(r)}
             </li>

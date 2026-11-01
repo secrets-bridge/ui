@@ -72,7 +72,7 @@ export function ProjectPolicies() {
           You can't open this project
         </h1>
         <Banner title="It doesn't exist, or your roles don't cover it.">
-          <Link to="/projects/policies" className="font-medium text-accent hover:underline">
+          <Link to="/projects/policies" className="font-medium text-accent-ink hover:underline">
             Back to project policies
           </Link>
         </Banner>
@@ -105,7 +105,7 @@ export function ProjectPolicies() {
       key: 'name',
       header: 'Name',
       render: (r) => (
-        <Link to={detail(r)} className="font-medium text-accent hover:underline">
+        <Link to={detail(r)} className="font-medium text-accent-ink hover:underline">
           {r.name}
         </Link>
       ),
@@ -187,7 +187,7 @@ export function ProjectPolicies() {
                   <>
                     {' '}
                     Platform rules are managed on the{' '}
-                    <Link to="/admin/policies" className="font-medium text-accent hover:underline">
+                    <Link to="/admin/policies" className="font-medium text-accent-ink hover:underline">
                       Policies
                     </Link>{' '}
                     page.
@@ -205,7 +205,7 @@ export function ProjectPolicies() {
                 stacked={(r) => (
                   <div className="flex flex-col gap-1.5">
                     <p className="flex items-center justify-between gap-3">
-                      <Link to={detail(r)} className="font-medium text-accent hover:underline">
+                      <Link to={detail(r)} className="font-medium text-accent-ink hover:underline">
                         {r.name}
                       </Link>
                       <RuleStatus enabled={r.enabled} />
@@ -237,7 +237,7 @@ export function ProjectPolicies() {
               aren't shown, only what they match on.
             </p>
             {inherited.length === 0 ? (
-              <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">No platform or team rules apply to this project.</p>
+              <p className="rounded-xl border border-border bg-surface px-4 py-3 text-muted">No platform or team rules apply to this project.</p>
             ) : (
               <DataTable
                 label="Inherited rules"
@@ -442,11 +442,11 @@ function AuthorPolicyForm({ projectId, nonProdEnvs, cap, onClose }: { projectId:
         <fieldset className="flex min-w-0 flex-col gap-2">
           <legend className="mb-1 text-body font-semibold text-ink">Environments</legend>
           <label className="flex items-center gap-2.5 text-ui font-normal">
-            <input type="radio" value="any_non_prod" {...register('env_match')} className="accent-accent" />
+            <input type="radio" value="any_non_prod" {...register('env_match')} className="accent-accent-ink" />
             Every non-production environment
           </label>
           <label className="flex items-center gap-2.5 text-ui font-normal">
-            <input type="radio" value="specific" {...register('env_match')} className="accent-accent" />
+            <input type="radio" value="specific" {...register('env_match')} className="accent-accent-ink" />
             One environment
           </label>
           {envMatch === 'specific' && (
@@ -510,7 +510,7 @@ function AuthorPolicyForm({ projectId, nonProdEnvs, cap, onClose }: { projectId:
           <div className="flex flex-col gap-1.5">
             <span className="text-body font-semibold text-ink">Status</span>
             <label className="flex h-(--control-md) items-center gap-2.5 text-ui font-normal">
-              <input type="checkbox" {...register('enabled')} className="h-4 w-4 accent-accent" />
+              <input type="checkbox" {...register('enabled')} className="h-4 w-4 accent-accent-ink" />
               Enabled
             </label>
           </div>

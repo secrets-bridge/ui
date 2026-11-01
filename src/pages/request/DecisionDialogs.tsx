@@ -55,7 +55,7 @@ function decisionError(err: unknown): string {
 function Summary({ request: r, display, extra }: { request: AccessRequest; display: ScopeDisplay; extra?: ReactNode }) {
   const keys = keysOf(r);
   return (
-    <dl className="m-0 grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-md border border-border bg-sunken px-3.5 py-3 text-ui font-normal">
+    <dl className="m-0 grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-lg border border-border bg-bg px-3.5 py-3 text-ui font-normal">
       <dt className="text-muted">Request</dt>
       <dd className="m-0 font-mono text-mono">{requestRef(r.id)}</dd>
       <dt className="text-muted">Requester</dt>

@@ -1,10 +1,10 @@
 /**
  * Small tag for labels next to a record: row type (System / Custom),
- * operation (read / patch), health, a permission key. Square-cornered
- * and bordered, never a coloured pill.
+ * operation (read / patch), health, a permission key. Bordered with a
+ * 6px radius, never a coloured pill.
  *
- * A request's status is not a tag: use `<Status>` (square glyph plus
- * the exact status word) for that.
+ * A request's status is not a tag: use `<Status>` (shape plus the exact
+ * status word) for that.
  *
  * - `tone='filled'`  — tinted ground with a matching line
  * - `tone='outline'` — border and text only
@@ -36,9 +36,9 @@ interface Props extends HTMLAttributes<HTMLSpanElement> {
   tone?: Tone;
 }
 
-const NEUTRAL = { filled: 'bg-sunken text-muted border-border', outline: 'text-muted border-border' };
-const INK = { filled: 'bg-sunken text-ink border-border', outline: 'text-ink border-border' };
-const ACCENT = { filled: 'bg-accent-soft text-accent border-accent-line', outline: 'text-accent border-accent-line' };
+const NEUTRAL = { filled: 'bg-raised text-muted border-border', outline: 'text-muted border-border' };
+const INK = { filled: 'bg-raised text-ink border-border', outline: 'text-ink border-border' };
+const ACCENT = { filled: 'bg-accent-soft text-accent-ink border-accent-line', outline: 'text-accent-ink border-accent-line' };
 const OK = { filled: 'bg-ok-bg text-ok border-ok-line', outline: 'text-ok border-ok-line' };
 const WARN = { filled: 'bg-warn-bg text-warn border-warn-line', outline: 'text-warn border-warn-line' };
 const BAD = { filled: 'bg-bad-bg text-bad border-bad-line', outline: 'text-bad border-bad-line' };
@@ -68,8 +68,8 @@ export function StatusPill({
   return (
     <span
       className={[
-        'inline-flex h-[18px] items-center gap-1 whitespace-nowrap rounded-sm border px-[5px]',
-        'text-[11px] font-medium leading-none',
+        'inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-sm border px-2',
+        'text-[12px] font-medium leading-none',
         cls,
         className,
       ].join(' ')}

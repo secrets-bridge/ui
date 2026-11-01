@@ -32,13 +32,13 @@ export function NeedsYou({ items }: { items: NeedsYouItem[] }) {
   // One grid for the whole list (each row a subgrid), so the columns line
   // up from row to row whatever the length of the keys or the note.
   return (
-    <ul className="m-0 grid list-none grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] rounded-md border border-border bg-surface p-0 max-[700px]:block">
+    <ul className="m-0 grid list-none grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] rounded-xl border border-border bg-surface p-0 max-[700px]:block">
       {items.map((it) => (
         <li
           key={it.key}
           className="col-span-5 grid grid-cols-subgrid items-center gap-x-4 border-t border-rule px-3.5 py-2.5 first:border-t-0 max-[700px]:grid-cols-[minmax(0,1fr)_auto] max-[700px]:gap-x-3 max-[700px]:gap-y-1"
         >
-          <Link to={it.to} className="whitespace-nowrap font-mono text-mono font-medium text-accent hover:underline max-[700px]:col-start-1">
+          <Link to={it.to} className="whitespace-nowrap font-mono text-mono font-medium text-accent-ink hover:underline max-[700px]:col-start-1">
             {it.ref}
           </Link>
           <span title={it.keys} className="truncate font-mono text-mono max-[700px]:col-start-1">

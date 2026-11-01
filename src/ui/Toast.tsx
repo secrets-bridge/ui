@@ -40,14 +40,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toast && (
           <div
             key={toast.id}
-            className="pointer-events-auto flex items-center gap-3 rounded-md bg-ink px-4 py-2.5 text-body text-bg shadow-overlay"
+            className="pointer-events-auto flex max-w-[460px] items-center gap-3 rounded-lg border border-border bg-raised px-3.5 py-3 text-ui leading-[21px] text-ink shadow-overlay"
           >
             <span>{toast.text}</span>
             {toast.link && (
               <Link
                 to={toast.link.to}
                 onClick={() => setToast(null)}
-                className="font-semibold text-bg underline underline-offset-2"
+                className="font-semibold text-accent-ink underline underline-offset-[3px]"
               >
                 {toast.link.label}
               </Link>

@@ -155,7 +155,7 @@ export function CatalogTab({ projects, projectsLoaded, projectId, onProject, con
       {connectorId && (
         <p className="text-ui text-muted">
           Showing one connector.{' '}
-          <button type="button" onClick={onClearConnector} className="text-accent hover:underline">
+          <button type="button" onClick={onClearConnector} className="text-accent-ink hover:underline">
             Show every connector
           </button>
         </p>

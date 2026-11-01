@@ -1,14 +1,14 @@
 /**
- * The request's path as a compact stepper, under the title of the
- * request page. Each step: a square glyph, its name, and a short line
- * (who it waits on, counts, or the UTC time it happened).
+ * The request's path as a checkpoint route, under the title of the
+ * request page. Each step: a node, its name, and a short line (who it
+ * waits on, counts, or the UTC time it happened).
  *
- *   done      solid ok square
- *   current   hollow warn square (waiting on someone or the agent)
- *   ready     hollow accent square (ready to reveal)
- *   stopped   solid bad square and the exact word (rejected, refused, failed)
- *   closed    hollow edge square and the word (expired, cancelled)
- *   upcoming  hollow edge square, muted
+ *   done      solid square, and the line to the next step is lit
+ *   current   ring (waiting on someone or the agent)
+ *   ready     filled ring (ready to reveal)
+ *   stopped   diamond in bad and the exact word (rejected, refused, failed)
+ *   closed    dashed square and the word (expired, cancelled)
+ *   upcoming  hollow square, muted
  *
  * An ordered list; the step that needs attention carries
  * aria-current="step", and a visually hidden sentence says where the
@@ -19,13 +19,13 @@ import type { LifecycleStep, StepState } from '../requests/lifecycle';
 import { lifecycleSummary } from '../requests/lifecycle';
 import { formatExact, formatShort } from '../lib/time';
 
-const GLYPH: Record<StepState, string> = {
-  done: 'bg-ok',
-  current: 'border-2 border-warn',
-  ready: 'border-2 border-accent',
-  stopped: 'bg-bad',
-  closed: 'border-[1.5px] border-edge',
-  upcoming: 'border-[1.5px] border-edge',
+const NODE: Record<StepState, string> = {
+  done: 'border-2 border-accent-ink bg-accent-ink',
+  current: 'rounded-full border-[3px] border-accent-ink bg-surface',
+  ready: 'rounded-full border-[3px] border-accent-ink bg-accent',
+  stopped: 'rotate-45 scale-[.85] border-2 border-bad bg-bad',
+  closed: 'border-2 border-dashed border-edge bg-surface',
+  upcoming: 'border-2 border-edge bg-surface',
 };
 
 export function Lifecycle({ steps, now }: { steps: LifecycleStep[]; now: number }) {
@@ -35,28 +35,33 @@ export function Lifecycle({ steps, now }: { steps: LifecycleStep[]; now: number 
       <p className="sr-only">{lifecycleSummary(steps)}</p>
       <ol
         aria-label="Request progress"
-        className="m-0 grid list-none grid-flow-col auto-cols-fr gap-0 rounded-md border border-border bg-surface p-0 max-[600px]:grid-flow-row max-[600px]:auto-cols-auto"
+        className="m-0 grid list-none auto-cols-fr grid-flow-col gap-0 rounded-xl border border-border bg-surface px-4 py-3.5 max-[600px]:grid-flow-row max-[600px]:auto-cols-auto"
       >
         {steps.map((s, i) => {
-          const muted = s.state === 'upcoming';
+          const quiet = s.state === 'upcoming' || s.state === 'closed';
+          const last = i === steps.length - 1;
           return (
             <li
               key={s.key}
               aria-current={i === attention ? 'step' : undefined}
-              className={
-                'relative min-w-0 border-l border-rule px-4 py-3 first:border-l-0 max-[600px]:border-l-0 max-[600px]:border-t max-[600px]:first:border-t-0 ' +
-                (i === attention && s.state !== 'closed' ? 'bg-sunken' : '')
-              }
+              className="relative min-w-0 pr-2.5 pt-[22px] max-[600px]:pb-3.5 max-[600px]:pl-7 max-[600px]:pr-0 max-[600px]:pt-0"
             >
-              <p className="m-0 flex items-center gap-2 text-ui">
-                <span aria-hidden="true" className={'box-border h-2 w-2 shrink-0 ' + GLYPH[s.state]} />
-                <span className={'truncate ' + (muted ? 'font-normal text-muted' : 'font-medium text-ink')}>{s.label}</span>
-              </p>
+              {!last && (
+                <span
+                  aria-hidden="true"
+                  className={
+                    'absolute left-4 right-1 top-1.5 h-0.5 max-[600px]:bottom-0 max-[600px]:left-1.5 max-[600px]:right-auto max-[600px]:top-[18px] max-[600px]:h-auto max-[600px]:w-0.5 ' +
+                    (s.state === 'done' ? 'bg-accent-ink' : 'bg-border')
+                  }
+                />
+              )}
+              <span aria-hidden="true" className={'absolute left-0 top-0 box-border h-3.5 w-3.5 ' + NODE[s.state]} />
+              <p className={'m-0 truncate text-[13px] leading-[18px] ' + (quiet ? 'font-medium text-muted' : 'font-semibold text-ink')}>{s.label}</p>
               {(s.detail || s.time) && (
-                <p className="m-0 mt-0.5 truncate pl-4 text-caption text-muted" title={s.time ? formatExact(s.time, true) : undefined}>
+                <p className="m-0 truncate font-mono text-[11px] leading-[15px] text-muted" title={s.time ? formatExact(s.time, true) : undefined}>
                   {s.detail}
                   {s.detail && s.time ? (s.state === 'ready' ? ' ' : ' · ') : ''}
-                  {s.time && <time dateTime={s.time} className="font-mono text-mono-small">{formatShort(s.time, now)}{s.state === 'ready' ? ' UTC' : ''}</time>}
+                  {s.time && <time dateTime={s.time}>{formatShort(s.time, now)}{s.state === 'ready' ? ' UTC' : ''}</time>}
                 </p>
               )}
             </li>

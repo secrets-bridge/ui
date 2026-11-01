@@ -52,7 +52,7 @@ export function Roles() {
         setCreating(false);
         setEditing(r);
       }}
-      className="text-left font-mono text-mono font-medium text-accent hover:underline"
+      className="text-left font-mono text-mono font-medium text-accent-ink hover:underline"
     >
       {r.name}
     </button>

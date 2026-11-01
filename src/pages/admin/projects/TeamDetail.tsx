@@ -116,7 +116,7 @@ export function TeamDetail({
             ) : undefined
           }
         >
-          <Link to="/admin/teams" className="font-medium text-accent hover:underline">
+          <Link to="/admin/teams" className="font-medium text-accent-ink hover:underline">
             Back to teams
           </Link>
         </Banner>
@@ -220,10 +220,10 @@ function TeamView({ team, all, onOpen, onDeleted }: { team: Team; all: Team[]; o
               Sub-teams
               <span className="ml-2 font-mono text-mono-small font-normal text-muted">{children.length}</span>
             </h2>
-            <ul className="m-0 list-none rounded-md border border-border bg-surface p-0">
+            <ul className="m-0 list-none rounded-xl border border-border bg-surface p-0">
               {children.map((c) => (
                 <li key={c.id} className="flex items-center justify-between gap-3 border-t border-rule px-4 py-2.5 first:border-t-0">
-                  <button type="button" onClick={() => onOpen(c.id)} className="text-left font-medium text-accent hover:underline">
+                  <button type="button" onClick={() => onOpen(c.id)} className="text-left font-medium text-accent-ink hover:underline">
                     {c.name}
                   </button>
                   <span className="text-caption text-muted">{c.status === 'archived' ? 'Archived' : c.description}</span>
@@ -349,7 +349,7 @@ function MembersSection({ team }: { team: Team }) {
       </h2>
       <p className="mb-3 mt-0.5 max-w-3xl text-caption text-muted">
         Membership only groups people. To give members access, grant a role on this team in{' '}
-        <Link to="/admin/assignments" className="font-medium text-accent hover:underline">
+        <Link to="/admin/assignments" className="font-medium text-accent-ink hover:underline">
           Assignments
         </Link>
         .
@@ -404,7 +404,7 @@ function MembersSection({ team }: { team: Team }) {
       )}
       {members.data &&
         (rows.length === 0 ? (
-          <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">No members yet.</p>
+          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-muted">No members yet.</p>
         ) : (
           <DataTable label={`Members of ${team.name}`} columns={columns} rows={rows} rowKey={(m) => m.user_id} minWidth={480} />
         ))}

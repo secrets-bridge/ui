@@ -52,7 +52,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
             <div className="flex gap-2">
               <button
                 onClick={this.reset}
-                className="px-3 py-1.5 rounded-md bg-accent text-bg text-sm font-medium hover:opacity-90 transition-colors"
+                className="px-3 py-1.5 rounded-md bg-accent text-on-accent text-sm font-semibold hover:bg-accent-hover"
               >
                 Try again
               </button>
@@ -60,7 +60,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
                 onClick={() => {
                   window.location.href = '/';
                 }}
-                className="px-3 py-1.5 rounded-md border border-border text-ink text-sm font-medium hover:bg-bg/30 transition-colors"
+                className="px-3 py-1.5 rounded-md border border-border text-ink text-sm font-medium hover:bg-hover transition-colors"
               >
                 Go home
               </button>

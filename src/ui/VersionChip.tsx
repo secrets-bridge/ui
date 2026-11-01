@@ -25,7 +25,7 @@ export function VersionChip({ className }: VersionChipProps) {
   return (
     <span
       className={
-        'inline-flex items-center gap-1 rounded-md border border-border/60 bg-bg/40 px-1.5 py-0.5 text-[10px] font-mono text-muted/80 ' +
+        'inline-flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 font-mono text-[10.5px] text-muted ' +
         (className || '')
       }
       title={title}

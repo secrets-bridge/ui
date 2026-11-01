@@ -81,7 +81,7 @@ export function Projects() {
       render: (p) => (
         <span className="inline-flex items-center gap-2.5">
           <EntityMark name={p.name} size="md" src={logoUrl('project', p.id, p.logo_version)} />
-          <button type="button" onClick={() => open(p.id)} className="text-left font-medium text-accent hover:underline">
+          <button type="button" onClick={() => open(p.id)} className="text-left font-medium text-accent-ink hover:underline">
             {p.name}
           </button>
         </span>
@@ -155,7 +155,7 @@ export function Projects() {
                 <p className="flex items-center justify-between gap-3">
                   <span className="inline-flex items-center gap-2">
                     <EntityMark name={p.name} src={logoUrl('project', p.id, p.logo_version)} />
-                    <button type="button" onClick={() => open(p.id)} className="text-left font-medium text-accent hover:underline">
+                    <button type="button" onClick={() => open(p.id)} className="text-left font-medium text-accent-ink hover:underline">
                       {p.name}
                     </button>
                   </span>

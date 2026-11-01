@@ -123,7 +123,7 @@ export function ProjectSecretsPanel({ project }: { project: Project }) {
       key: 'ref',
       header: 'Path',
       render: (b) => (
-        <button type="button" onClick={() => setEditing(b)} className="break-all text-left font-mono text-mono text-accent hover:underline">
+        <button type="button" onClick={() => setEditing(b)} className="break-all text-left font-mono text-mono text-accent-ink hover:underline">
           {refOf(b)}
         </button>
       ),
@@ -201,7 +201,7 @@ export function ProjectSecretsPanel({ project }: { project: Project }) {
             minWidth={820}
             stacked={(b) => (
               <div className="flex flex-col gap-1.5">
-                <button type="button" onClick={() => setEditing(b)} className="break-all text-left font-mono text-mono text-accent hover:underline">
+                <button type="button" onClick={() => setEditing(b)} className="break-all text-left font-mono text-mono text-accent-ink hover:underline">
                   {refOf(b)}
                 </button>
                 <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted">
@@ -585,7 +585,7 @@ function KeyPolicyFields({
     <fieldset className="flex min-w-0 flex-col gap-1.5">
       <legend className="mb-1.5 p-0 text-body font-semibold text-ink">Keys</legend>
       <label className="flex items-center gap-2.5 text-ui font-normal">
-        <input type="checkbox" {...registerAllowAll} className="m-0 h-4 w-4 accent-accent" data-autofocus={autoFocus ? true : undefined} />
+        <input type="checkbox" {...registerAllowAll} className="m-0 h-4 w-4 accent-accent-ink" data-autofocus={autoFocus ? true : undefined} />
         Allow every key in this secret
       </label>
       {!allowAll && (
@@ -619,7 +619,7 @@ function OpsField({ idPrefix, register, error }: { idPrefix: string; register: U
       <div className="flex flex-wrap gap-x-5 gap-y-2">
         {OPS.map((op) => (
           <label key={op} className="flex items-center gap-2.5 text-ui font-normal max-md:min-h-(--control-touch)">
-            <input type="checkbox" value={op} {...register} className="m-0 h-4 w-4 accent-accent" />
+            <input type="checkbox" value={op} {...register} className="m-0 h-4 w-4 accent-accent-ink" />
             {OP_LABEL[op]}
             <span className="font-mono text-mono-small text-muted">{op}</span>
           </label>

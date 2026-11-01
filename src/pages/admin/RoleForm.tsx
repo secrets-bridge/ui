@@ -158,7 +158,7 @@ export function RoleForm({ initial, onCreate, onUpdatePermissions, onCancel, sub
     >
       <form id="role-form" noValidate onSubmit={handleSubmit(onValid)} className="flex flex-col gap-[18px]">
         {initial ? (
-          <dl className="m-0 rounded-md border border-border bg-sunken px-3.5 py-1">
+          <dl className="m-0 rounded-lg border border-border bg-bg px-3.5 py-1">
             <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 border-b border-rule py-2.5 text-ui font-normal">
               <dt className="text-muted">Name</dt>
               <dd className="m-0 font-mono text-mono text-ink">{initial.name}</dd>
@@ -196,19 +196,19 @@ export function RoleForm({ initial, onCreate, onUpdatePermissions, onCancel, sub
           {groups.map((g) => (
             <div key={g.name} className="flex flex-col gap-1">
               <h3 className={'text-label ' + (g.name === UNKNOWN_GROUP ? 'text-bad' : 'text-muted')}>{g.name}</h3>
-              <div className="flex flex-col rounded-md border border-border">
+              <div className="flex flex-col rounded-lg border border-border">
                 {g.items.map((d) => {
                   const on = selectedSet.has(d.key);
                   return (
                     <label
                       key={d.key}
-                      className="flex cursor-pointer items-start gap-2.5 border-t border-rule px-3 py-2 first:border-t-0 hover:bg-sunken max-md:min-h-(--control-touch)"
+                      className="flex cursor-pointer items-start gap-2.5 border-t border-rule px-3 py-2 first:border-t-0 hover:bg-hover max-md:min-h-(--control-touch)"
                     >
                       <input
                         type="checkbox"
                         checked={on}
                         onChange={() => toggle(d.key)}
-                        className="mt-[3px] h-4 w-4 shrink-0 accent-accent"
+                        className="mt-[3px] h-4 w-4 shrink-0 accent-accent-ink"
                         data-perm={d.key}
                       />
                       <span className="min-w-0">

@@ -34,9 +34,9 @@ export function RevealPanel({ reference, values, secondsLeft, totalSeconds, onCo
   const left = Math.max(0, secondsLeft);
   const pct = totalSeconds > 0 ? Math.round((left / totalSeconds) * 100) : 0;
   return (
-    <div role="region" aria-label="Revealed values" className="rounded-md border border-ink bg-surface">
-      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 border-b border-rule px-4 py-3">
-        <b className="text-body font-semibold text-ink">Values for {reference}</b>
+    <div role="region" aria-label="Revealed values" className="overflow-hidden rounded-xl border border-accent-line bg-surface">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5">
+        <b className="text-block-heading text-ink">Values for {reference}</b>
         <span role="timer" className="font-mono text-mono text-muted">
           Viewing closes in {clock(left)}
         </span>
@@ -45,14 +45,14 @@ export function RevealPanel({ reference, values, secondsLeft, totalSeconds, onCo
           Hide now
         </Button>
       </div>
-      <div aria-hidden="true" className="relative h-[3px] overflow-hidden bg-rule">
-        <i className="absolute inset-y-0 left-0 bg-accent motion-safe:transition-[width] motion-safe:duration-1000 motion-safe:ease-linear" style={{ width: `${pct}%` }} />
+      <div aria-hidden="true" className="relative h-1 overflow-hidden bg-raised">
+        <i className="absolute inset-y-0 left-0 bg-accent-ink motion-safe:transition-[width] motion-safe:duration-1000 motion-safe:ease-linear" style={{ width: `${pct}%` }} />
       </div>
       <ul className="m-0 list-none p-0">
         {values.map((v) => (
           <li
             key={v.key}
-            className="grid grid-cols-[180px_minmax(0,1fr)_auto] items-center gap-3 border-t border-rule px-4 py-3 first:border-t-0 max-[700px]:grid-cols-[minmax(0,1fr)_auto]"
+            className="grid grid-cols-[minmax(120px,180px)_minmax(0,1fr)_auto] items-center gap-3 border-t border-rule px-4 py-3 first:border-t-0 max-[700px]:grid-cols-[minmax(0,1fr)_auto]"
           >
             <span className="break-all font-mono text-mono text-ink">{v.key}</span>
             {v.error ? (
@@ -65,11 +65,11 @@ export function RevealPanel({ reference, values, secondsLeft, totalSeconds, onCo
                 {v.value.kind === 'text' && v.value.text === '' ? (
                   // An empty value is a real value (api#286), not a failed
                   // load, so say so instead of showing a blank box.
-                  <span className="block rounded-sm border border-dashed border-edge bg-sunken px-2 py-1 text-caption italic text-muted">
+                  <span className="block rounded-md border border-border bg-field px-[11px] py-[9px] text-caption italic text-muted">
                     Empty value
                   </span>
                 ) : (
-                  <code className="block select-all rounded-sm border border-dashed border-edge bg-sunken px-2 py-1 font-mono text-[13px] [overflow-wrap:anywhere]">
+                  <code className="block select-all rounded-md border border-border bg-field px-[11px] py-[9px] font-mono text-[13px] leading-[19px] [overflow-wrap:anywhere]">
                     {v.value.kind === 'text' ? v.value.text : v.value.base64}
                   </code>
                 )}
@@ -88,7 +88,7 @@ export function RevealPanel({ reference, values, secondsLeft, totalSeconds, onCo
           </li>
         ))}
       </ul>
-      <p className="m-0 border-t border-rule bg-sunken px-4 py-3 text-caption text-muted">
+      <p className="m-0 border-t border-border px-4 py-3 text-[13px] leading-[19px] text-muted">
         Hiding clears the values from this page. It doesn't rotate the provider credential, and it can't clear
         anything already copied or pasted elsewhere.
       </p>

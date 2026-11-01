@@ -56,7 +56,7 @@ Values are revealed only on the request page (`/requests/:id`), behind the secon
 
 ## Design system
 
-The console follows the Secrets Bridge brand book: IBM Plex Sans and Mono, an ultramarine accent, light and dark themes, square corners (4px at most), tables rather than cards, and status as a small square glyph plus the exact status word.
+The console uses the Switchboard identity: warm graphite with a chartreuse accent and blue for success, Geist and Geist Mono with Bricolage Grotesque for titles, light and dark themes, a 6 to 14px radius scale, and status as a shape per group plus the exact status word. Lime is a fill, never a line: anything thin uses `accent-ink`, and ESLint refuses `text-accent` and its relatives.
 
 - `src/index.css` holds the tokens as CSS variables for both themes (Tailwind 4 `@theme inline`), the type scale, the focus ring and the reduced-motion rules.
 - `public/theme-init.js` sets `data-theme` before first paint (the CSP allows no inline script). `src/theme/theme.ts` and `ThemeToggle` switch it, and the choice is stored under `sb-theme`.

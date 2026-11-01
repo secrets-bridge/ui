@@ -38,7 +38,7 @@ type Decision = 'approve' | 'reject';
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-md border border-border bg-surface">
+    <section className="rounded-xl border border-border bg-surface">
       <h2 className="border-b border-rule px-5 py-3.5 text-block-heading text-ink">{title}</h2>
       {children}
     </section>

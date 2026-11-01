@@ -102,7 +102,7 @@ export function Secrets() {
         <button
           type="button"
           onClick={() => setSelected(s)}
-          className="min-w-[260px] max-w-[420px] break-all text-left font-mono text-mono font-medium text-accent hover:underline"
+          className="min-w-[260px] max-w-[420px] break-all text-left font-mono text-mono font-medium text-accent-ink hover:underline"
         >
           {s.secret_ref}
         </button>
@@ -155,7 +155,7 @@ export function Secrets() {
           ) : hasPermission('integration.edit') ? (
             <Link
               to="/admin/provider-connections"
-              className="inline-flex h-(--control-md) items-center rounded-md border border-edge bg-surface px-3 text-ui font-medium text-ink hover:bg-sunken max-md:h-(--control-touch)"
+              className="inline-flex h-(--control-md) items-center rounded-md border border-edge bg-surface px-3 text-ui font-medium text-ink hover:bg-hover max-md:h-(--control-touch)"
             >
               Run discovery from a connection
             </Link>
@@ -321,7 +321,7 @@ function CatalogStatus({ status }: { status: Secret['status'] }) {
 
 function LabelChip({ k, v }: { k: string; v: unknown }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-sunken px-1.5 py-0.5 font-mono text-[11.5px]">
+    <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-raised px-1.5 py-0.5 font-mono text-[11.5px]">
       <span className="text-muted">{k}</span>
       <span className="text-muted">=</span>
       <span className="text-ink">{String(v)}</span>
@@ -363,7 +363,7 @@ function SecretDrawer({ secret: s, onClose }: { secret: Secret; onClose: () => v
       {s.provider_config && Object.keys(s.provider_config).length > 0 && (
         <>
           <h3 className="mb-2 mt-5 text-block-heading text-ink">Provider settings</h3>
-          <pre className="overflow-x-auto rounded-md border border-border bg-sunken px-3 py-2 font-mono text-mono-small text-ink">
+          <pre className="overflow-x-auto rounded-lg border border-border bg-field px-3 py-2 font-mono text-mono-small text-ink">
             {JSON.stringify(s.provider_config, null, 2)}
           </pre>
         </>

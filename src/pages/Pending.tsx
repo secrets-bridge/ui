@@ -36,7 +36,7 @@ export function Pending() {
           <div className="mb-8 flex justify-center min-[1000px]:hidden">
             <Logo size={24} product="Console" />
           </div>
-          <section className="flex flex-col gap-[18px] rounded-md border border-border bg-surface px-6 py-6">
+          <section className="flex flex-col gap-[18px] rounded-xl border border-border bg-surface px-6 py-6">
             <div>
               <h1 id="page-title" className="text-console-title text-ink">
                 Waiting for approval

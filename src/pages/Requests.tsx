@@ -365,7 +365,7 @@ function RequestTable({
           <Link
             to={`/requests/${r.id}`}
             title={operationTitle(r)}
-            className="block truncate font-mono text-mono font-medium text-ink hover:text-accent hover:underline"
+            className="block truncate font-mono text-mono font-medium text-ink hover:text-accent-ink hover:underline"
           >
             {keysOf(r).join(', ') || 'All keys'}
           </Link>

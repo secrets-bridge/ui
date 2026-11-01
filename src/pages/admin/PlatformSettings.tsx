@@ -117,7 +117,7 @@ function ReservedPriorityPanel({ setting }: { setting: PlatformSetting | null })
   }
 
   return (
-    <section aria-labelledby="reserved-heading" className="max-w-3xl rounded-md border border-border bg-surface">
+    <section aria-labelledby="reserved-heading" className="max-w-3xl rounded-xl border border-border bg-surface">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-rule px-5 py-3.5">
         <div className="min-w-0 flex-1 basis-[280px]">
           <h2 id="reserved-heading" className="text-block-heading text-ink">
@@ -276,7 +276,7 @@ function ChangeDialog({
           </p>
           <details className="mt-2">
             <summary className="cursor-pointer select-none font-medium">Query to list the scoped rules in the band</summary>
-            <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-surface px-3 py-2 font-mono text-mono-small leading-snug">
+            <pre className="mt-2 overflow-x-auto rounded-xl border border-border bg-surface px-3 py-2 font-mono text-mono-small leading-snug">
               {`SELECT id, name, priority, project_id
   FROM policy_rules
  WHERE is_platform_inherited = false

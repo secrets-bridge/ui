@@ -24,7 +24,7 @@ export function GitOpsCard({ query }: { query: ReturnType<typeof useRequestGitOp
   const rows = query.data ?? [];
   if (query.isLoading || query.isError || rows.length === 0) return null;
   return (
-    <section className="rounded-md border border-border bg-sunken" aria-labelledby="argocd-history-heading">
+    <section className="rounded-lg border border-border bg-bg" aria-labelledby="argocd-history-heading">
       <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-rule px-5 py-3.5">
         <h2 id="argocd-history-heading" className="text-block-heading text-muted">
           Argo CD history (before the Gateway)

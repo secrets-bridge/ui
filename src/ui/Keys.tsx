@@ -23,7 +23,7 @@ export function Keys({
         {keys.map((k) => (
           <span
             key={k}
-            className="inline-flex min-h-[22px] max-w-full items-center rounded-sm border border-border bg-sunken px-[7px] py-px font-mono text-[12px] [overflow-wrap:anywhere]"
+            className="inline-flex min-h-[22px] max-w-full items-center rounded-sm border border-border bg-raised px-[7px] py-px font-mono text-[11.5px] [overflow-wrap:anywhere]"
           >
             {k}
           </span>

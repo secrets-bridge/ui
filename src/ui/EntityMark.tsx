@@ -2,8 +2,8 @@
  * A project's or team's mark: its initials in a small square tile, so a
  * row can be found at a glance. Projects are filled, teams are outlined.
  *
- * Brand rules: square corners (round is only for people), neutrals only
- * (the accent is a signal and the status colours mean status), Plex Sans
+ * Design rules: a 6px radius (round is only for people), neutrals only
+ * (the accent is a signal and the status colours mean status), Geist Mono
  * 600. The mark is decoration; the name always sits next to it, so it is
  * hidden from screen readers.
  *
@@ -15,7 +15,7 @@
 import { useState } from 'react';
 
 const SIZE = {
-  sm: 'h-5 w-5 text-[9.5px] rounded-xs',
+  sm: 'h-[22px] w-[22px] text-[10px] rounded-sm',
   md: 'h-7 w-7 text-[11.5px] rounded-sm',
   lg: 'h-10 w-10 text-[15px] rounded-md',
 };
@@ -53,9 +53,9 @@ export function EntityMark({
     <span
       aria-hidden="true"
       className={
-        'inline-flex shrink-0 select-none items-center justify-center overflow-hidden border align-middle font-semibold leading-none tracking-[0.02em] ' +
+        'inline-flex shrink-0 select-none items-center justify-center overflow-hidden border align-middle font-mono font-semibold leading-none ' +
         SIZE[size] +
-        (showImage ? ' border-border bg-surface' : kind === 'team' ? ' border-edge bg-transparent text-muted' : ' border-border bg-sunken text-ink') +
+        (showImage ? ' border-border bg-surface' : kind === 'team' ? ' border-edge bg-transparent text-muted' : ' border-border bg-raised text-ink') +
         ' ' +
         className
       }

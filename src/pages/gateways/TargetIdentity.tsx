@@ -18,7 +18,7 @@ function CopyId({ id }: { id: string }) {
           () => toast("Couldn't copy the target id."),
         );
       }}
-      className="text-left font-mono text-mono-small whitespace-nowrap text-muted hover:text-accent hover:underline"
+      className="text-left font-mono text-mono-small whitespace-nowrap text-muted hover:text-accent-ink hover:underline"
     >
       {id}
     </button>

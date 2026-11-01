@@ -216,7 +216,7 @@ export function PolicyForm({ formId, initial, onSubmit }: Props) {
           ] as const
         ).map(([v, label]) => (
           <label key={v} className="flex items-center gap-2.5 text-ui font-normal">
-            <input type="radio" value={v} {...register('anchor')} disabled={!!initial} className="accent-accent" />
+            <input type="radio" value={v} {...register('anchor')} disabled={!!initial} className="accent-accent-ink" />
             {label}
           </label>
         ))}
@@ -295,7 +295,7 @@ export function PolicyForm({ formId, initial, onSubmit }: Props) {
         <div className="flex flex-col gap-1.5">
           <span className="text-body font-semibold text-ink">Status</span>
           <label className="flex h-(--control-md) items-center gap-2.5 text-ui font-normal">
-            <input type="checkbox" {...register('enabled')} className="h-4 w-4 accent-accent" />
+            <input type="checkbox" {...register('enabled')} className="h-4 w-4 accent-accent-ink" />
             Enabled
           </label>
         </div>

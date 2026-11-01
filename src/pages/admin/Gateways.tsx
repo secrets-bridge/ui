@@ -93,7 +93,7 @@ export function Gateways() {
       key: 'name',
       header: 'Gateway',
       render: (g) => (
-        <button type="button" onClick={() => setOpenId(g.id)} className="text-left font-medium text-accent hover:underline">
+        <button type="button" onClick={() => setOpenId(g.id)} className="text-left font-medium text-accent-ink hover:underline">
           {g.name}
           <span className="block text-caption font-normal text-muted">{g.boundary}</span>
         </button>
@@ -174,7 +174,7 @@ export function Gateways() {
             stacked={(g) => (
               <div className="flex flex-col gap-1">
                 <p className="flex items-center justify-between gap-3">
-                  <button type="button" onClick={() => setOpenId(g.id)} className="text-left font-medium text-accent hover:underline">
+                  <button type="button" onClick={() => setOpenId(g.id)} className="text-left font-medium text-accent-ink hover:underline">
                     {g.name}
                   </button>
                   <GatewayStatusWord status={g.status} />

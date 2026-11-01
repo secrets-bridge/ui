@@ -142,7 +142,7 @@ export function ProviderConnections({ project, env }: Props) {
             )}
           />
         ) : (
-          <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">
+          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-muted">
             {emptyText(capability, env, perms)}
           </p>
         ))}
@@ -288,7 +288,7 @@ function BindDrawer({
             {perms.includes('integration.edit') ? (
               <>
                 Enable one, or bind it from{' '}
-                <Link to="/admin/provider-connections" className="font-medium text-accent hover:underline">
+                <Link to="/admin/provider-connections" className="font-medium text-accent-ink hover:underline">
                   Provider connections
                 </Link>
                 .
@@ -311,7 +311,7 @@ function BindDrawer({
                 key={r.id}
                 className={
                   'flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 max-md:min-h-(--control-touch) ' +
-                  (selected === r.id ? 'border-accent bg-accent-soft' : 'border-border hover:bg-sunken')
+                  (selected === r.id ? 'border-accent-ink bg-accent-soft' : 'border-border hover:bg-hover')
                 }
               >
                 <input
@@ -320,7 +320,7 @@ function BindDrawer({
                   value={r.id}
                   checked={selected === r.id}
                   onChange={() => setSelected(r.id)}
-                  className="accent-accent"
+                  className="accent-accent-ink"
                   data-autofocus={i === 0 ? true : undefined}
                 />
                 <span className="min-w-0">

@@ -189,7 +189,7 @@ function Section({ title, aside, children }: { title: string; aside?: ReactNode;
 }
 
 function List({ children }: { children: ReactNode }) {
-  return <ul className="m-0 list-none rounded-md border border-border p-0">{children}</ul>;
+  return <ul className="m-0 list-none rounded-lg border border-border p-0">{children}</ul>;
 }
 
 function Item({ children }: { children: ReactNode }) {
@@ -372,7 +372,7 @@ function Connectors({ d }: { d: GatewayDetail }) {
                     Discovery on
                     {c.last_discovery_at ? ` · last catalog ${formatExact(c.last_discovery_at)}` : ' · no catalog yet'}
                     {c.allowed_projects?.length ? ` · ${c.allowed_projects.length} ${c.allowed_projects.length === 1 ? 'AppProject' : 'AppProjects'} · ` : ' · '}
-                    <Link to={`/gateways?connector=${encodeURIComponent(c.id)}`} className="text-accent hover:underline">
+                    <Link to={`/gateways?connector=${encodeURIComponent(c.id)}`} className="text-accent-ink hover:underline">
                       View targets
                     </Link>
                   </p>
@@ -528,7 +528,7 @@ function Tasks({ gateway }: { gateway: Gateway }) {
           {items.map((t) => (
             <Item key={t.id}>
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <Link to={`/requests/${t.request_id}`} className="font-mono text-mono-small text-accent hover:underline">
+                <Link to={`/requests/${t.request_id}`} className="font-mono text-mono-small text-accent-ink hover:underline">
                   {requestRef(t.request_id)}
                 </Link>
                 <ToneStatus tone={TASK_STATE_TONE[t.state] ?? 'neutral'}>{TASK_STATE_LABEL[t.state] ?? t.state}</ToneStatus>

@@ -40,7 +40,7 @@ export function Tabs({ tabs, value, onChange, label, idPrefix }: Props) {
   };
 
   return (
-    <div role="tablist" aria-label={label} className="flex gap-1 overflow-x-auto border-b border-border">
+    <div role="tablist" aria-label={label} className="flex gap-[22px] overflow-x-auto border-b border-border">
       {tabs.map((t) => {
         const on = t.id === value;
         return (
@@ -58,12 +58,12 @@ export function Tabs({ tabs, value, onChange, label, idPrefix }: Props) {
             onKeyDown={onKeyDown}
             onClick={() => onChange(t.id)}
             className={
-              '-mb-px inline-flex h-[34px] shrink-0 items-center gap-2 border-b-[3px] px-3 text-ui max-md:h-(--control-touch) ' +
-              (on ? 'border-accent font-semibold text-ink' : 'border-transparent font-medium text-muted hover:text-ink')
+              '-mb-px inline-flex h-[42px] shrink-0 items-center gap-2 border-b-2 text-ui font-medium max-md:h-(--control-touch) ' +
+              (on ? 'border-accent-ink text-ink' : 'border-transparent text-muted hover:text-ink')
             }
           >
             {t.label}
-            {t.count !== undefined && <span className="font-mono text-mono-small">{t.count}</span>}
+            {t.count !== undefined && <span className="font-mono text-mono-small text-muted">{t.count}</span>}
           </button>
         );
       })}
