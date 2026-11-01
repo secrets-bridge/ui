@@ -68,12 +68,13 @@ const invalidateAfterMutation = (
  * status). Without the permission the api returns 403 out_of_scope_project
  * — caller is expected to gate the route via `hasPermission`.
  */
-export function useProviderConnectionsAdmin() {
+export function useProviderConnectionsAdmin(enabled = true) {
   return useQuery({
     queryKey: providerConnectionsKey.list(),
     queryFn: () =>
       api.get<ProviderConnection[]>('/api/v1/provider-connections'),
     staleTime: 30_000,
+    enabled,
   });
 }
 

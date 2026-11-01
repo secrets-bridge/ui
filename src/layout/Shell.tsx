@@ -168,14 +168,16 @@ function SidebarContent({ onSignOut }: { onSignOut: () => void }) {
 }
 
 function Navigation() {
-  const { identity, hasPermission, meStatus } = useAuth();
+  const { identity, hasPermission, hasGlobalPermission, meStatus } = useAuth();
   const me = identity?.id ?? '';
 
   // Sidebar entries gated by the live permission set:
   //   Requests        → secret.request OR secret.approve
   //   Inbox           → secret.value.provide (at any scope)
   //   Agents          → agent.list
-  //   Gateways        → gateway.list
+  //   Gateways        → gateway.list, global (every /admin/gateways read
+  //                     is global-only)
+  //   Argo CD targets → gateway.bind at any scope, or global gateway.list
   //   Secrets         → secret.list
   //   Audit           → audit.read
   //   Project / team policies → policy.author (never auto-shown for
@@ -197,7 +199,8 @@ function Navigation() {
   const showProviderConnections = hasPermission('integration.edit');
   const showSignIn = hasPermission('auth.sso.edit');
   const showScopedPolicies = hasPermission('policy.author');
-  const showGateways = hasPermission('gateway.list');
+  const showGateways = hasGlobalPermission('gateway.list');
+  const showTargets = hasPermission('gateway.bind') || showGateways;
   const anyAdmin =
     showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showProviderConnections || showSignIn || showGateways;
 
@@ -261,6 +264,7 @@ function Navigation() {
         <NavItem to="/projects" end label="My projects" />
         {showScopedPolicies && <NavItem to="/projects/policies" label="Project policies" />}
         {showScopedPolicies && <NavItem to="/teams/policies" label="Team policies" />}
+        {showTargets && <NavItem to="/gateways" label="Argo CD targets" />}
       </NavGroup>
 
       {anyAdmin && (

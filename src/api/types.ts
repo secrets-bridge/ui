@@ -114,6 +114,9 @@ export interface MeResponse {
   email: string;
   display_name: string;
   permissions: string[];
+  // The subset of `permissions` held through an unscoped grant. Absent on
+  // older APIs, which reads as no global permission (fail-closed).
+  global_permissions?: string[];
   teams: MeTeam[];
   projects: MyProject[];
   // True when the user has at least one MFA factor (TOTP or

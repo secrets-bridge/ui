@@ -13,7 +13,7 @@
  * text from the provider, so they are shown as plain text only.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
@@ -23,6 +23,7 @@ import { useMyProjects } from '../api/tenancy';
 import { useAuth } from '../auth/AuthContext';
 import { providerLabel } from '../lib/providers';
 import { formatAge, formatExact } from '../lib/time';
+import { useDebounced } from '../lib/useDebounced';
 import { useNow } from '../lib/useNow';
 import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
@@ -38,16 +39,6 @@ import { DiscoverDrawer } from './DiscoverDrawer';
 
 const LIMIT = 200;
 const PROVIDERS = ['vault', 'aws-sm', 'gcp-sm', 'azure-kv'];
-
-/** The value of `text` once it has stopped changing for `ms`. */
-function useDebounced<T>(value: T, ms = 300): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = window.setTimeout(() => setV(value), ms);
-    return () => window.clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
 
 export function Secrets() {
   const { hasPermission } = useAuth();
