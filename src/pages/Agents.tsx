@@ -27,7 +27,7 @@ import { useSearchParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { type AdminAgent, type AgentStatus, useAdminAgents, useRevokeAgent } from '../api/agents';
 import { useAuth } from '../auth/AuthContext';
-import { AGENT_STATUS_LABEL as LABEL, AGENT_STATUS_MEANING as MEANING } from '../lib/agentStatus';
+import { AGENT_STATUS_LABEL as LABEL, AGENT_STATUS_MEANING as MEANING, AGENT_STATUS_TONE } from '../lib/agentStatus';
 import { providerLabel } from '../lib/providers';
 import { formatAgo, formatExact } from '../lib/time';
 import { useNow } from '../lib/useNow';
@@ -40,6 +40,7 @@ import { EmptyState } from '../ui/EmptyState';
 import { Field, Select, Textarea } from '../ui/Field';
 import { Keys } from '../ui/Keys';
 import { PageHeader } from '../ui/PageHeader';
+import { ToneStatus } from '../ui/Status';
 import { useToast } from '../ui/toastContext';
 import { AgentStatusWord } from './agents/AgentStatusWord';
 import { EnrollAgentDrawer } from './agents/EnrollAgentDrawer';
@@ -64,6 +65,7 @@ export function Agents() {
     .filter((a) => !status || a.status === status)
     .sort((a, b) => Number(a.status === 'revoked') - Number(b.status === 'revoked') || a.name.localeCompare(b.name));
   const open = all.find((a) => a.id === openId) ?? null;
+  const stale = all.find((a) => a.status === 'stale');
   const count = (s: AgentStatus) => all.filter((a) => a.status === s).length;
   const facts = [
     `${all.length} ${all.length === 1 ? 'agent' : 'agents'}`,
@@ -135,19 +137,54 @@ export function Agents() {
         }
       />
 
+      {stale && (
+        <Banner
+          tone="error"
+          className="mb-4"
+          title={`${stale.name} has sent no heartbeat${stale.last_seen_at ? ` since ${formatAgo(stale.last_seen_at, now)}` : ''}.`}
+          action={
+            <Button variant="secondary" size="sm" onClick={() => setOpenId(stale.id)}>
+              View agent
+            </Button>
+          }
+        >
+          Check it{stale.cluster_name ? ` in cluster ${stale.cluster_name}` : ''}. If it's gone for good, revoke it.
+        </Banner>
+      )}
+
+      {connections.length > 1 && (
+        <div role="group" aria-label="Filter by connection" className="mb-4 grid grid-cols-[repeat(auto-fit,minmax(min(220px,100%),1fr))] overflow-hidden rounded-xl border border-border bg-bg">
+          {connections.map(([id, name]) => {
+            const on = id === connection;
+            const mine = all.filter((a) => a.provider_connection_id === id && a.status !== 'revoked');
+            return (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setParams(on ? {} : { connection: id }, { replace: true })}
+                className={'relative flex flex-col items-start gap-1.5 border-r border-border px-[18px] py-3.5 text-left last:border-r-0 hover:bg-hover ' + (on ? 'bg-surface' : '')}
+              >
+                <span className="flex w-full items-baseline justify-between gap-3">
+                  <span className="truncate font-mono text-[14px] text-ink">{name}</span>
+                  <span className="text-caption text-muted">{providerLabel(mine[0]?.provider_type ?? '')}</span>
+                </span>
+                <span className="flex flex-wrap gap-3">
+                  {[...new Set(mine.map((a) => a.status))].map((s) => (
+                    <ToneStatus key={s} tone={AGENT_STATUS_TONE[s] ?? 'neutral'}>
+                      {mine.filter((a) => a.status === s).length} {LABEL[s].toLowerCase()}
+                    </ToneStatus>
+                  ))}
+                </span>
+                {on && <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[3px] bg-accent-ink" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {all.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2.5">
-          <label className="min-w-[200px] max-[600px]:w-full">
-            <span className="sr-only">Connection</span>
-            <Select value={connection} onChange={(e) => setParams(e.target.value ? { connection: e.target.value } : {}, { replace: true })} className="w-full">
-              <option value="">All connections</option>
-              {connections.map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-            </Select>
-          </label>
           <label className="min-w-[160px] max-[600px]:w-full">
             <span className="sr-only">Status</span>
             <Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className="w-full">
@@ -215,6 +252,7 @@ export function Agents() {
             rows={rows}
             rowKey={(a) => a.id}
             onRowClick={(a) => setOpenId(a.id)}
+            selected={(a) => a.id === openId}
             minWidth={880}
             stacked={(a) => (
               <div className="flex flex-col gap-1">

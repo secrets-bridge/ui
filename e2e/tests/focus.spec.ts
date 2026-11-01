@@ -150,13 +150,14 @@ test('the scope in the top bar filters Overview, Approvals and Requests, and onl
   const requester = await as(browser, fx.users.requester);
   const id = await submit(requester, 'e2e focus: scope');
   await requester.goto('/requests');
-  await expect(requester.getByText(requestRef(id))).toBeVisible();
+  const row = requester.getByRole('region', { name: 'Your requests' }).getByText(requestRef(id));
+  await expect(row).toBeVisible();
 
   const scope = requester.getByRole('combobox', { name: 'Scope' });
   await scope.selectOption({ label: 'e2e-other · dev' });
-  await expect(requester.getByText(requestRef(id))).toHaveCount(0);
+  await expect(row).toHaveCount(0);
   await scope.selectOption({ index: 0 });
-  await expect(requester.getByText(requestRef(id))).toBeVisible();
+  await expect(row).toBeVisible();
 
   await requester.goto('/secrets');
   await expect(requester.getByRole('combobox', { name: 'Scope' })).toHaveCount(0);

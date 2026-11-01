@@ -5,6 +5,9 @@ import { adminPassword, as, fx } from '../support/stack';
 // the sidebar stays short. Hiding a link isn't authorization: rbac.spec.ts
 // covers what the api refuses.
 
+// Below 1360px the sections are a select; these look at the column.
+test.use({ viewport: { width: 1440, height: 900 } });
+
 test('the sidebar has one Administration entry, and it opens the first section', async ({ browser }) => {
   const page = await as(browser, fx.users.admin, adminPassword);
   const main = page.getByRole('navigation', { name: 'Main' });

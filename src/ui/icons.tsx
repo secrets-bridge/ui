@@ -150,6 +150,24 @@ export function AdminIcon(p: IconProps) {
   );
 }
 
+export function PolicyIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M5 3.5H19V20.5H5Z" />
+      <path d="M8.5 8H15.5M8.5 12H15.5M8.5 16H12.5" />
+    </Icon>
+  );
+}
+
+export function TargetIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M4 4H20V20H4Z" />
+      <path d="M9.5 9.5H14.5V14.5H9.5Z" />
+    </Icon>
+  );
+}
+
 export function CatalogIcon(p: IconProps) {
   return (
     <Icon {...p}>

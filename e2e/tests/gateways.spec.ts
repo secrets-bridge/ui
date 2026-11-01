@@ -10,6 +10,9 @@ import { secondFactor, stepUp } from '../support/totp';
 
 test.describe.configure({ mode: 'serial' });
 
+// Wide enough for Administration's own navigation.
+test.use({ viewport: { width: 1440, height: 900 } });
+
 const MASK = '••••••••••••';
 
 /** n random bytes as hex (WebCrypto, so no node typings). */

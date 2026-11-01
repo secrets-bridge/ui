@@ -21,7 +21,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { useAdminAgents, type AdminAgent, type AgentStatus } from '../api/agents';
+import { useAdminAgents, type AdminAgent } from '../api/agents';
 import { useMe } from '../api/me';
 import { usePendingUsers } from '../api/pendingUsers';
 import { useRequests } from '../api/requests';
@@ -29,6 +29,7 @@ import type { AccessRequest } from '../api/types';
 import { useWorkflows } from '../api/workflows';
 import { useAuth } from '../auth/AuthContext';
 import { roleLabelFor } from '../auth/roleLabel';
+import { AGENT_STATUS_TONE } from '../lib/agentStatus';
 import { isOpen, needsMyDecision } from '../lib/requestQueues';
 import { requestRef } from '../lib/requestRef';
 import { useNow } from '../lib/useNow';
@@ -162,11 +163,11 @@ export function Overview() {
   };
 
   const counters = [
-    { id: 'needs', count: items.length, label: needsLabel(items) },
+    { id: 'needs', count: items.length, label: needsLabel(items), short: 'Needs you' },
     ...(canRequest
       ? [
-          { id: 'open', count: open.length, label: 'In motion · your requests' },
-          { id: 'closed', count: closed.length, label: `Closed · last ${RECENT_DAYS} days` },
+          { id: 'open', count: open.length, label: 'In motion · your requests', short: 'In motion' },
+          { id: 'closed', count: closed.length, label: `Closed · last ${RECENT_DAYS} days`, short: 'Closed' },
         ]
       : []),
   ];
@@ -830,13 +831,6 @@ function Rail({
   );
 }
 
-const AGENT_TONE: Partial<Record<AgentStatus, 'ok' | 'bad' | 'warn' | 'neutral'>> = {
-  active: 'ok',
-  stale: 'bad',
-  error: 'bad',
-  enrolled: 'warn',
-};
-
 function SystemHealth({ agents }: { agents: ReturnType<typeof useAdminAgents> }) {
   const rows = (agents.data ?? []).filter((a) => a.status !== 'revoked' && a.status !== 'disabled');
   const byConnection = new Map<string, typeof rows>();
@@ -859,7 +853,7 @@ function SystemHealth({ agents }: { agents: ReturnType<typeof useAdminAgents> })
               </span>
               <span className="flex shrink-0 flex-wrap justify-end gap-3">
                 {statuses.map((s) => (
-                  <ToneStatus key={s} tone={AGENT_TONE[s] ?? 'neutral'}>
+                  <ToneStatus key={s} tone={AGENT_STATUS_TONE[s] ?? 'neutral'}>
                     {list.filter((a) => a.status === s).length} {s}
                   </ToneStatus>
                 ))}

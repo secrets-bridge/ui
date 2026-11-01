@@ -1,8 +1,8 @@
 /**
  * Administration: one entry in the sidebar, with its own navigation here,
- * so the sidebar stays short and each kind of work has a heading. On a
- * phone the navigation is a select at the top of the page, since a list
- * this long would push the page itself out of view.
+ * so the sidebar stays short and each kind of work has a heading. Below
+ * 1360px it becomes a select above the page: admin tables are wide, and a
+ * second column of links would squeeze them into scrolling.
  */
 
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -38,8 +38,8 @@ export function AdminLayout() {
         </Banner>
       )}
 
-      <div className="flex items-start gap-7 max-[900px]:flex-col max-[900px]:gap-4">
-        <nav aria-label="Administration" className="flex w-[232px] shrink-0 flex-col gap-5 max-[900px]:hidden">
+      <div className="flex items-start gap-7 max-[1360px]:flex-col max-[1360px]:gap-4">
+        <nav aria-label="Administration" className="flex w-[232px] shrink-0 flex-col gap-5 max-[1360px]:hidden">
           {sections.map((s) => (
             <div key={s.label} className="flex flex-col gap-0.5">
               <p className="px-2.5 pb-1.5 text-[12px] font-medium leading-4 text-muted">{s.label}</p>
@@ -51,7 +51,7 @@ export function AdminLayout() {
           ))}
         </nav>
 
-        <label className="hidden w-full max-[900px]:block">
+        <label className="hidden w-full max-w-[360px] max-[1360px]:block max-[600px]:max-w-none">
           <span className="sr-only">Administration section</span>
           <Select value={current?.to ?? ''} onChange={(e) => navigate(e.target.value)} className="w-full">
             {!current && <option value="">Choose a section</option>}

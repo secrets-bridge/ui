@@ -9,8 +9,9 @@
  *
  * Filters apply as you type (path prefix, project, provider, status,
  * cluster and key:value labels, all ANDed) and Reset clears them. A row
- * opens the secret's details in a drawer. Labels are operator-supplied
- * text from the provider, so they are shown as plain text only.
+ * opens the secret's details beside the table, so the list stays in view,
+ * or in a drawer where there's no room. Labels are operator-supplied text
+ * from the provider, so they are shown as plain text only.
  */
 
 import { useState } from 'react';
@@ -24,6 +25,7 @@ import { useAuth } from '../auth/AuthContext';
 import { providerLabel } from '../lib/providers';
 import { formatAge, formatExact } from '../lib/time';
 import { useDebounced } from '../lib/useDebounced';
+import { useMinWidth } from '../lib/useMinWidth';
 import { useNow } from '../lib/useNow';
 import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
@@ -32,7 +34,7 @@ import { Drawer } from '../ui/Drawer';
 import { EmptyState } from '../ui/EmptyState';
 import { Input, Select } from '../ui/Field';
 import { Path } from '../ui/Path';
-import { SearchIcon } from '../ui/icons';
+import { CloseIcon, SearchIcon } from '../ui/icons';
 import { PageHeader } from '../ui/PageHeader';
 import { ToneStatus } from '../ui/Status';
 import { DiscoverDrawer } from './DiscoverDrawer';
@@ -55,6 +57,7 @@ export function Secrets() {
   const [labelError, setLabelError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Secret | null>(null);
   const [discoverOpen, setDiscoverOpen] = useState(false);
+  const docked = useMinWidth(1360);
 
   const filter: SecretsFilter = {
     ref_prefix: useDebounced(prefix.trim()) || undefined,
@@ -286,14 +289,42 @@ export function Secrets() {
 
       {list.data &&
         (rows.length > 0 ? (
-          <DataTable
-            label="Discovered secrets"
-            columns={columns}
-            rows={rows}
-            rowKey={(s) => s.id}
-            onRowClick={setSelected}
-            minWidth={880}
-          />
+          <div className="flex items-start gap-6">
+            <div className="min-w-0 flex-1">
+              <DataTable
+                label="Discovered secrets"
+                // With the details open beside it, the table keeps what
+                // tells rows apart; the rest is in the details.
+                columns={docked && selected ? columns.filter((c) => c.key !== 'cluster' && c.key !== 'labels') : columns}
+                rows={rows}
+                rowKey={(s) => s.id}
+                onRowClick={setSelected}
+                selected={(s) => s.id === selected?.id}
+                minWidth={docked && selected ? 560 : 880}
+              />
+            </div>
+            {docked && selected && (
+              <aside aria-label="Secret details" className="w-[380px] shrink-0 rounded-xl border border-border bg-surface">
+                <div className="flex items-start gap-3 border-b border-border px-4 py-3.5">
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <h2 className="text-block-heading text-ink">Secret details</h2>
+                    <Path value={selected.secret_ref} />
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close details"
+                    onClick={() => setSelected(null)}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink hover:bg-hover"
+                  >
+                    <CloseIcon />
+                  </button>
+                </div>
+                <div className="p-4">
+                  <SecretDetails secret={selected} />
+                </div>
+              </aside>
+            )}
+          </div>
         ) : filtered ? (
           <EmptyState
             title="No secrets match these filters."
@@ -309,7 +340,11 @@ export function Secrets() {
           </EmptyState>
         ))}
 
-      {selected && <SecretDrawer secret={selected} onClose={() => setSelected(null)} />}
+      {!docked && selected && (
+        <Drawer title="Secret details" subtitle={<Path value={selected.secret_ref} />} onClose={() => setSelected(null)}>
+          <SecretDetails secret={selected} />
+        </Drawer>
+      )}
       {discoverOpen && <DiscoverDrawer onClose={() => setDiscoverOpen(false)} />}
     </div>
   );
@@ -329,7 +364,7 @@ function LabelChip({ k, v }: { k: string; v: unknown }) {
   );
 }
 
-function SecretDrawer({ secret: s, onClose }: { secret: Secret; onClose: () => void }) {
+function SecretDetails({ secret: s }: { secret: Secret }) {
   const labels = Object.entries(s.labels ?? {});
   const rows: [string, React.ReactNode][] = [
     ['Provider', providerLabel(s.provider_type)],
@@ -341,10 +376,13 @@ function SecretDrawer({ secret: s, onClose }: { secret: Secret; onClose: () => v
     ...(s.updated_at_source ? [['Changed in provider', formatExact(s.updated_at_source)] as [string, React.ReactNode]] : []),
   ];
   return (
-    <Drawer title="Secret details" subtitle={<Path value={s.secret_ref} />} onClose={onClose}>
+    <>
+      <Banner title="Metadata only" className="mb-3">
+        To see a value, request access through the project that uses this secret.
+      </Banner>
       <dl className="m-0">
         {rows.map(([k, v]) => (
-          <div key={k} className="grid grid-cols-[150px_minmax(0,1fr)] gap-3 border-b border-rule py-2.5 text-ui font-normal">
+          <div key={k} className="grid grid-cols-[minmax(110px,max-content)_minmax(0,1fr)] gap-x-5 border-b border-rule py-2.5 text-ui font-normal last:border-b-0">
             <dt className="text-muted">{k}</dt>
             <dd className="m-0 min-w-0 break-words text-ink">{v}</dd>
           </div>
@@ -368,7 +406,6 @@ function SecretDrawer({ secret: s, onClose }: { secret: Secret; onClose: () => v
           </pre>
         </>
       )}
-      <Banner className="mt-5">Metadata only. To see a value, request access to it from the project that uses it.</Banner>
-    </Drawer>
+    </>
   );
 }

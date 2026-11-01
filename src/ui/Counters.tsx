@@ -12,6 +12,8 @@ export interface CounterDef {
   count: number;
   /** The rest of the name, after the count. */
   label: ReactNode;
+  /** A shorter name for a phone, where the counts sit side by side. */
+  short?: string;
 }
 
 interface Props {
@@ -45,7 +47,7 @@ export function Counters({ counters, value, onChange, label, idPrefix }: Props) 
     <div
       role="tablist"
       aria-label={label}
-      className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] overflow-hidden rounded-xl border border-border bg-bg"
+      className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] overflow-hidden rounded-xl border border-border bg-bg max-[600px]:grid-cols-[repeat(auto-fit,minmax(0,1fr))]"
     >
       {counters.map((c) => {
         const on = c.id === value;
@@ -64,12 +66,13 @@ export function Counters({ counters, value, onChange, label, idPrefix }: Props) 
             onKeyDown={onKeyDown}
             onClick={() => onChange(c.id)}
             className={
-              'relative flex flex-col items-start gap-0.5 border-r border-border px-[18px] py-3.5 text-left last:border-r-0 hover:bg-hover ' +
+              'relative flex flex-col items-start gap-0.5 border-r border-border px-[18px] py-3.5 text-left last:border-r-0 hover:bg-hover max-[600px]:min-h-16 max-[600px]:px-3 max-[600px]:py-2.5 ' +
               (on ? 'bg-surface' : '')
             }
           >
-            <span className={'text-count ' + (c.count === 0 ? 'text-muted' : 'text-ink')}>{c.count}</span>
-            <span className={'text-caption ' + (on ? 'text-ink' : 'text-muted')}>{c.label}</span>
+            <span className={'text-count max-[600px]:text-[24px] ' + (c.count === 0 ? 'text-muted' : 'text-ink')}>{c.count}</span>
+            <span className={'text-caption max-[600px]:hidden ' + (on ? 'text-ink' : 'text-muted')}>{c.label}</span>
+            <span className={'hidden text-[12.5px] leading-[16px] max-[600px]:block ' + (on ? 'text-ink' : 'text-muted')}>{c.short ?? c.label}</span>
             {on && <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[3px] bg-accent-ink" />}
           </button>
         );

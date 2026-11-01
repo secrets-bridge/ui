@@ -23,7 +23,9 @@ import {
   InboxIcon,
   MenuIcon,
   OverviewIcon,
+  PolicyIcon,
   RequestIcon,
+  TargetIcon,
 } from '../ui/icons';
 import { Logo } from '../ui/Logo';
 import { ThemeToggle } from '../ui/ThemeToggle';
@@ -143,6 +145,8 @@ export function Shell() {
             <Outlet />
           </div>
         </main>
+
+        <BottomTabs />
       </div>
 
       {navOpen && <MobileNav onClose={() => setNavOpen(false)} onSignOut={openSignOut} />}
@@ -179,7 +183,12 @@ function TopBar() {
   const scopes = useMemo(() => scopeOptions(me.data?.projects), [me.data]);
   const scoped = SCOPED_PATHS.includes(pathname) && scopes.length > 0;
   return (
-    <div className="flex min-h-[60px] flex-wrap items-center gap-3 border-b border-border px-8 py-2.5 max-[900px]:min-h-0 max-[900px]:px-4 max-[900px]:py-2">
+    <div
+      className={
+        'flex min-h-[60px] flex-wrap items-center gap-3 border-b border-border px-8 py-2.5 max-[900px]:min-h-0 max-[900px]:px-4 max-[900px]:py-2 ' +
+        (scoped ? '' : 'max-[900px]:hidden')
+      }
+    >
       {scoped && (
         <>
           <label className="inline-flex h-9 min-w-0 items-center gap-2 rounded-md border border-border bg-surface pl-3 text-[13.5px] font-medium text-ink">
@@ -227,9 +236,41 @@ function SidebarContent({ onSignOut }: { onSignOut: () => void }) {
   );
 }
 
-function Navigation() {
-  const { identity, hasPermission, hasGlobalPermission, meStatus } = useAuth();
+// Counts, hidden at 0, from the same queries and rules as the pages so
+// the numbers never disagree: on Approvals, the requests waiting for
+// this person's decision; on Requests, reveals that are ready. The
+// detail lookup adds the votes the list rows don't carry.
+function useNavCounts() {
+  const { identity, hasPermission } = useAuth();
   const me = identity?.id ?? '';
+  const canApprove = hasPermission('secret.approve');
+  const canRequest = hasPermission('secret.request');
+  const showInbox = hasPermission('secret.value.provide');
+  const pending = useRequests({ status: 'pending' }, { enabled: canApprove && !!me });
+  const mine = useRequests({ requester_id: me }, { enabled: canRequest && !!me });
+  const mineRows = useMemo(() => (mine.data ?? []).filter((r) => r.requester_id === me), [mine.data, me]);
+  const reveal = useRevealConditions(mineRows, me);
+  const candidates = useMemo(() => (canApprove ? needsMyDecision(pending.data ?? [], me) : []), [canApprove, pending.data, me]);
+  const details = useRequestDetails(useMemo(() => candidates.map((r) => r.id), [candidates]));
+  const decisionCount = useMemo(
+    () =>
+      needsMyDecision(
+        candidates.map((r) => details.get(r.id) ?? r),
+        me,
+      ).length,
+    [candidates, details, me],
+  );
+  const readyCount = useMemo(
+    () => [...reveal.values()].filter((c) => c.state === 'ready').length,
+    [reveal],
+  );
+
+  const inboxCount = useInboxCount({ enabled: showInbox });
+  return { decisionCount, readyCount, inboxBadge: showInbox ? inboxCount.data?.total : undefined };
+}
+
+function Navigation() {
+  const { hasPermission, hasGlobalPermission, meStatus } = useAuth();
 
   // Sidebar entries gated by the live permission set:
   //   Approvals       → secret.approve
@@ -255,31 +296,7 @@ function Navigation() {
   const showTargets = hasPermission('gateway.bind') || showGateways;
   const admin = useAdminSections();
 
-  // Counts, hidden at 0, from the same queries and rules as the pages so
-  // the numbers never disagree: on Approvals, the requests waiting for
-  // this person's decision; on Requests, reveals that are ready. The
-  // detail lookup adds the votes the list rows don't carry.
-  const pending = useRequests({ status: 'pending' }, { enabled: canApprove && !!me });
-  const mine = useRequests({ requester_id: me }, { enabled: canRequest && !!me });
-  const mineRows = useMemo(() => (mine.data ?? []).filter((r) => r.requester_id === me), [mine.data, me]);
-  const reveal = useRevealConditions(mineRows, me);
-  const candidates = useMemo(() => (canApprove ? needsMyDecision(pending.data ?? [], me) : []), [canApprove, pending.data, me]);
-  const details = useRequestDetails(useMemo(() => candidates.map((r) => r.id), [candidates]));
-  const decisionCount = useMemo(
-    () =>
-      needsMyDecision(
-        candidates.map((r) => details.get(r.id) ?? r),
-        me,
-      ).length,
-    [candidates, details, me],
-  );
-  const readyCount = useMemo(
-    () => [...reveal.values()].filter((c) => c.state === 'ready').length,
-    [reveal],
-  );
-
-  const inboxCount = useInboxCount({ enabled: showInbox });
-  const inboxBadge = showInbox ? inboxCount.data?.total : undefined;
+  const { decisionCount, readyCount, inboxBadge } = useNavCounts();
 
   return (
     <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pb-3">
@@ -317,15 +334,15 @@ function Navigation() {
         <NavGroup label="Catalog and records">
           {showSecrets && <NavItem to="/secrets" label="Secrets" icon={<CatalogIcon />} />}
           {showAgents && <NavItem to="/agents" label="Agents" icon={<AgentIcon />} />}
-          {showAudit && <NavItem to="/audit" label="Audit" icon={<AuditIcon />} />}
+          {showAudit && <NavItem to="/audit" label="Audit log" icon={<AuditIcon />} />}
         </NavGroup>
       )}
 
       <NavGroup label="Projects">
         <NavItem to="/projects" end label="My projects" icon={<FolderIcon />} />
-        {showScopedPolicies && <NavItem to="/projects/policies" label="Project policies" />}
-        {showScopedPolicies && <NavItem to="/teams/policies" label="Team policies" />}
-        {showTargets && <NavItem to="/gateways" label="Argo CD targets" />}
+        {showScopedPolicies && <NavItem to="/projects/policies" label="Project policies" icon={<PolicyIcon />} />}
+        {showScopedPolicies && <NavItem to="/teams/policies" label="Team policies" icon={<PolicyIcon />} />}
+        {showTargets && <NavItem to="/gateways" label="Argo CD targets" icon={<TargetIcon />} />}
         {admin.isAdmin && (
           <NavItem
             to="/admin"
@@ -342,6 +359,48 @@ function Navigation() {
           Loading your access…
         </p>
       )}
+    </nav>
+  );
+}
+
+/**
+ * The phone's bottom tabs: the four places this person goes most, picked
+ * from what they can open. Everything else is in the menu.
+ */
+function BottomTabs() {
+  const { hasPermission } = useAuth();
+  const { decisionCount, readyCount, inboxBadge } = useNavCounts();
+  const tabs = [
+    { to: '/', end: true, label: 'Overview', icon: <OverviewIcon />, show: true },
+    { to: '/approvals', label: 'Approvals', icon: <ApprovalIcon />, show: hasPermission('secret.approve'), count: decisionCount, countLabel: `${decisionCount} waiting for your decision` },
+    { to: '/requests', label: 'Requests', icon: <RequestIcon />, show: hasPermission('secret.request'), count: readyCount, countLabel: `${readyCount} ready to reveal` },
+    { to: '/inbox', label: 'Inbox', icon: <InboxIcon />, show: hasPermission('secret.value.provide'), count: inboxBadge, countLabel: `${inboxBadge ?? 0} waiting for your team's values` },
+    { to: '/audit', label: 'Activity', icon: <AuditIcon />, show: hasPermission('audit.read') },
+    { to: '/secrets', label: 'Secrets', icon: <CatalogIcon />, show: hasPermission('secret.list') },
+  ]
+    .filter((t) => t.show)
+    .slice(0, 4);
+  return (
+    <nav aria-label="Quick links" className="sticky bottom-0 z-10 hidden border-t border-border bg-side max-[900px]:flex">
+      {tabs.map((t) => (
+        <NavLink
+          key={t.to}
+          to={t.to}
+          end={t.end}
+          className={({ isActive }) =>
+            'group relative flex min-h-[60px] flex-1 flex-col items-center justify-center gap-[3px] text-[11.5px] font-medium ' + (isActive ? 'text-ink' : 'text-muted')
+          }
+        >
+          <span aria-hidden="true" className="absolute inset-x-[32%] top-0 h-0.5 group-aria-[current=page]:bg-accent-ink" />
+          <span className="group-aria-[current=page]:text-accent-ink">{t.icon}</span>
+          {t.label}
+          {!!t.count && (
+            <span aria-label={t.countLabel} className="absolute left-[calc(50%+6px)] top-[7px] min-w-[18px] rounded-sm bg-accent px-[5px] text-center font-mono text-[11px] font-semibold leading-[18px] text-on-accent">
+              {t.count}
+            </span>
+          )}
+        </NavLink>
+      ))}
     </nav>
   );
 }

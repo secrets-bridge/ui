@@ -152,7 +152,7 @@ export const PersonPicker = forwardRef<HTMLInputElement, Props>(({ value, onChan
                     onClick={() => {
                       if (!why) pick(u);
                     }}
-                    className={`rounded-sm px-2.5 py-1.5 ${why ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-hover'} ${u === current ? 'bg-hover' : ''}`}
+                    className={`rounded-sm px-2.5 py-1.5 ${why ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-hover'} ${u === current ? 'bg-hover outline-2 -outline-offset-2 outline-accent-ink' : ''}`}
                   >
                     <span className="flex min-w-0 items-baseline justify-between gap-3">
                       <span className="truncate text-ui font-normal text-ink">{personName(u.id, u)}</span>
