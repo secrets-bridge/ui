@@ -1,11 +1,14 @@
 /**
- * Overview (`/`) — what the signed-in person can act on, first.
+ * Overview (`/`): the one thing to do now, then the rest.
  *
- * Requester: Needs you (reveals ready, recent failures), Open, Closed in
- * the last 3 days. Approver: the queue of requests waiting for their
- * decision, oldest first. Someone with both sees the queue, then their
- * own requests. The right rail holds recent activity, the scopes the
- * person can request in and, for agent viewers, agent health.
+ * Counters switch the page between what needs this person, their requests
+ * in motion and what closed in the last 3 days. Under Needs you, the
+ * first item is Next up with its context and action, and the rest sit
+ * below it as rows: decisions oldest first, reveals that are ready,
+ * people waiting for an account, agents gone stale, recent failures, and
+ * last any decision past its deadline, which can no longer be approved.
+ * The right rail holds system health or the person's own requests, recent
+ * activity, and the scopes they can request in.
  *
  * Every count comes from the same records the lists show, under the
  * same scope filter. Nothing here is sample data: where the api doesn't
@@ -18,45 +21,54 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { useAdminAgents, type AgentStatus } from '../api/agents';
+import { useAdminAgents, type AdminAgent, type AgentStatus } from '../api/agents';
 import { useMe } from '../api/me';
 import { usePendingUsers } from '../api/pendingUsers';
 import { useRequests } from '../api/requests';
 import type { AccessRequest } from '../api/types';
+import { useWorkflows } from '../api/workflows';
 import { useAuth } from '../auth/AuthContext';
+import { roleLabelFor } from '../auth/roleLabel';
 import { isOpen, needsMyDecision } from '../lib/requestQueues';
 import { requestRef } from '../lib/requestRef';
 import { useNow } from '../lib/useNow';
-import { formatAge, formatExact, formatRemaining, formatShort, withinDays } from '../lib/time';
-import { closedDetail, keysOf, pathOf, waitingOn } from '../requests/describe';
+import { formatAge, formatClock, formatDay, formatExact, formatRemaining, formatShort, withinDays } from '../lib/time';
+import { pastDeadline } from '../requests/deadline';
+import { askedFor, closedDetail, keysOf, pathOf, waitingOn } from '../requests/describe';
 import { useRevealConditions, type RevealCondition } from '../requests/revealState';
-import {
-  ALL_SCOPES,
-  inScope,
-  scopeOptions,
-  useScope,
-  useScopeDisplay,
-  type ScopeDisplay,
-} from '../requests/scope';
+import { ALL_SCOPES, inScope, scopeOptions, useScope, useScopeDisplay, type ScopeDisplay } from '../requests/scope';
 import { useRequestDetails } from '../requests/useRequestDetails';
 import { ActivityLog, type ActivityEvent } from '../ui/ActivityLog';
+import { Avatar } from '../ui/Avatar';
 import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
+import { Card, CardHeader } from '../ui/Card';
+import { Counters } from '../ui/Counters';
 import { DataTable, type Column } from '../ui/DataTable';
 import { EmptyState } from '../ui/EmptyState';
+import { EnvTag } from '../ui/EnvTag';
 import { Keys } from '../ui/Keys';
-import { NeedsYou, type NeedsYouItem } from '../ui/NeedsYou';
 import { PageHeader } from '../ui/PageHeader';
-import { Select } from '../ui/Field';
 import { ScopeLabel } from '../ui/ScopeLabel';
-import { Status } from '../ui/Status';
+import { Status, ToneStatus } from '../ui/Status';
+import { TabPanel } from '../ui/Tabs';
 import { useToast } from '../ui/toastContext';
+import { NextDecision, NextPanel, NextTitle, StateMark, ThenList, ThenRow } from './focus/NextUp';
+import { ApproveDialog, RejectDialog } from './request/DecisionDialogs';
 import { RequestAgainDrawer } from './request/RequestAgainDrawer';
 import { RequestAccessDrawer } from './RequestAccessDrawer';
 
 const RECENT_DAYS = 3;
-/** Rows per section; the overview is a summary, the Requests page has the rest. */
+/** Rows per list; the overview is a summary, the Requests page has the rest. */
 const SHOW = 5;
+
+type Item =
+  | { kind: 'decision'; r: AccessRequest }
+  | { kind: 'reveal'; r: AccessRequest; deadline: string }
+  | { kind: 'accounts'; count: number }
+  | { kind: 'agent'; agent: AdminAgent }
+  | { kind: 'failure'; r: AccessRequest }
+  | { kind: 'overdue'; r: AccessRequest };
 
 export function Overview() {
   const navigate = useNavigate();
@@ -65,17 +77,22 @@ export function Overview() {
   const me = identity?.id ?? '';
   const canRequest = hasPermission('secret.request');
   const canApprove = hasPermission('secret.approve');
+  const canSeeAgents = hasPermission('agent.list');
   // People waiting for an admin's approval (api#266), for whoever can
   // approve them.
   const canApproveUsers = hasPermission('user_role.edit');
   const waitingUsers = usePendingUsers({ enabled: canApproveUsers }).data?.total ?? 0;
-  const { scope, setScope } = useScope();
+  const agents = useAdminAgents({ enabled: canSeeAgents });
+  const { scope } = useScope();
   const meQ = useMe();
   const scopes = useMemo(() => scopeOptions(meQ.data?.projects), [meQ.data]);
   const display = useScopeDisplay();
+  const workflows = useWorkflows();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [again, setAgain] = useState<AccessRequest | null>(null);
-  const [showAllNeeds, setShowAllNeeds] = useState(false);
+  const [decide, setDecide] = useState<{ kind: 'approve' | 'reject'; r: AccessRequest } | null>(null);
+  const [view, setView] = useState('needs');
+  const [showAll, setShowAll] = useState(false);
 
   // Requester: my requests. Approver: everything pending (the api only
   // returns other people's requests to global approvers).
@@ -120,6 +137,23 @@ export function Overview() {
     )
     .sort((a, b) => Date.parse(b.updated_at ?? b.created_at) - Date.parse(a.updated_at ?? a.created_at));
 
+  const staleAgents = (agents.data ?? []).filter((a) => a.status === 'stale');
+  const liveQueue = queue.filter((r) => !pastDeadline(r, workflows.data, now));
+  const overdue = queue.filter((r) => pastDeadline(r, workflows.data, now));
+
+  const items: Item[] = [
+    ...liveQueue.map((r): Item => ({ kind: 'decision', r })),
+    ...readyToReveal.map((r): Item => {
+      const c = reveal.get(r.id) as Extract<RevealCondition, { state: 'ready' }>;
+      return { kind: 'reveal', r, deadline: c.deadline };
+    }),
+    ...(waitingUsers > 0 ? [{ kind: 'accounts', count: waitingUsers } as Item] : []),
+    ...staleAgents.map((agent): Item => ({ kind: 'agent', agent })),
+    ...recentFailures.map((r): Item => ({ kind: 'failure', r })),
+    ...overdue.map((r): Item => ({ kind: 'overdue', r })),
+  ];
+  const [next, ...then] = items;
+
   const loading = (canRequest && mineQ.isLoading) || (canApprove && pendingQ.isLoading);
   const failed = (canRequest && mineQ.isError) || (canApprove && pendingQ.isError);
   const retry = () => {
@@ -127,130 +161,241 @@ export function Overview() {
     void pendingQ.refetch();
   };
 
-  const summary = failed || loading
-    ? undefined
-    : summaryLine({
-        canApprove,
-        canRequest,
-        queue,
-        open: open.length,
-        ready: readyToReveal.length,
-        closed: closed.length,
-        now,
-      });
-
-  const oldest = queue[0];
-  const primary =
-    canApprove && oldest ? (
-      <Button variant="primary" onClick={() => navigate(`/requests/${oldest.id}`)}>
-        Review oldest
-      </Button>
-    ) : canRequest ? (
-      <Button variant="primary" onClick={() => setDrawerOpen(true)}>
-        New request
-      </Button>
-    ) : null;
-  const secondary =
-    canApprove && oldest && canRequest ? (
-      <Button variant="secondary" onClick={() => setDrawerOpen(true)}>
-        New request
-      </Button>
-    ) : null;
-
-  const needsYou: NeedsYouItem[] = [
-    ...readyToReveal.map((r) => {
-      const c = reveal.get(r.id) as Extract<RevealCondition, { state: 'ready' }>;
-      const d = display(r);
-      return {
-        key: r.id,
-        ref: requestRef(r.id),
-        to: `/requests/${r.id}`,
-        keys: keysOf(r).join(', ') || 'All keys',
-        project: d.project,
-        env: d.env,
-        envKind: d.envKind,
-        logo: d.logo,
-        // Short, so the keys keep their room; the exact deadline is on hover.
-        note: `Reveal within ${formatRemaining(c.deadline, now).replace(/ left$/, '')}`,
-        noteTitle: `The reveal window closes ${formatExact(c.deadline)}`,
-        tone: 'ok' as const,
-        action: (
-          <Button variant="secondary" size="sm" onClick={() => navigate(`/requests/${r.id}`)}>
-            Reveal<span className="sr-only"> {requestRef(r.id)}</span>
-          </Button>
-        ),
-      };
-    }),
-    ...recentFailures.map((r) => {
-      const d = display(r);
-      return {
-        key: r.id,
-        ref: requestRef(r.id),
-        to: `/requests/${r.id}`,
-        keys: keysOf(r).join(', ') || 'All keys',
-        project: d.project,
-        env: d.env,
-        envKind: d.envKind,
-        logo: d.logo,
-        note: `Agent read failed ${formatShort(r.updated_at, now)}`,
-        tone: 'bad' as const,
-        action: (
-          <Button variant="secondary" size="sm" onClick={() => setAgain(r)}>
-            Request again<span className="sr-only"> {requestRef(r.id)}</span>
-          </Button>
-        ),
-      };
-    }),
+  const counters = [
+    { id: 'needs', count: items.length, label: needsLabel(items) },
+    ...(canRequest
+      ? [
+          { id: 'open', count: open.length, label: 'In motion · your requests' },
+          { id: 'closed', count: closed.length, label: `Closed · last ${RECENT_DAYS} days` },
+        ]
+      : []),
   ];
 
-  const nothingAtAll = !loading && !failed && open.length === 0 && closed.length === 0 && queue.length === 0 && needsYou.length === 0;
+  const newRequest = canRequest ? (
+    <Button variant={next ? 'secondary' : 'primary'} onClick={() => setDrawerOpen(true)}>
+      New request
+    </Button>
+  ) : undefined;
+
+  const openRequest = (r: AccessRequest) => navigate(`/requests/${r.id}`);
+  const reviewButton = (r: AccessRequest) => (
+    <Button variant="secondary" size="sm" onClick={() => openRequest(r)}>
+      Review<span className="sr-only"> {requestRef(r.id)}</span>
+    </Button>
+  );
+  const againButton = (r: AccessRequest, big?: boolean) => (
+    <Button variant={big ? 'primary' : 'secondary'} size={big ? 'md' : 'sm'} onClick={() => setAgain(r)}>
+      Request again<span className="sr-only"> {requestRef(r.id)}</span>
+    </Button>
+  );
+  const failureTitle = (r: AccessRequest) => `A ${display(r).project} ${r.type === 'read' ? 'read' : 'write'} failed`;
+  const failureLine = (r: AccessRequest) => (
+    <>
+      Nothing was {r.type === 'read' ? 'retrieved' : 'written'}.
+      {r.job_id ? (
+        <>
+          {' '}
+          Your platform team can look up job <span className="font-mono text-mono text-ink">{r.job_id.slice(0, 8)}</span>.
+        </>
+      ) : null}
+    </>
+  );
+  const scopeRow = (d: ScopeDisplay) => (
+    <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+      <span className="text-caption text-ink">{d.project}</span>
+      {d.env && <EnvTag kind={d.envKind}>{d.env}</EnvTag>}
+    </span>
+  );
+
+  const nextPanel = (item: Item): ReactNode => {
+    switch (item.kind) {
+      case 'decision':
+        return (
+          <NextDecision
+            r={item.r}
+            display={display(item.r)}
+            now={now}
+            onApprove={() => setDecide({ kind: 'approve', r: item.r })}
+            onReject={() => setDecide({ kind: 'reject', r: item.r })}
+          />
+        );
+      case 'reveal': {
+        const d = display(item.r);
+        return (
+          <NextPanel
+            id="next-reveal"
+            soft
+            eyebrow={`Next up · reveal before ${formatClock(item.deadline)}`}
+            aside={
+              <>
+                <span className="font-mono text-mono">{requestRef(item.r.id)}</span>
+                <Status status={item.r.status} />
+              </>
+            }
+          >
+            <NextTitle id="next-reveal">Your {d.env ?? d.project} values are ready</NextTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              {scopeRow(d)}
+              <Keys keys={keysOf(item.r)} variant="chips" />
+            </div>
+            <p className="m-0 text-caption text-ink">
+              You can reveal each value once ({formatRemaining(item.deadline, now)}). You'll confirm with your second factor first.
+            </p>
+            <div>
+              <Button variant="primary" className="h-11 px-[18px] text-[15px]" onClick={() => openRequest(item.r)}>
+                Reveal values…
+              </Button>
+            </div>
+          </NextPanel>
+        );
+      }
+      case 'accounts':
+        return (
+          <NextPanel id="next-accounts" eyebrow="Next up · people waiting" aside={<ToneStatus tone="warn">{item.count} waiting</ToneStatus>}>
+            <NextTitle id="next-accounts">{accountsTitle(item.count)}</NextTitle>
+            <p className="m-0 text-caption text-ink">
+              They signed in with Google and can't do anything until you give them a role. Declining disables the account.
+            </p>
+            <div>
+              <Button variant="primary" className="h-11 px-[18px] text-[15px]" onClick={() => navigate('/admin/users')}>
+                Review accounts
+              </Button>
+            </div>
+          </NextPanel>
+        );
+      case 'agent':
+        return (
+          <NextPanel id="next-agent" eyebrow="Next up · agent stale" aside={<ToneStatus tone="bad">Stale</ToneStatus>}>
+            <NextTitle id="next-agent">Agent {item.agent.name} is stale</NextTitle>
+            <p className="m-0 text-caption text-ink">It stopped sending heartbeats. Check it on the Agents page.</p>
+            <div>
+              <Button variant="primary" className="h-11 px-[18px] text-[15px]" onClick={() => navigate('/agents')}>
+                View agents
+              </Button>
+            </div>
+          </NextPanel>
+        );
+      case 'failure':
+      case 'overdue': {
+        const isFailure = item.kind === 'failure';
+        const d = display(item.r);
+        return (
+          <NextPanel id="next-failed" eyebrow={isFailure ? 'Next up · failed' : 'Next up · past its deadline'} aside={<span className="font-mono text-mono">{requestRef(item.r.id)}</span>}>
+            <NextTitle id="next-failed">{isFailure ? failureTitle(item.r) : `${item.r.requester_display ?? 'Someone'} ${askedFor(item.r, d)}`}</NextTitle>
+            <p className="m-0 text-caption text-ink">{isFailure ? failureLine(item.r) : "This request is past its deadline, so approving it would be refused."}</p>
+            <div className="flex flex-wrap items-center gap-2.5">
+              {isFailure ? againButton(item.r, true) : reviewButton(item.r)}
+              <Link to={`/requests/${item.r.id}`} className="text-caption text-accent-ink underline underline-offset-[3px] hover:decoration-2">
+                See full request
+              </Link>
+            </div>
+          </NextPanel>
+        );
+      }
+    }
+  };
+
+  const thenRow = (item: Item): ReactNode => {
+    switch (item.kind) {
+      case 'decision':
+      case 'overdue': {
+        const d = display(item.r);
+        return (
+          <ThenRow
+            key={item.r.id}
+            mark={<Avatar name={item.r.requester_display ?? '?'} size="sm" />}
+            to={`/requests/${item.r.id}`}
+            title={
+              <>
+                <span className="font-semibold">{item.r.requester_display ?? requestRef(item.r.id)}</span>{' '}
+                <span className="text-caption text-muted">{askedFor(item.r, d)}</span>
+              </>
+            }
+            meta={item.kind === 'overdue' ? 'past its deadline' : formatAge(item.r.created_at, now)}
+            action={reviewButton(item.r)}
+          >
+            <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+              {scopeRow(d)}
+              <Keys keys={keysOf(item.r)} variant="chips" />
+            </span>
+          </ThenRow>
+        );
+      }
+      case 'reveal':
+        return (
+          <ThenRow
+            key={item.r.id}
+            mark={<StateMark tone="ready" />}
+            to={`/requests/${item.r.id}`}
+            title={<span className="font-semibold">Your {display(item.r).env ?? display(item.r).project} values are ready</span>}
+            meta={formatRemaining(item.deadline, now)}
+            metaTone="ready"
+            action={
+              <Button variant="primary" size="sm" onClick={() => openRequest(item.r)}>
+                Reveal once<span className="sr-only"> {requestRef(item.r.id)}</span>
+              </Button>
+            }
+          >
+            <span className="font-mono text-mono-small text-muted">
+              {requestRef(item.r.id)} · {display(item.r).project} · {keysOf(item.r).length || 'all'} keys
+            </span>
+          </ThenRow>
+        );
+      case 'accounts':
+        return (
+          <ThenRow
+            key="accounts"
+            mark={<StateMark tone="count">{item.count}</StateMark>}
+            to="/admin/users"
+            title={<span className="font-semibold">{accountsTitle(item.count)}</span>}
+            action={
+              <Button variant="secondary" size="sm" onClick={() => navigate('/admin/users')}>
+                Review accounts
+              </Button>
+            }
+          >
+            <span className="text-caption text-muted">They can't do anything until you give them a role.</span>
+          </ThenRow>
+        );
+      case 'agent':
+        return (
+          <ThenRow
+            key={item.agent.id}
+            mark={<StateMark tone="bad" />}
+            to="/agents"
+            title={<span className="font-semibold">Agent {item.agent.name} is stale</span>}
+            meta={item.agent.last_seen_at ? formatAge(item.agent.last_seen_at, now) : undefined}
+            action={
+              <Button variant="secondary" size="sm" onClick={() => navigate('/agents')}>
+                View agent<span className="sr-only"> {item.agent.name}</span>
+              </Button>
+            }
+          >
+            <span className="text-caption text-muted">It stopped sending heartbeats.</span>
+          </ThenRow>
+        );
+      case 'failure':
+        return (
+          <ThenRow
+            key={item.r.id}
+            mark={<StateMark tone="bad" />}
+            to={`/requests/${item.r.id}`}
+            title={<span className="font-semibold">{failureTitle(item.r)}</span>}
+            meta={formatAge(item.r.updated_at, now)}
+            action={againButton(item.r)}
+          >
+            <span className="text-caption text-muted">{failureLine(item.r)}</span>
+          </ThenRow>
+        );
+    }
+  };
+
+  const eyebrow = `${formatDay(now)} · ${identity?.display_name ?? ''}${identity ? `, ${roleLabelFor(identity.permissions).toLowerCase()}` : ''}`;
+  const shownThen = showAll ? then : then.slice(0, SHOW);
 
   return (
     <div>
-      <PageHeader
-        title="Overview"
-        description={summary}
-        actions={
-          <>
-            {scopes.length > 0 && (
-              <label className="flex items-center gap-2 text-ui font-normal text-muted max-[600px]:w-full">
-                Scope
-                <Select
-                  value={scope}
-                  onChange={(e) => setScope(e.target.value)}
-                  className="w-[230px] max-[600px]:flex-1"
-                >
-                  <option value={ALL_SCOPES}>All my scopes</option>
-                  {scopes.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </Select>
-              </label>
-            )}
-            {secondary}
-            {primary}
-          </>
-        }
-      />
-
-      {canApproveUsers && waitingUsers > 0 && (
-        <Banner
-          title={waitingUsers === 1 ? '1 person is waiting for approval.' : `${waitingUsers} people are waiting for approval.`}
-          action={
-            <Link
-              to="/admin/users"
-              className="inline-flex h-(--control-sm) items-center rounded-md border border-edge bg-surface px-2.5 text-ui font-medium text-ink hover:bg-hover"
-            >
-              Review
-            </Link>
-          }
-          className="mb-6"
-        >
-          They signed in with Google and can't do anything until you give them a role.
-        </Banner>
-      )}
+      <PageHeader title="Overview" eyebrow={eyebrow} actions={newRequest} />
 
       {failed && (
         <Banner
@@ -270,71 +415,83 @@ export function Overview() {
       {loading && <p className="text-muted">Loading requests…</p>}
 
       {!loading && !failed && (
-        <div className="grid grid-cols-1 gap-7 min-[1361px]:grid-cols-[minmax(0,1fr)_var(--rail)]">
-          <div className="flex min-w-0 flex-col gap-8">
-            {nothingAtAll && (
-              <EmptyState
-                title={canRequest ? 'No requests yet.' : 'Nothing waits for your decision.'}
-                action={
-                  canRequest ? (
-                    <Button variant="primary" onClick={() => setDrawerOpen(true)}>
-                      New request
-                    </Button>
-                  ) : undefined
-                }
-              >
-                {canRequest
-                  ? 'Ask for access to a secret. Someone approves it, then the agent reads it for you.'
-                  : 'Requests that need your approval appear here, oldest first.'}
-              </EmptyState>
-            )}
+        <div className="flex flex-col gap-6">
+          {counters.length > 1 && <Counters counters={counters} value={view} onChange={setView} label="Show" idPrefix="overview" />}
 
-            {needsYou.length > 0 && (
-              <Section title="Needs you" count={needsYou.length}>
-                <NeedsYou items={showAllNeeds ? needsYou : needsYou.slice(0, SHOW)} />
-                {needsYou.length > SHOW && (
-                  <Button variant="quiet" size="sm" className="mt-1.5" onClick={() => setShowAllNeeds((v) => !v)} aria-expanded={showAllNeeds}>
-                    {showAllNeeds ? 'Show fewer' : `Show ${needsYou.length - SHOW} more`}
-                  </Button>
+          <div className="flex flex-wrap items-start gap-6">
+            <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-5">
+              <TabPanel idPrefix="overview" value={view}>
+                {view === 'needs' && (
+                  <div className="flex flex-col gap-5">
+                    {next ? (
+                      nextPanel(next)
+                    ) : (
+                      <EmptyState
+                        title={canRequest ? 'Nothing needs you right now.' : 'Nothing waits for your decision.'}
+                        action={newRequest}
+                      >
+                        {canRequest
+                          ? 'Ask for access to a secret. Someone approves it, then the agent reads it for you.'
+                          : 'Requests that need your approval appear here, oldest first.'}
+                      </EmptyState>
+                    )}
+                    {then.length > 0 && (
+                      <ThenList
+                        title="Then"
+                        id="overview-then"
+                        link={
+                          canApprove && liveQueue.length > 1 ? (
+                            <Link to="/approvals" className="text-caption text-accent-ink hover:underline">
+                              Open approvals
+                            </Link>
+                          ) : undefined
+                        }
+                      >
+                        {shownThen.map(thenRow)}
+                        {then.length > SHOW && (
+                          <li className="px-3.5 py-1.5">
+                            <Button variant="quiet" size="sm" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
+                              {showAll ? 'Show fewer' : `Show ${then.length - SHOW} more`}
+                            </Button>
+                          </li>
+                        )}
+                      </ThenList>
+                    )}
+                  </div>
                 )}
-              </Section>
-            )}
+                {view === 'open' &&
+                  (open.length > 0 ? (
+                    <Section link={{ to: '/requests?tab=open', label: open.length > SHOW ? `All ${open.length} open requests` : 'Open requests' }}>
+                      <OpenTable rows={open.slice(0, SHOW)} display={display} now={now} />
+                    </Section>
+                  ) : (
+                    <EmptyState title="Nothing in motion right now." action={newRequest}>
+                      Requests you make appear here while they wait for a decision or an agent.
+                    </EmptyState>
+                  ))}
+                {view === 'closed' &&
+                  (closed.length > 0 ? (
+                    <Section link={{ to: '/requests?tab=closed', label: 'All closed requests' }}>
+                      <ClosedTable rows={closed.slice(0, SHOW)} display={display} reveal={reveal} now={now} />
+                    </Section>
+                  ) : (
+                    <EmptyState title={`Nothing closed in the last ${RECENT_DAYS} days.`}>Requests appear here once they are revealed, rejected, cancelled, expired or failed.</EmptyState>
+                  ))}
+              </TabPanel>
+            </div>
 
-            {canApprove && queue.length > 0 && (
-              <Section
-                title="Your queue"
-                count={queue.length}
-                link={{ to: '/requests', label: queue.length > SHOW ? `All ${queue.length} waiting` : 'All requests' }}
-              >
-                <QueueTable rows={queue.slice(0, SHOW)} display={display} now={now} />
-              </Section>
-            )}
-
-            {canRequest && open.length > 0 && (
-              <Section
-                title="Open"
-                count={open.length}
-                link={{ to: '/requests?tab=open', label: open.length > SHOW ? `All ${open.length} open requests` : 'Open requests' }}
-              >
-                <OpenTable rows={open.slice(0, SHOW)} display={display} now={now} />
-              </Section>
-            )}
-
-            {canRequest && closed.length > 0 && (
-              <Section title={`Closed · last ${RECENT_DAYS} days`} count={closed.length} link={{ to: '/requests?tab=closed', label: 'All closed requests' }}>
-                <ClosedTable rows={closed.slice(0, SHOW)} display={display} reveal={reveal} now={now} />
-              </Section>
-            )}
+            <Rail
+              mine={mine}
+              open={open}
+              queue={queue}
+              me={me}
+              canRequest={canRequest}
+              now={now}
+              display={display}
+              agents={canSeeAgents ? agents : undefined}
+              scopes={scope === ALL_SCOPES ? scopes : scopes.filter((s) => s.value === scope)}
+            />
           </div>
-
-          <Rail
-            mine={mine}
-            queue={queue}
-            me={me}
-            canRequest={canRequest}
-            now={now}
-            scopes={scope === ALL_SCOPES ? scopes : scopes.filter((s) => s.value === scope)}
-          />
         </div>
       )}
 
@@ -357,35 +514,51 @@ export function Overview() {
           }}
         />
       )}
+      {decide?.kind === 'approve' && (
+        <ApproveDialog
+          request={decide.r}
+          display={display(decide.r)}
+          lastApproval={undefined}
+          onClose={() => setDecide(null)}
+          onDone={(message) => {
+            setDecide(null);
+            toast(message);
+          }}
+        />
+      )}
+      {decide?.kind === 'reject' && (
+        <RejectDialog
+          request={decide.r}
+          display={display(decide.r)}
+          onClose={() => setDecide(null)}
+          onDone={(message) => {
+            setDecide(null);
+            toast(message);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 // --- summary --------------------------------------------------------
 
-function summaryLine(p: {
-  canApprove: boolean;
-  canRequest: boolean;
-  queue: AccessRequest[];
-  open: number;
-  ready: number;
-  closed: number;
-  now: number;
-}): string {
-  const parts: string[] = [];
-  if (p.canApprove) {
-    parts.push(
-      p.queue.length > 0
-        ? `${p.queue.length} waiting for your decision · oldest ${formatAge(p.queue[0].created_at, p.now)}`
-        : 'Nothing waits for your decision',
-    );
-  }
-  if (p.canRequest) {
-    parts.push(`${p.open} open`);
-    if (p.ready > 0) parts.push(`${p.ready} ready to reveal`);
-    parts.push(`${p.closed} closed in the last ${RECENT_DAYS} days`);
-  }
-  return parts.join(' · ');
+function needsLabel(items: Item[]): string {
+  const count = (kinds: Item['kind'][]) => items.filter((i) => kinds.includes(i.kind)).length;
+  const part = (n: number, one: string, many: string) => (n > 0 ? `${n} ${n === 1 ? one : many}` : '');
+  const accounts = items.find((i) => i.kind === 'accounts');
+  const parts = [
+    part(count(['decision', 'overdue']), 'decision', 'decisions'),
+    part(count(['reveal']), 'reveal', 'reveals'),
+    part(accounts?.kind === 'accounts' ? accounts.count : 0, 'account', 'accounts'),
+    part(count(['agent']), 'agent', 'agents'),
+    part(count(['failure']), 'failure', 'failures'),
+  ].filter(Boolean);
+  return parts.length > 0 ? `Needs you · ${parts.join(', ')}` : 'Needs you';
+}
+
+function accountsTitle(n: number): string {
+  return n === 1 ? '1 person is waiting for account approval' : `${n} people are waiting for account approval`;
 }
 
 function deadlineOf(c: RevealCondition | undefined): number {
@@ -394,30 +567,17 @@ function deadlineOf(c: RevealCondition | undefined): number {
 
 // --- layout bits ----------------------------------------------------
 
-function Section({
-  title,
-  count,
-  link,
-  children,
-}: {
-  title: string;
-  count: number;
-  link?: { to: string; label: string };
-  children: ReactNode;
-}) {
+function Section({ link, children }: { link?: { to: string; label: string }; children: ReactNode }) {
   return (
     <section>
-      <div className="mb-2.5 flex items-baseline justify-between gap-3">
-        <h2 className="text-block-heading text-ink">
-          {title} <span className="ml-1 font-mono text-mono-small font-normal text-muted">{count}</span>
-        </h2>
-        {link && (
-          <Link to={link.to} className="text-ui font-normal text-accent-ink hover:underline">
+      {children}
+      {link && (
+        <p className="mt-2.5 text-right">
+          <Link to={link.to} className="text-caption text-accent-ink hover:underline">
             {link.label}
           </Link>
-        )}
-      </div>
-      {children}
+        </p>
+      )}
     </section>
   );
 }
@@ -558,146 +718,158 @@ function ClosedTable({
   );
 }
 
-function QueueTable({ rows, display, now }: { rows: AccessRequest[]; display: Display; now: number }) {
-  const navigate = useNavigate();
-  const open = useOpenRow();
-  const review = (r: AccessRequest) => (
-    <Button variant="secondary" size="sm" onClick={() => navigate(`/requests/${r.id}`)}>
-      Review<span className="sr-only"> {requestRef(r.id)}</span>
-    </Button>
-  );
-  const columns: Column<AccessRequest>[] = [
-    { key: 'request', header: 'Request', render: (r) => <RequestCell r={r} /> },
-    { key: 'who', header: 'Requester', render: (r) => <span className="whitespace-nowrap">{r.requester_display ?? 'Loading…'}</span> },
-    {
-      key: 'keys',
-      header: 'Reason',
-      render: (r) => (
-        <p title={r.justification} className="m-0 max-w-[190px] truncate text-muted">
-          {r.justification}
-        </p>
-      ),
-    },
-    { key: 'scope', header: 'Scope', render: (r) => <ScopeCell d={display(r)} /> },
-    { key: 'age', header: 'Waiting', align: 'right', render: (r) => <Age iso={r.created_at} now={now} /> },
-    { key: 'act', header: 'Action', hiddenHeader: true, align: 'right', render: review },
-  ];
+// --- right rail -----------------------------------------------------
+
+function RailPanel({ title, link, children }: { title: string; link?: { to: string; label: string }; children: ReactNode }) {
   return (
-    <DataTable
-      label="Your queue"
-      columns={columns}
-      rows={rows}
-      rowKey={(r) => r.id}
-      onRowClick={open}
-      alignTop
-      stacked={(r) => (
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-1">
-            <div className="flex items-baseline gap-3">
-              <RefLink r={r} />
-              <Age iso={r.created_at} now={now} />
-            </div>
-            <span className="text-ui">{r.requester_display ?? ''}</span>
-            <Keys keys={keysOf(r)} className="whitespace-normal break-all" />
-            <p className="text-caption text-muted">{r.justification}</p>
-            <ScopeCell d={display(r)} />
-          </div>
-          {review(r)}
-        </div>
-      )}
-    />
+    <Card>
+      <CardHeader>
+        <h2 className="text-block-heading text-ink">{title}</h2>
+        {link && (
+          <Link to={link.to} className="text-caption text-accent-ink hover:underline">
+            {link.label}
+          </Link>
+        )}
+      </CardHeader>
+      {children}
+    </Card>
   );
 }
 
-// --- right rail -----------------------------------------------------
-
 function Rail({
   mine,
+  open,
   queue,
   me,
   canRequest,
   now,
+  display,
+  agents,
   scopes,
 }: {
   mine: AccessRequest[];
+  open: AccessRequest[];
   queue: AccessRequest[];
   me: string;
   canRequest: boolean;
   now: number;
+  display: Display;
+  agents?: ReturnType<typeof useAdminAgents>;
   scopes: ReturnType<typeof scopeOptions>;
 }) {
   const { hasPermission } = useAuth();
   const events = useMemo(() => activityFrom(mine, queue, me, now), [mine, queue, me, now]);
+  const projects = useMemo(() => {
+    const by = new Map<string, typeof scopes>();
+    for (const s of scopes) by.set(s.projectId, [...(by.get(s.projectId) ?? []), s]);
+    return [...by.values()];
+  }, [scopes]);
   return (
-    <aside
-      aria-label="Activity and scopes"
-      className="grid grid-cols-1 content-start gap-7 max-[1360px]:grid-cols-2 max-[700px]:grid-cols-1"
-    >
-      <section>
-        <h2 className="mb-1 text-block-heading text-ink">Activity</h2>
-        {events.length > 0 ? (
-          <ActivityLog events={events} />
-        ) : (
-          <p className="text-caption text-muted">Nothing has happened in your requests yet.</p>
-        )}
-      </section>
+    <aside aria-label="Health, activity and scopes" className="flex min-w-0 flex-[1_1_320px] flex-col gap-5">
+      {agents && <SystemHealth agents={agents} />}
 
-      <div className="flex flex-col gap-7">
-        {canRequest && (
-          <section>
-            <h2 className="mb-1 border-b border-border pb-2 text-block-heading text-ink">You can request in</h2>
-            {scopes.length > 0 ? (
-              <ul className="m-0 list-none p-0">
-                {scopes.map((s) => (
-                  <li key={s.value} className="border-b border-rule py-2.5 text-ui font-normal">
-                    <ScopeLabel project={s.projectName} env={s.envName} envKind={s.envKind} logo={s.logo} />
-                  </li>
-                ))}
-              </ul>
+      {!agents && canRequest && open.length > 0 && (
+        <RailPanel title="Your requests" link={{ to: '/requests', label: 'All' }}>
+          <ul className="m-0 list-none p-1.5">
+            {open.slice(0, 3).map((r) => {
+              const d = display(r);
+              return (
+                <li key={r.id} className="relative rounded-lg px-3.5 py-3 hover:bg-hover">
+                  <div className="flex items-center justify-between gap-3">
+                    <Link to={`/requests/${r.id}`} className="font-mono text-mono text-ink after:absolute after:inset-0 after:rounded-lg">
+                      {requestRef(r.id)}
+                    </Link>
+                    <Status status={r.status} />
+                  </div>
+                  <p className="m-0 mt-[3px] truncate text-caption text-ink">
+                    {r.type === 'patch' ? 'Change' : r.type === 'cross_team' ? 'Supply' : 'Read'} {keysOf(r).join(', ') || 'all keys'} · {d.project} {d.env}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </RailPanel>
+      )}
+
+      <RailPanel title="Recent activity" link={hasPermission('audit.read') ? { to: '/audit', label: 'Audit log' } : undefined}>
+        <div className="px-4 py-1">
+          {events.length > 0 ? (
+            <ActivityLog events={events} />
+          ) : (
+            <p className="py-3 text-caption text-muted">Nothing has happened in your requests yet.</p>
+          )}
+        </div>
+      </RailPanel>
+
+      {canRequest && (
+        <RailPanel title="You can request in">
+          <div className="flex flex-col gap-3 p-4">
+            {projects.length > 0 ? (
+              projects.map((list) => (
+                <div key={list[0].projectId} className="flex items-center justify-between gap-3">
+                  <span className="min-w-0">
+                    <ScopeLabel project={list[0].projectName} logo={list[0].logo} />
+                  </span>
+                  <span className="flex flex-wrap justify-end gap-1">
+                    {list.map((s) => (
+                      <EnvTag key={s.value} kind={s.envKind}>
+                        {s.envName}
+                      </EnvTag>
+                    ))}
+                  </span>
+                </div>
+              ))
             ) : (
-              <p className="py-2 text-caption text-muted">
-                You aren't granted any project yet. Ask an administrator for access.
-              </p>
+              <p className="text-caption text-muted">You aren't granted any project yet. Ask an administrator for access.</p>
             )}
-          </section>
-        )}
-        {hasPermission('agent.list') && <AgentsBlock />}
-      </div>
+            <p className="m-0 font-mono text-mono-small text-muted">Times in UTC.</p>
+          </div>
+        </RailPanel>
+      )}
     </aside>
   );
 }
 
-function AgentsBlock() {
-  const agents = useAdminAgents();
-  const rows = agents.data ?? [];
-  const count = (s: AgentStatus) => rows.filter((a) => a.status === s).length;
-  const summary = [
-    `${count('active')} active`,
-    count('stale') && `${count('stale')} stale`,
-    count('enrolled') && `${count('enrolled')} waiting for a heartbeat`,
-    count('error') && `${count('error')} with errors`,
-    count('revoked') && `${count('revoked')} revoked`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+const AGENT_TONE: Partial<Record<AgentStatus, 'ok' | 'bad' | 'warn' | 'neutral'>> = {
+  active: 'ok',
+  stale: 'bad',
+  error: 'bad',
+  enrolled: 'warn',
+};
+
+function SystemHealth({ agents }: { agents: ReturnType<typeof useAdminAgents> }) {
+  const rows = (agents.data ?? []).filter((a) => a.status !== 'revoked' && a.status !== 'disabled');
+  const byConnection = new Map<string, typeof rows>();
+  for (const a of rows) {
+    const key = a.provider_connection_name ?? a.name;
+    byConnection.set(key, [...(byConnection.get(key) ?? []), a]);
+  }
   return (
-    <section>
-      <div className="mb-1 flex items-baseline justify-between border-b border-border pb-2">
-        <h2 className="text-block-heading text-ink">Agents</h2>
-        <Link to="/agents" className="text-ui font-normal text-accent-ink hover:underline">
-          All agents
-        </Link>
+    <RailPanel title="System health" link={{ to: '/agents', label: 'Agents' }}>
+      <div className="flex flex-col gap-3 p-4">
+        {agents.isLoading && <p className="text-caption text-muted">Loading…</p>}
+        {agents.isError && <p className="text-caption text-muted">Couldn't load agents.</p>}
+        {!agents.isLoading && !agents.isError && rows.length === 0 && <p className="text-caption text-muted">No agents are connected yet.</p>}
+        {[...byConnection.entries()].map(([name, list]) => {
+          const statuses = [...new Set(list.map((a) => a.status))];
+          return (
+            <div key={name} className="flex items-center justify-between gap-3">
+              <span className="min-w-0 truncate font-mono text-mono" title={name}>
+                {name}
+              </span>
+              <span className="flex shrink-0 flex-wrap justify-end gap-3">
+                {statuses.map((s) => (
+                  <ToneStatus key={s} tone={AGENT_TONE[s] ?? 'neutral'}>
+                    {list.filter((a) => a.status === s).length} {s}
+                  </ToneStatus>
+                ))}
+              </span>
+            </div>
+          );
+        })}
+        <p className="m-0 font-mono text-mono-small text-muted">From heartbeats · updates every 15 s</p>
       </div>
-      <p className="py-2.5 text-ui font-normal">
-        {agents.isLoading
-          ? 'Loading…'
-          : agents.isError
-            ? "Couldn't load agents."
-            : rows.length === 0
-              ? 'No agents are connected yet.'
-              : summary}
-      </p>
-    </section>
+    </RailPanel>
   );
 }
 

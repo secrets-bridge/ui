@@ -2,14 +2,20 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
+import { roleLabelFor } from '../auth/roleLabel';
 import { useInboxCount } from '../api/crossTeam';
+import { useMe } from '../api/me';
 import { pendingForbidden, usePendingUsers } from '../api/pendingUsers';
 import { useRequests } from '../api/requests';
 import { needsMyDecision } from '../lib/requestQueues';
 import { useRevealConditions } from '../requests/revealState';
+import { ALL_SCOPES, scopeOptions, useScope } from '../requests/scope';
+import { useRequestDetails } from '../requests/useRequestDetails';
+import { Avatar } from '../ui/Avatar';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import {
   AgentIcon,
+  ApprovalIcon,
   AuditIcon,
   CatalogIcon,
   CloseIcon,
@@ -33,6 +39,7 @@ import { VersionChip } from '../ui/VersionChip';
  *   authorization; the api decides.
  * - No organization switcher, no environment toggle and no search
  *   field: none of them exist behind the UI.
+ * - The top bar holds the scope for the pages that follow it, and Docs.
  * - A route change moves focus to the page h1 (#page-title), or to the
  *   main region while the page is still loading.
  */
@@ -126,6 +133,8 @@ export function Shell() {
           {identity && <Avatar name={identity.display_name} />}
         </header>
 
+        <TopBar />
+
         <main ref={mainRef} id="main" tabIndex={-1} className="flex-1 px-8 pb-14 pt-7 max-[900px]:px-4 max-[900px]:pb-10 max-[900px]:pt-5">
           <div className="w-full max-w-[1240px]">
             <Outlet />
@@ -155,6 +164,52 @@ export function Shell() {
   );
 }
 
+// --- top bar --------------------------------------------------------
+
+// The pages the scope filters. Everything else shows only Docs.
+const SCOPED_PATHS = ['/', '/approvals', '/requests'];
+
+function TopBar() {
+  const { pathname } = useLocation();
+  const { scope, setScope } = useScope();
+  const me = useMe();
+  const scopes = useMemo(() => scopeOptions(me.data?.projects), [me.data]);
+  const scoped = SCOPED_PATHS.includes(pathname) && scopes.length > 0;
+  return (
+    <div className="flex min-h-[60px] flex-wrap items-center gap-3 border-b border-border px-8 py-2.5 max-[900px]:min-h-0 max-[900px]:px-4 max-[900px]:py-2">
+      {scoped && (
+        <>
+          <label className="inline-flex h-9 min-w-0 items-center gap-2 rounded-md border border-border bg-surface pl-3 text-[13.5px] font-medium text-ink">
+            <span className="text-muted">Scope</span>
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+              className="select-chevron h-full min-w-0 max-w-[260px] rounded-md bg-transparent pr-8 font-medium text-ink focus:outline-2 focus:outline-offset-1 focus:outline-accent-ink"
+            >
+              <option value={ALL_SCOPES}>All my scopes</option>
+              {scopes.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="text-caption text-muted max-[1100px]:hidden">Overview, Approvals and Requests follow this scope.</span>
+        </>
+      )}
+      <span className="flex-1" />
+      <a
+        href="https://secrets-bridge.io"
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-(--control-sm) items-center rounded-md px-[11px] text-[13px] font-semibold text-ink hover:bg-hover"
+      >
+        Docs
+      </a>
+    </div>
+  );
+}
+
 // --- navigation -----------------------------------------------------
 
 function SidebarContent({ onSignOut }: { onSignOut: () => void }) {
@@ -174,7 +229,8 @@ function Navigation() {
   const me = identity?.id ?? '';
 
   // Sidebar entries gated by the live permission set:
-  //   Requests        → secret.request OR secret.approve
+  //   Approvals       → secret.approve
+  //   Requests        → secret.request
   //   Inbox           → secret.value.provide (at any scope)
   //   Agents          → agent.list
   //   Gateways        → gateway.list, global (every /admin/gateways read
@@ -188,7 +244,6 @@ function Navigation() {
   //                     workflow.edit, policy.edit, integration.edit
   const canApprove = hasPermission('secret.approve');
   const canRequest = hasPermission('secret.request');
-  const showRequests = canRequest || canApprove;
   const showInbox = hasPermission('secret.value.provide');
   const showAgents = hasPermission('agent.list');
   const showSecrets = hasPermission('secret.list');
@@ -206,25 +261,28 @@ function Navigation() {
   const anyAdmin =
     showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showProviderConnections || showSignIn || showGateways;
 
-  // Requests count, hidden at 0, from the same queries and rules as the
-  // pages so the numbers never disagree: for approvers, the requests
-  // waiting for their decision; for requesters, reveals that are ready.
+  // Counts, hidden at 0, from the same queries and rules as the pages so
+  // the numbers never disagree: on Approvals, the requests waiting for
+  // this person's decision; on Requests, reveals that are ready. The
+  // detail lookup adds the votes the list rows don't carry.
   const pending = useRequests({ status: 'pending' }, { enabled: canApprove && !!me });
-  const mine = useRequests({ requester_id: me }, { enabled: !canApprove && canRequest && !!me });
+  const mine = useRequests({ requester_id: me }, { enabled: canRequest && !!me });
   const mineRows = useMemo(() => (mine.data ?? []).filter((r) => r.requester_id === me), [mine.data, me]);
-  const reveal = useRevealConditions(canApprove ? [] : mineRows, me);
+  const reveal = useRevealConditions(mineRows, me);
+  const candidates = useMemo(() => (canApprove ? needsMyDecision(pending.data ?? [], me) : []), [canApprove, pending.data, me]);
+  const details = useRequestDetails(useMemo(() => candidates.map((r) => r.id), [candidates]));
   const decisionCount = useMemo(
-    () => (canApprove ? needsMyDecision(pending.data ?? [], me).length : 0),
-    [canApprove, pending.data, me],
+    () =>
+      needsMyDecision(
+        candidates.map((r) => details.get(r.id) ?? r),
+        me,
+      ).length,
+    [candidates, details, me],
   );
   const readyCount = useMemo(
     () => [...reveal.values()].filter((c) => c.state === 'ready').length,
     [reveal],
   );
-  const requestsCount = canApprove ? decisionCount : readyCount;
-  const requestsCountLabel = canApprove
-    ? `${decisionCount} waiting for your decision`
-    : `${readyCount} ready to reveal`;
 
   const inboxCount = useInboxCount({ enabled: showInbox });
   const inboxBadge = showInbox ? inboxCount.data?.total : undefined;
@@ -240,13 +298,23 @@ function Navigation() {
   return (
     <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pb-3">
       <NavItem to="/" end label="Overview" icon={<OverviewIcon />} />
-      {showRequests && (
+      {canApprove && (
+        <NavItem
+          to="/approvals"
+          label="Approvals"
+          icon={<ApprovalIcon />}
+          count={decisionCount}
+          countLabel={`${decisionCount} waiting for your decision`}
+        />
+      )}
+      {canRequest && (
         <NavItem
           to="/requests"
           label="Requests"
           icon={<RequestIcon />}
-          count={requestsCount}
-          countLabel={requestsCountLabel}
+          count={readyCount}
+          countLabel={`${readyCount} ready to reveal`}
+          quiet
         />
       )}
       {showInbox && (
@@ -321,6 +389,7 @@ function NavItem({
   icon,
   count,
   countLabel,
+  quiet,
   end,
 }: {
   to: string;
@@ -328,6 +397,8 @@ function NavItem({
   icon?: ReactNode;
   count?: number;
   countLabel?: string;
+  /** An outlined count, for something that's ready rather than waiting. */
+  quiet?: boolean;
   // NavLink matches by prefix; `end` keeps "/" from matching every route.
   end?: boolean;
 }) {
@@ -347,7 +418,10 @@ function NavItem({
       {count !== undefined && count > 0 && (
         <span
           aria-label={countLabel}
-          className="inline-flex h-5 min-w-[22px] items-center justify-center rounded-sm bg-accent px-1.5 font-mono text-[11.5px] font-semibold text-on-accent"
+          className={
+            'inline-flex h-5 min-w-[22px] items-center justify-center rounded-sm px-1.5 font-mono text-[11.5px] font-semibold ' +
+            (quiet ? 'border border-border text-muted' : 'bg-accent text-on-accent')
+          }
         >
           {count}
         </span>
@@ -382,7 +456,7 @@ function SidebarFooter({ onSignOut }: { onSignOut: () => void }) {
       )}
 
       <div className="grid grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border border-border p-2.5">
-        <Avatar name={identity.display_name} small />
+        <Avatar name={identity.display_name} size="sm" />
         <button
           type="button"
           onClick={() => navigate('/me')}
@@ -448,42 +522,5 @@ function MobileNav({ onClose, onSignOut }: { onClose: () => void; onSignOut: () 
         <SidebarFooter onSignOut={onSignOut} />
       </div>
     </div>
-  );
-}
-
-// --- people ---------------------------------------------------------
-
-// The api has no "kind of user" field, so the subtitle is read from the
-// permission set. "No role" is the honest label for a signed-in user
-// with zero grants (e.g. an OIDC user not yet in any mapped group).
-function roleLabelFor(perms: string[]): string {
-  if (perms.includes('role.edit') || perms.includes('user_role.edit')) return 'Platform admin';
-  if (perms.includes('secret.security.approve')) return 'Security approver';
-  if (perms.includes('secret.approve')) return 'Approver';
-  if (perms.includes('secret.value.provide')) return 'Value provider';
-  if (perms.includes('secret.request')) return 'Requester';
-  if (perms.length === 0) return 'No role';
-  return 'Member';
-}
-
-function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '?';
-  const first = words[0].charAt(0);
-  const second = words.length > 1 ? words[words.length - 1].charAt(0) : '';
-  return (first + second).toUpperCase();
-}
-
-function Avatar({ name, small }: { name: string; small?: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={
-        'inline-flex shrink-0 items-center justify-center rounded-full border border-border bg-raised font-semibold text-ink ' +
-        (small ? 'h-[30px] w-[30px] text-[11.5px]' : 'h-8 w-8 text-[12px]')
-      }
-    >
-      {initialsOf(name)}
-    </span>
   );
 }

@@ -10,6 +10,8 @@ import { useEffect, type ReactNode } from 'react';
 
 interface Props {
   title: string;
+  /** Small line above the title, such as the date and who is signed in. */
+  eyebrow?: ReactNode;
   /** Short fact line built from the same records the page lists. */
   description?: ReactNode;
   actions?: ReactNode;
@@ -17,7 +19,7 @@ interface Props {
   mark?: ReactNode;
 }
 
-export function PageHeader({ title, description, actions, mark }: Props) {
+export function PageHeader({ title, eyebrow, description, actions, mark }: Props) {
   // The tab title names the page, so history and tabs are readable.
   useEffect(() => {
     document.title = `${title} · Secrets Bridge`;
@@ -26,6 +28,7 @@ export function PageHeader({ title, description, actions, mark }: Props) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
+        {eyebrow && <p className="mb-1.5 text-label text-muted">{eyebrow}</p>}
         <h1 id="page-title" tabIndex={-1} className={'text-console-title text-ink' + (mark ? ' flex items-center gap-3' : '')}>
           {mark}
           {mark ? <span className="min-w-0 break-words">{title}</span> : title}

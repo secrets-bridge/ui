@@ -11,6 +11,7 @@ import { ScopeProvider } from './requests/ScopeProvider';
 import { ErrorBoundary } from './ui/ErrorBoundary';
 import { ToastProvider } from './ui/Toast';
 import { Agents } from './pages/Agents';
+import { Approvals } from './pages/Approvals';
 import { Audit } from './pages/Audit';
 import { Inbox } from './pages/Inbox';
 import { InboxFill } from './pages/InboxFill';
@@ -67,6 +68,7 @@ export function App() {
           }
         >
           <Route path="/" element={<Overview />} />
+          <Route path="/approvals" element={<Approvals />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/requests" element={<Requests />} />
           <Route path="/requests/:id" element={<RequestDetail />} />

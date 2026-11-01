@@ -22,6 +22,8 @@ on `main`.
   ingress routing chooses the host at runtime.
 
 ### Changed
+- Overview puts the one next thing first: counters, Next up with its context and action, the rest as rows, and a right rail. The scope moved to a top bar. A request past its deadline can't take Next up.
+- Approvals is its own screen, with decisions moved out of Requests. Someone who only approves lands there, and someone whose approver role is limited to a team or project gets a sentence saying why it's empty.
 - The Switchboard identity replaces the old look: warm graphite, a chartreuse accent and blue for success in both themes, Geist, Geist Mono and Bricolage Grotesque (self-hosted), rounder corners, larger type and controls, status shapes per group, a checkpoint route on the request page, production tags inverted with a hatch, and a grouped sidebar. Behaviour, labels and API calls are unchanged. ESLint now refuses lime on text, borders and rings.
 - `hasGlobalPermission` joins `hasPermission`. The Gateway admin pages gate on it, so a team-scoped grant no longer shows links and buttons that answer 403.
 - Agent onboarding v2 (skills#116). Enroll an agent now creates a
