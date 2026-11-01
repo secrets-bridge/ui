@@ -356,7 +356,7 @@ function MembersSection({ team }: { team: Team }) {
       <p className="mb-3 mt-0.5 max-w-3xl text-caption text-muted">
         Membership only groups people. To give members access, grant a role on this team in{' '}
         <Link to="/admin/assignments" className="font-medium text-accent-ink hover:underline">
-          Assignments
+          Role assignments
         </Link>
         .
       </p>

@@ -133,6 +133,23 @@ export function InboxIcon(p: IconProps) {
 }
 
 /** Catalog: stacked records. */
+export function FolderIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M3.5 6H9.5L11.5 8H20.5V19H3.5Z" />
+    </Icon>
+  );
+}
+
+export function AdminIcon(p: IconProps) {
+  return (
+    <Icon {...p}>
+      <path d="M3.5 7H20.5M3.5 17H20.5" />
+      <path d="M8 4.5H11V9.5H8ZM13 14.5H16V19.5H13Z" />
+    </Icon>
+  );
+}
+
 export function CatalogIcon(p: IconProps) {
   return (
     <Icon {...p}>

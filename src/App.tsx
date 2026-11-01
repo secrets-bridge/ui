@@ -6,6 +6,7 @@ import { queryClient } from './api/queryClient';
 import { AuthProvider } from './auth/AuthContext';
 import { RequireAuth } from './auth/RequireAuth';
 import { StepUpModalProvider } from './auth/StepUpModal';
+import { AdminIndex, AdminLayout } from './layout/AdminLayout';
 import { Shell } from './layout/Shell';
 import { ScopeProvider } from './requests/ScopeProvider';
 import { ErrorBoundary } from './ui/ErrorBoundary';
@@ -91,25 +92,28 @@ export function App() {
           {/* The reveal moved inline to the request page. Old links land
               there; nothing is revealed until the requester asks. */}
           <Route path="/projects/:id/env/:env_id/reveal/:request_id" element={<RevealRedirect />} />
-          <Route path="/admin/projects" element={<Projects />} />
-          <Route path="/admin/teams" element={<Teams />} />
-          <Route path="/admin/roles" element={<Roles />} />
-          <Route path="/admin/assignments" element={<Assignments />} />
-          <Route path="/admin/users" element={<Users />} />
-          <Route path="/admin/sign-in" element={<SignIn />} />
-          <Route path="/admin/workflows" element={<Workflows />} />
-          <Route path="/admin/policies" element={<Policies />} />
-          <Route path="/admin/policies/:id" element={<AdminPolicyDetail />} />
-          <Route path="/admin/platform-settings" element={<PlatformSettings />} />
-          <Route path="/admin/provider-connections" element={<ProviderConnections />} />
-          <Route
-            path="/admin/gateways"
-            element={
-              <Suspense fallback={<p className="text-muted">Loading…</p>}>
-                <Gateways />
-              </Suspense>
-            }
-          />
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminIndex />} />
+            <Route path="/admin/projects" element={<Projects />} />
+            <Route path="/admin/teams" element={<Teams />} />
+            <Route path="/admin/roles" element={<Roles />} />
+            <Route path="/admin/assignments" element={<Assignments />} />
+            <Route path="/admin/users" element={<Users />} />
+            <Route path="/admin/sign-in" element={<SignIn />} />
+            <Route path="/admin/workflows" element={<Workflows />} />
+            <Route path="/admin/policies" element={<Policies />} />
+            <Route path="/admin/policies/:id" element={<AdminPolicyDetail />} />
+            <Route path="/admin/platform-settings" element={<PlatformSettings />} />
+            <Route path="/admin/provider-connections" element={<ProviderConnections />} />
+            <Route
+              path="/admin/gateways"
+              element={
+                <Suspense fallback={<p className="text-muted">Loading…</p>}>
+                  <Gateways />
+                </Suspense>
+              }
+            />
+          </Route>
           <Route
             path="/gateways"
             element={

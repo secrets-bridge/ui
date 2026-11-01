@@ -74,7 +74,7 @@ export function SignIn() {
   if (!allowed) {
     return (
       <div>
-        <PageHeader title="Sign-in" />
+        <PageHeader title="Sign-in methods" />
         <Banner title="You can't change how people sign in.">
           It needs the <code className="font-mono text-mono">auth.sso.edit</code> permission. Ask an administrator.
         </Banner>
@@ -87,7 +87,7 @@ export function SignIn() {
   return (
     <div>
       <PageHeader
-        title="Sign-in"
+        title="Sign-in methods"
         description="Let people sign in with their Google Workspace account. New accounts wait for your approval on the Users page."
       />
       <div className="flex flex-col gap-6">

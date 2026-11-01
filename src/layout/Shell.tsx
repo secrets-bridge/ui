@@ -5,7 +5,6 @@ import { useAuth } from '../auth/AuthContext';
 import { roleLabelFor } from '../auth/roleLabel';
 import { useInboxCount } from '../api/crossTeam';
 import { useMe } from '../api/me';
-import { pendingForbidden, usePendingUsers } from '../api/pendingUsers';
 import { useRequests } from '../api/requests';
 import { needsMyDecision } from '../lib/requestQueues';
 import { useRevealConditions } from '../requests/revealState';
@@ -14,11 +13,13 @@ import { useRequestDetails } from '../requests/useRequestDetails';
 import { Avatar } from '../ui/Avatar';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import {
+  AdminIcon,
   AgentIcon,
   ApprovalIcon,
   AuditIcon,
   CatalogIcon,
   CloseIcon,
+  FolderIcon,
   InboxIcon,
   MenuIcon,
   OverviewIcon,
@@ -28,6 +29,8 @@ import { Logo } from '../ui/Logo';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { useModalFocus } from '../ui/useModalFocus';
 import { VersionChip } from '../ui/VersionChip';
+import { NavItem } from './NavItem';
+import { useAdminSections } from './useAdminSections';
 
 /**
  * Console shell: a 240px sidebar and the page. At 900px and below the
@@ -240,26 +243,17 @@ function Navigation() {
   //   Audit           → audit.read
   //   Project / team policies → policy.author (never auto-shown for
   //                     policy.edit holders; they use /admin/policies)
-  //   Admin pages     → team.edit, role.edit, user_role.edit,
-  //                     workflow.edit, policy.edit, integration.edit
+  //   Administration  → any section this person has (useAdminSections)
   const canApprove = hasPermission('secret.approve');
   const canRequest = hasPermission('secret.request');
   const showInbox = hasPermission('secret.value.provide');
   const showAgents = hasPermission('agent.list');
   const showSecrets = hasPermission('secret.list');
   const showAudit = hasPermission('audit.read');
-  const showTeams = hasPermission('team.edit');
-  const showRoles = hasPermission('role.edit');
-  const showAssignments = hasPermission('user_role.edit');
-  const showWorkflows = hasPermission('workflow.edit');
-  const showPolicies = hasPermission('policy.edit');
-  const showProviderConnections = hasPermission('integration.edit');
-  const showSignIn = hasPermission('auth.sso.edit');
   const showScopedPolicies = hasPermission('policy.author');
   const showGateways = hasGlobalPermission('gateway.list');
   const showTargets = hasPermission('gateway.bind') || showGateways;
-  const anyAdmin =
-    showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showProviderConnections || showSignIn || showGateways;
+  const admin = useAdminSections();
 
   // Counts, hidden at 0, from the same queries and rules as the pages so
   // the numbers never disagree: on Approvals, the requests waiting for
@@ -286,14 +280,6 @@ function Navigation() {
 
   const inboxCount = useInboxCount({ enabled: showInbox });
   const inboxBadge = showInbox ? inboxCount.data?.total : undefined;
-
-  // People waiting for an admin's approval (api#266), for whoever can
-  // approve them.
-  // The list needs a global grant; a team-scoped one gets a 403, and
-  // then there's no Users page for this admin to use.
-  const waiting = usePendingUsers({ enabled: showAssignments });
-  const showUsers = showAssignments && !pendingForbidden(waiting.error);
-  const waitingBadge = showUsers ? waiting.data?.total : undefined;
 
   return (
     <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pb-3">
@@ -336,34 +322,20 @@ function Navigation() {
       )}
 
       <NavGroup label="Projects">
-        <NavItem to="/projects" end label="My projects" />
+        <NavItem to="/projects" end label="My projects" icon={<FolderIcon />} />
         {showScopedPolicies && <NavItem to="/projects/policies" label="Project policies" />}
         {showScopedPolicies && <NavItem to="/teams/policies" label="Team policies" />}
         {showTargets && <NavItem to="/gateways" label="Argo CD targets" />}
+        {admin.isAdmin && (
+          <NavItem
+            to="/admin"
+            label="Administration"
+            icon={<AdminIcon />}
+            count={admin.waiting}
+            countLabel={`${admin.waiting} waiting for approval`}
+          />
+        )}
       </NavGroup>
-
-      {anyAdmin && (
-        <NavGroup label="Admin">
-          {showTeams && <NavItem to="/admin/projects" label="Projects" />}
-          {showTeams && <NavItem to="/admin/teams" label="Teams" />}
-          {showRoles && <NavItem to="/admin/roles" label="Roles" />}
-          {showUsers && (
-            <NavItem
-              to="/admin/users"
-              label="Users"
-              count={waitingBadge}
-              countLabel={`${waitingBadge ?? 0} waiting for approval`}
-            />
-          )}
-          {showAssignments && <NavItem to="/admin/assignments" label="Assignments" />}
-          {showWorkflows && <NavItem to="/admin/workflows" label="Workflows" />}
-          {showPolicies && <NavItem to="/admin/policies" label="Policies" />}
-          {showPolicies && <NavItem to="/admin/platform-settings" label="Platform settings" />}
-          {showProviderConnections && <NavItem to="/admin/provider-connections" label="Provider connections" />}
-          {showGateways && <NavItem to="/admin/gateways" label="Gateways" />}
-          {showSignIn && <NavItem to="/admin/sign-in" label="Sign-in" />}
-        </NavGroup>
-      )}
 
       {meStatus === 'loading' && (
         <p className="px-2 pt-3 text-caption text-muted" role="status">
@@ -380,53 +352,6 @@ function NavGroup({ label, children }: { label: string; children: ReactNode }) {
       <p className="px-2.5 pb-1.5 text-[12px] font-medium leading-4 text-muted">{label}</p>
       {children}
     </div>
-  );
-}
-
-function NavItem({
-  to,
-  label,
-  icon,
-  count,
-  countLabel,
-  quiet,
-  end,
-}: {
-  to: string;
-  label: string;
-  icon?: ReactNode;
-  count?: number;
-  countLabel?: string;
-  /** An outlined count, for something that's ready rather than waiting. */
-  quiet?: boolean;
-  // NavLink matches by prefix; `end` keeps "/" from matching every route.
-  end?: boolean;
-}) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      className={({ isActive }) =>
-        'group flex h-9 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-ui font-medium max-[900px]:h-11 ' +
-        (isActive ? 'bg-raised text-ink' : 'text-muted hover:bg-hover hover:text-ink')
-      }
-    >
-      {icon && (
-        <span className="group-aria-[current=page]:text-accent-ink">{icon}</span>
-      )}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {count !== undefined && count > 0 && (
-        <span
-          aria-label={countLabel}
-          className={
-            'inline-flex h-5 min-w-[22px] items-center justify-center rounded-sm px-1.5 font-mono text-[11.5px] font-semibold ' +
-            (quiet ? 'border border-border text-muted' : 'bg-accent text-on-accent')
-          }
-        >
-          {count}
-        </span>
-      )}
-    </NavLink>
   );
 }
 
