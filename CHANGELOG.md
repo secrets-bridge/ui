@@ -12,6 +12,7 @@ on `main`.
 ## [Unreleased]
 
 ### Added
+- Pick people by name (api#240): Assignments and team members show names and emails, and search by either to grant a role or add a member. A pasted id still works. Someone without a global `user_role.edit` or `team.edit` keeps the plain id box.
 - Argo CD targets (`/gateways`, ui#173, ADR 0002 S5): the discovered target catalog and a team's bindings, filtered by the server to the caller's teams, for team-scoped `gateway.bind` holders and platform admins. A target never appears by name alone. A project narrows the list to what it can bind, and production environments aren't offered to a team admin. Suspended bindings show their reason and next step.
 - Connector approval for discovery: map AppProjects to teams in their own drawer, and approve the reviewed scope by its digest. Approve waits until the replicas agree, the next catalog has arrived and every AppProject has a team.
 - Docker image publishing workflow — multi-arch (amd64 + arm64),

@@ -8,8 +8,9 @@
  *   the body, so the api treats them as "any" (a grant with no scope is
  *   global).
  * - Revoke asks first.
- * - The user is typed as an id: the api has no user directory to pick
- *   from yet. People find their id on their Profile page.
+ * - People show and are picked by name or email (api#240). Someone the
+ *   lookup refuses sees ids and types one; people find theirs on their
+ *   Profile page.
  * - value_provider is team-scoped by design (Slice N5): granting it
  *   without a team hands every team's inbox to one person, so that
  *   asks for "global" to be typed.
@@ -18,7 +19,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { useForm, useWatch, type SubmitHandler } from 'react-hook-form';
+import { Controller, useForm, useWatch, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
@@ -27,6 +28,7 @@ import { useRoles } from '../../api/roles';
 import { useTeams } from '../../api/teams';
 import { useEnvironments, useProjects } from '../../api/tenancy';
 import type { UserRole, UserRoleInput } from '../../api/types';
+import { personName, useCanLookUpUsers, useUsersByIds, type UserSummary } from '../../api/users';
 import { useAuth } from '../../auth/AuthContext';
 import { providerLabel } from '../../lib/providers';
 import { formatExact, formatShort } from '../../lib/time';
@@ -39,6 +41,8 @@ import { EmptyState } from '../../ui/EmptyState';
 import { Field, Input, Select } from '../../ui/Field';
 import { PageHeader } from '../../ui/PageHeader';
 import { useToast } from '../../ui/toastContext';
+import { Person } from './people/Person';
+import { PersonPicker } from './people/PersonPicker';
 import { buildIndentedTeams, errorText } from './roles/format';
 
 const PROVIDER_TYPES = ['vault', 'aws-sm', 'gcp-sm', 'azure-kv'];
@@ -69,21 +73,31 @@ export function Assignments() {
   const scopeValue = (k: string, v: string) =>
     k === 'project_id' ? projectName(v) : k === 'team_id' ? teamName(v) : k === 'provider_type' ? providerLabel(v) : v;
 
+  const directory = useUsersByIds((list.data ?? []).map((r) => r.user_id));
+  const nameOf = (id: string) => personName(id, directory.get(id));
   const all = useMemo(
-    () => [...(list.data ?? [])].sort((a, b) => a.user_id.localeCompare(b.user_id) || Date.parse(b.granted_at) - Date.parse(a.granted_at)),
-    [list.data],
+    () =>
+      [...(list.data ?? [])].sort(
+        (a, b) =>
+          personName(a.user_id, directory.get(a.user_id)).localeCompare(personName(b.user_id, directory.get(b.user_id))) ||
+          a.user_id.localeCompare(b.user_id) ||
+          Date.parse(b.granted_at) - Date.parse(a.granted_at),
+      ),
+    [list.data, directory],
   );
   const f = filter.trim().toLowerCase();
   const rows = f
-    ? all.filter((r) => r.user_id.toLowerCase().includes(f) || (roles.data?.find((x) => x.id === r.role_id)?.name ?? '').toLowerCase().includes(f))
+    ? all.filter((r) => {
+        const p = directory.get(r.user_id);
+        return [r.user_id, p?.display_name, p?.email, roles.data?.find((x) => x.id === r.role_id)?.name].some((s) => s?.toLowerCase().includes(f));
+      })
     : all;
   const people = new Set(all.map((r) => r.user_id)).size;
 
   const userCell = (r: UserRole) => (
-    <span className="break-all font-mono text-mono text-ink">
-      {r.user_id}
+    <Person id={r.user_id} person={directory.get(r.user_id)}>
       {identity && r.user_id === identity.id && <span className="ml-2 font-sans text-caption text-muted">You</span>}
-    </span>
+    </Person>
   );
   const scopeCell = (r: UserRole) => {
     const entries = Object.entries(r.scope ?? {});
@@ -107,7 +121,7 @@ export function Assignments() {
         revoke.reset();
         setConfirmRevoke(r);
       }}
-      aria-label={`Revoke ${roleName(r.role_id)} from ${r.user_id}`}
+      aria-label={`Revoke ${roleName(r.role_id)} from ${nameOf(r.user_id)}`}
     >
       Revoke…
     </Button>
@@ -148,8 +162,8 @@ export function Assignments() {
       {all.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2.5">
           <label className="min-w-[260px] flex-1 max-[600px]:w-full">
-            <span className="sr-only">Filter by user id or role</span>
-            <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by user id or role" className="w-full" />
+            <span className="sr-only">Filter by person or role</span>
+            <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by person or role" className="w-full" />
           </label>
           {f && (
             <>
@@ -217,14 +231,14 @@ export function Assignments() {
       {confirmRevoke && (
         <ConfirmModal
           title={`Revoke ${roleName(confirmRevoke.role_id)}?`}
-          body={`${identity && confirmRevoke.user_id === identity.id ? 'This is your own assignment: you may lose access to this page. ' : ''}User ${confirmRevoke.user_id} loses this role${Object.keys(confirmRevoke.scope ?? {}).length ? ' in this scope' : ''} at once. Requests already approved go on; anything new needs another assignment that covers it.`}
+          body={`${identity && confirmRevoke.user_id === identity.id ? 'This is your own assignment: you may lose access to this page. ' : ''}${nameOf(confirmRevoke.user_id)} loses this role${Object.keys(confirmRevoke.scope ?? {}).length ? ' in this scope' : ''} at once. Requests already approved go on; anything new needs another assignment that covers it.`}
           confirmText="Revoke"
           danger
           onCancel={() => setConfirmRevoke(null)}
           onConfirm={async () => {
             try {
               await revoke.mutateAsync(confirmRevoke.id);
-              toast(`Revoked ${roleName(confirmRevoke.role_id)} from ${confirmRevoke.user_id}.`);
+              toast(`Revoked ${roleName(confirmRevoke.role_id)} from ${nameOf(confirmRevoke.user_id)}.`);
               setConfirmRevoke(null);
             } catch {
               // Shown in the dialog.
@@ -242,7 +256,7 @@ export function Assignments() {
 
 const UUID_MSG = 'Choose from the list.';
 const schema = z.object({
-  user_id: z.string().trim().min(1, "Enter the user's id.").max(255, 'That id is too long.'),
+  user_id: z.string().trim().min(1, 'Choose someone, or enter their user id.').max(255, 'That id is too long.'),
   role_id: z.guid('Choose a role.'),
   // Scope inputs: all optional, empty ones are left out of the body.
   sc_project_id: z.guid(UUID_MSG).optional().or(z.literal('')),
@@ -262,6 +276,8 @@ function GrantDrawer({ onDone, onCancel }: { onDone: (roleLabel: string, user: s
   const projects = useProjects();
   const envs = useEnvironments();
   const teams = useTeams();
+  const canLookUp = useCanLookUpUsers();
+  const [person, setPerson] = useState<UserSummary>();
 
   const {
     register,
@@ -285,7 +301,7 @@ function GrantDrawer({ onDone, onCancel }: { onDone: (roleLabel: string, user: s
   // Environment scope is by name: several projects can each have "uat".
   const envNames = useMemo(() => [...new Set((envs.data ?? []).map((e) => e.name))].sort(), [envs.data]);
 
-  const [roleId, teamId] = useWatch({ control, name: ['role_id', 'sc_team_id'] });
+  const [roleId, teamId, userId] = useWatch({ control, name: ['role_id', 'sc_team_id', 'user_id'] });
   const role = roles.data?.find((r) => r.id === roleId);
   const needsGlobalConfirm = role?.name === 'value_provider' && !teamId;
   const [globalTyped, setGlobalTyped] = useState('');
@@ -311,7 +327,7 @@ function GrantDrawer({ onDone, onCancel }: { onDone: (roleLabel: string, user: s
     };
     try {
       await grant.mutateAsync(body);
-      onDone(role?.name ?? 'the role', data.user_id);
+      onDone(role?.name ?? 'the role', personName(data.user_id, person));
     } catch {
       // Shown below the form.
     }
@@ -334,9 +350,29 @@ function GrantDrawer({ onDone, onCancel }: { onDone: (roleLabel: string, user: s
       }
     >
       <form id="grant-role" noValidate onSubmit={handleSubmit(onValid)} className="flex flex-col gap-[18px]">
-        <Field id="grant-user" label="User id" hint="Each person can find their user id on their Profile page." error={errors.user_id?.message}>
+        <Field
+          id="grant-user"
+          label="Person"
+          hint={userId && canLookUp ? undefined : canLookUp ? 'Search by name or email, or paste a user id.' : 'Each person can find their user id on their Profile page.'}
+          error={errors.user_id?.message}
+        >
           {(p) => (
-            <Input {...p} {...register('user_id')} placeholder="00000000-0000-0000-0000-000000000000" className="font-mono" autoComplete="off" spellCheck={false} data-autofocus />
+            <Controller
+              name="user_id"
+              control={control}
+              render={({ field }) => (
+                <PersonPicker
+                  {...p}
+                  ref={field.ref}
+                  value={field.value}
+                  onChange={(id, who) => {
+                    field.onChange(id);
+                    setPerson(who);
+                  }}
+                  data-autofocus
+                />
+              )}
+            />
           )}
         </Field>
 
