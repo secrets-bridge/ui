@@ -95,6 +95,9 @@ test('a request past its deadline never takes Next up', async ({ browser }) => {
     await route.fulfill({ response: res, json: (Array.isArray(rows) ? rows : []).map((w) => ({ ...w, request_ttl_seconds: 1 })) });
   });
 
+  // The workflow's one-second limit has to run out before the page reads
+  // the clock, or the request is still decidable.
+  await lead.waitForTimeout(1_500);
   await lead.goto('/approvals');
   await expect(lead.getByRole('button', { name: `Review ${requestRef(late)}` })).toBeVisible();
   await expect(lead.getByText('past its deadline').first()).toBeVisible();
