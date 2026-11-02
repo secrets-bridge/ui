@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { adminPassword, as, call, fx } from '../support/stack';
+import { secondFactor, stepUp } from '../support/totp';
 
 // Admins pick people by name or email and read names in the lists,
 // instead of handling raw user ids. Someone the lookup refuses keeps the
@@ -28,6 +29,9 @@ async function openGrant(page: Page) {
 
 test('a role is granted by picking a name, and the list says who has it', async ({ browser }) => {
   const page = await admin(browser);
+  // The api is moving role grants behind a fresh second factor. Stepping
+  // up first works on either side of that change.
+  await stepUp(page, await secondFactor(page, fx.users.admin));
   const drawer = await openGrant(page);
   const person = drawer.getByRole('combobox', { name: 'Person' });
   await expect(person, 'focus starts in the first field').toBeFocused();
