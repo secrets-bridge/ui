@@ -76,6 +76,9 @@ export function useModalFocus(
     const onKeyDown = (e: KeyboardEvent) => {
       if (layers[layers.length - 1] !== id) return;
       if (e.key === 'Escape') {
+        // An open combobox list takes Escape first; the layer stays.
+        const combobox = e.target instanceof HTMLElement && e.target.getAttribute('role') === 'combobox';
+        if (combobox && (e.target as HTMLElement).getAttribute('aria-expanded') === 'true') return;
         e.stopPropagation();
         onCloseRef.current();
         return;

@@ -24,6 +24,7 @@ import {
   type Team,
   type TeamMember,
 } from '../../../api/teams';
+import { personName, useCanLookUpUsers, useUsersByIds } from '../../../api/users';
 import { useAuth } from '../../../auth/AuthContext';
 import { formatExact } from '../../../lib/time';
 import { Banner } from '../../../ui/Banner';
@@ -36,6 +37,8 @@ import { EntityMark } from '../../../ui/EntityMark';
 import { Field, Input, Select, Textarea } from '../../../ui/Field';
 import { PageHeader } from '../../../ui/PageHeader';
 import { useToast } from '../../../ui/toastContext';
+import { Person } from '../people/Person';
+import { PersonPicker } from '../people/PersonPicker';
 import { LogoDialog } from './LogoDialog';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -291,6 +294,8 @@ function MembersSection({ team }: { team: Team }) {
   const add = useAddTeamMember(team.id);
   const remove = useRemoveTeamMember(team.id);
   const toast = useToast();
+  const canLookUp = useCanLookUpUsers();
+  const people = useUsersByIds((members.data ?? []).map((m) => m.user_id));
   const [userId, setUserId] = useState('');
   const [tried, setTried] = useState(false);
   const [removing, setRemoving] = useState<TeamMember | null>(null);
@@ -300,7 +305,9 @@ function MembersSection({ team }: { team: Team }) {
   const fieldError = !tried
     ? undefined
     : !trimmed
-      ? 'Paste the user id to add.'
+      ? canLookUp
+        ? 'Choose someone to add.'
+        : 'Paste the user id to add.'
       : !UUID.test(trimmed)
         ? 'A user id looks like 8-4-4-4-12 hexadecimal characters.'
         : already
@@ -325,18 +332,17 @@ function MembersSection({ team }: { team: Team }) {
 
   const rows = [...(members.data ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at));
   const who = (m: TeamMember) => (
-    <span className="flex flex-wrap items-center gap-2">
-      <span className="break-all font-mono text-mono">{m.user_id}</span>
-      {identity?.id === m.user_id && <span className="text-caption font-medium text-muted">you</span>}
-    </span>
+    <Person id={m.user_id} person={people.get(m.user_id)}>
+      {identity?.id === m.user_id && <span className="ml-2 font-sans text-caption font-medium text-muted">you</span>}
+    </Person>
   );
   const removeButton = (m: TeamMember) => (
-    <Button variant="secondary" size="sm" onClick={() => setRemoving(m)} aria-label={`Remove ${m.user_id}`}>
+    <Button variant="secondary" size="sm" onClick={() => setRemoving(m)} aria-label={`Remove ${personName(m.user_id, people.get(m.user_id))}`}>
       Remove…
     </Button>
   );
   const columns: Column<TeamMember>[] = [
-    { key: 'user', header: 'User id', render: who },
+    { key: 'user', header: 'Person', render: who },
     { key: 'added', header: 'Added', render: (m) => <span className="whitespace-nowrap">{formatExact(m.created_at)}</span> },
     { key: 'actions', header: 'Actions', hiddenHeader: true, align: 'right', render: removeButton },
   ];
@@ -364,16 +370,18 @@ function MembersSection({ team }: { team: Team }) {
         className="mb-4 flex flex-wrap items-start gap-2.5"
       >
         <div className="min-w-0 flex-1 basis-[320px]">
-          <Field id="member-id" label="Add a member" hint="The person's user id, from their profile page." error={fieldError}>
+          <Field
+            id="member-id"
+            label="Add a member"
+            hint={userId && canLookUp ? undefined : canLookUp ? 'Search by name or email, or paste a user id.' : "The person's user id, from their profile page."}
+            error={fieldError}
+          >
             {(p) => (
-              <Input
+              <PersonPicker
                 {...p}
                 value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                placeholder="00000000-0000-0000-0000-000000000000"
-                className="w-full font-mono"
-                autoComplete="off"
-                spellCheck={false}
+                onChange={(id) => setUserId(id)}
+                unavailable={(u) => ((members.data ?? []).some((m) => m.user_id === u.id) ? 'Already a member' : undefined)}
               />
             )}
           </Field>
@@ -412,7 +420,7 @@ function MembersSection({ team }: { team: Team }) {
       {removing && (
         <ConfirmModal
           title="Remove this member?"
-          body={`${removing.user_id} leaves ${team.name}. Roles granted to them directly are not affected.`}
+          body={`${personName(removing.user_id, people.get(removing.user_id))} leaves ${team.name}. Roles granted to them directly are not affected.`}
           confirmText="Remove member"
           danger
           loading={remove.isPending}
