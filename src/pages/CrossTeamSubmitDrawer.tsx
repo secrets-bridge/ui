@@ -44,27 +44,41 @@ import { useToast } from '../ui/toastContext';
 
 const WHY_MIN = 10;
 
+export interface CrossTeamPrefill {
+  teamId?: string;
+  projectId?: string;
+  envId?: string;
+  connectionId?: string;
+  secretRef?: string;
+  keys?: string[];
+  why?: string;
+}
+
 interface Props {
   /** The requester's project; its provider connection receives the values. */
   sourceProject?: MyProject | null;
   /** The source environment; narrows the connections to its bindings. */
   sourceEnvironmentID?: string;
+  /** "Request again": what the closed request asked for. */
+  prefill?: CrossTeamPrefill;
   onClose: () => void;
+  /** Takes over from the default toast and close. */
+  onCreated?: (id: string) => void;
 }
 
-export function CrossTeamSubmitDrawer({ sourceProject, sourceEnvironmentID, onClose }: Props) {
+export function CrossTeamSubmitDrawer({ sourceProject, sourceEnvironmentID, prefill, onClose, onCreated }: Props) {
   const { hasPermission } = useAuth();
   const toast = useToast();
   const teams = useTeams();
   const projects = useProjects();
 
-  const [teamId, setTeamId] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const [envId, setEnvId] = useState('');
-  const [connectionId, setConnectionId] = useState('');
-  const [secretRef, setSecretRef] = useState('');
-  const [keysText, setKeysText] = useState('');
-  const [why, setWhy] = useState('');
+  const [teamId, setTeamId] = useState(prefill?.teamId ?? '');
+  const [projectId, setProjectId] = useState(prefill?.projectId ?? '');
+  const [envId, setEnvId] = useState(prefill?.envId ?? '');
+  const [connectionId, setConnectionId] = useState(prefill?.connectionId ?? '');
+  const [secretRef, setSecretRef] = useState(prefill?.secretRef ?? '');
+  const [keysText, setKeysText] = useState((prefill?.keys ?? []).join(', '));
+  const [why, setWhy] = useState(prefill?.why ?? '');
   const [tried, setTried] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -120,6 +134,10 @@ export function CrossTeamSubmitDrawer({ sourceProject, sourceEnvironmentID, onCl
     }
     try {
       const created = await submit.mutateAsync(build.body);
+      if (onCreated) {
+        onCreated(created.id);
+        return;
+      }
       const team = teams.data?.find((t) => t.id === teamId)?.name ?? 'the other team';
       toast(`Asked ${team} for ${keys.length} ${keys.length === 1 ? 'value' : 'values'} (${requestRef(created.id)}).`, {
         to: `/requests/${created.id}`,

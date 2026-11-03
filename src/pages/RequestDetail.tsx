@@ -37,7 +37,7 @@ import { useNow } from '../lib/useNow';
 import { conditionLine, keysOf, operationTitle, pathOf } from '../requests/describe';
 import { lifecycleSteps } from '../requests/lifecycle';
 import { useRevealConditions, type RevealCondition } from '../requests/revealState';
-import { requestScope, useScopeDisplay, type ScopeDisplay } from '../requests/scope';
+import { useScopeDisplay, type ScopeDisplay } from '../requests/scope';
 import { timelineFromAudit, timelineFromRequest, voterNames } from '../requests/timeline';
 import { ApprovalLanes, type Lane } from '../ui/ApprovalLanes';
 import { Banner } from '../ui/Banner';
@@ -55,8 +55,8 @@ import { CrossTeamApprovalChainCard, CrossTeamVerifyCard } from './request/Cross
 import { ApproveDialog, CancelDialog, RejectDialog } from './request/DecisionDialogs';
 import { GitOpsCard } from './request/GitOps';
 import { ObservationPanel } from './request/Observation';
+import { RequestAgainDrawer } from './request/RequestAgainDrawer';
 import { Reveal } from './request/Reveal';
-import { RequestAccessDrawer } from './RequestAccessDrawer';
 
 type DialogKind = 'approve' | 'reject' | 'cancel' | null;
 
@@ -324,8 +324,8 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
       {dialog === 'cancel' && <CancelDialog request={r} onClose={() => setDialog(null)} onDone={done} />}
 
       {drawerOpen && identity && (
-        <RequestAccessDrawer
-          prefill={{ projectId: requestScope(r).projectId, envName: requestScope(r).envName, secretRef: pathOf(r), keys: keysOf(r) }}
+        <RequestAgainDrawer
+          request={r}
           onClose={() => setDrawerOpen(false)}
           onCreated={(newId) => {
             setDrawerOpen(false);

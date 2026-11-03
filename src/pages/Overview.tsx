@@ -51,6 +51,7 @@ import { Select } from '../ui/Field';
 import { ScopeLabel } from '../ui/ScopeLabel';
 import { Status } from '../ui/Status';
 import { useToast } from '../ui/toastContext';
+import { RequestAgainDrawer } from './request/RequestAgainDrawer';
 import { RequestAccessDrawer } from './RequestAccessDrawer';
 
 const RECENT_DAYS = 3;
@@ -73,6 +74,7 @@ export function Overview() {
   const scopes = useMemo(() => scopeOptions(meQ.data?.projects), [meQ.data]);
   const display = useScopeDisplay();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [again, setAgain] = useState<AccessRequest | null>(null);
   const [showAllNeeds, setShowAllNeeds] = useState(false);
 
   // Requester: my requests. Approver: everything pending (the api only
@@ -193,8 +195,8 @@ export function Overview() {
         note: `Agent read failed ${formatShort(r.updated_at, now)}`,
         tone: 'bad' as const,
         action: (
-          <Button variant="secondary" size="sm" onClick={() => navigate(`/requests/${r.id}`)}>
-            Review<span className="sr-only"> {requestRef(r.id)}</span>
+          <Button variant="secondary" size="sm" onClick={() => setAgain(r)}>
+            Request again<span className="sr-only"> {requestRef(r.id)}</span>
           </Button>
         ),
       };
@@ -341,6 +343,16 @@ export function Overview() {
           onClose={() => setDrawerOpen(false)}
           onCreated={(id) => {
             setDrawerOpen(false);
+            toast(`Request ${requestRef(id)} submitted.`, { to: `/requests/${id}`, label: 'Open it' });
+          }}
+        />
+      )}
+      {again && identity && (
+        <RequestAgainDrawer
+          request={again}
+          onClose={() => setAgain(null)}
+          onCreated={(id) => {
+            setAgain(null);
             toast(`Request ${requestRef(id)} submitted.`, { to: `/requests/${id}`, label: 'Open it' });
           }}
         />
