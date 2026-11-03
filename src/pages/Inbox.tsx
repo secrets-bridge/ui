@@ -46,7 +46,7 @@ function InboxView() {
       key: 'ref',
       header: 'Request',
       render: (r) => (
-        <Link to={open(r)} className="font-mono text-mono font-medium text-accent hover:underline">
+        <Link to={open(r)} className="font-mono text-mono font-medium text-accent-ink hover:underline">
           {requestRef(r.id)}
         </Link>
       ),
@@ -134,7 +134,7 @@ function InboxView() {
             stacked={(r) => (
               <div className="flex flex-col gap-1">
                 <p className="flex items-center justify-between gap-3">
-                  <Link to={open(r)} className="font-mono text-mono font-medium text-accent hover:underline">
+                  <Link to={open(r)} className="font-mono text-mono font-medium text-accent-ink hover:underline">
                     {requestRef(r.id)}
                   </Link>
                   <FillWindow expiresAt={r.fill_expires_at} now={now} />

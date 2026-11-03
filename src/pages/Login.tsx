@@ -176,7 +176,7 @@ export function Login() {
           </div>
 
           {signedIn && ssoRefused ? (
-            <div className="flex flex-col gap-[18px] rounded-md border border-border bg-surface px-6 py-6">
+            <div className="flex flex-col gap-[18px] rounded-xl border border-border bg-surface px-6 py-6">
               <h1 id="page-title" className="text-console-title text-ink">
                 Google didn’t finish
               </h1>
@@ -187,7 +187,7 @@ export function Login() {
               <Link
                 to={ssoReturn}
                 replace
-                className="inline-flex h-(--control-touch) items-center justify-center rounded-md border border-accent bg-accent px-3 text-ui font-semibold text-on-accent hover:brightness-110"
+                className="inline-flex h-(--control-touch) items-center justify-center rounded-md border border-accent-edge bg-accent px-3 text-ui font-semibold text-on-accent hover:bg-accent-hover"
               >
                 {ssoReturn === '/' ? 'Back to the console' : 'Back to where you were'}
               </Link>
@@ -196,7 +196,7 @@ export function Login() {
           <form
             onSubmit={handleSubmit(onValid)}
             noValidate
-            className="flex flex-col gap-[18px] rounded-md border border-border bg-surface px-6 py-6"
+            className="flex flex-col gap-[18px] rounded-xl border border-border bg-surface px-6 py-6"
           >
             <div>
               <h1 id="page-title" className="text-console-title text-ink">
@@ -227,8 +227,8 @@ export function Login() {
                     href={`${p.start_url}?return_to=${encodeURIComponent(returnTo)}`}
                     className={
                       i === 0
-                        ? 'inline-flex h-(--control-touch) items-center justify-center rounded-md border border-accent bg-accent px-3 text-ui font-semibold text-on-accent hover:brightness-110'
-                        : 'inline-flex h-(--control-touch) items-center justify-center rounded-md border border-border bg-surface px-3 text-ui font-semibold text-ink hover:bg-sunken'
+                        ? 'inline-flex h-(--control-touch) items-center justify-center rounded-md border border-accent-edge bg-accent px-3 text-ui font-semibold text-on-accent hover:bg-accent-hover'
+                        : 'inline-flex h-(--control-touch) items-center justify-center rounded-xl border border-border bg-surface px-3 text-ui font-semibold text-ink hover:bg-hover'
                     }
                   >
                     {signInLabel(p)}
@@ -317,10 +317,10 @@ export function BrandPanel() {
         <p className="mt-4 text-[17px] leading-[27px] text-muted">
           We keep requests, approvals and audit metadata. Your secret values stay in your provider.
         </p>
-        <ol className="mt-10 grid list-none grid-cols-2 gap-px overflow-hidden rounded-md border border-border bg-border p-0">
+        <ol className="mt-10 grid list-none grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border p-0">
           {FLOW.map(({ icon: Icon, title, line }) => (
             <li key={title} className="bg-surface px-4 py-4">
-              <Icon size={20} className="text-accent" />
+              <Icon size={20} className="text-accent-ink" />
               <p className="mt-3 text-body font-semibold text-ink">{title}</p>
               <p className="mt-1 text-caption text-muted">{line}</p>
             </li>

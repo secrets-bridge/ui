@@ -96,7 +96,7 @@ export function ApproveConnectorDialog({ gatewayId, connector, onClose, onMapTea
         </Banner>
       )}
       {discovery && !waiting && (allowed.length > 0 || removed.length > 0) && (
-        <ul className="m-0 list-none rounded-md border border-border p-0 text-ui">
+        <ul className="m-0 list-none rounded-lg border border-border p-0 text-ui">
           {allowed.map((p) => {
             const ids = mapped.get(p) ?? [];
             return (

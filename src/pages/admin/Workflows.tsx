@@ -53,7 +53,7 @@ export function Workflows() {
   const nameCell = (w: Workflow) => (
     <span className="flex flex-col gap-0.5">
       <span className="flex flex-wrap items-baseline gap-x-2">
-        <button type="button" onClick={() => open(w)} className="text-left font-mono text-mono font-medium text-accent hover:underline">
+        <button type="button" onClick={() => open(w)} className="text-left font-mono text-mono font-medium text-accent-ink hover:underline">
           {w.name}
         </button>
         <Tags w={w} />

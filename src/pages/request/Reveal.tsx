@@ -190,7 +190,7 @@ export function Reveal({ request: r, deadline, now, onActiveChange, onFinished }
   if (phase === 'viewing' && session) {
     return (
       <div className="px-5 py-[18px]">
-        <h2 id="state-heading" ref={panelHeading} tabIndex={-1} className="text-[17px] font-semibold leading-[22px] text-ink">
+        <h2 id="state-heading" ref={panelHeading} tabIndex={-1} className="text-[18px] font-semibold leading-6 text-ink">
           Values revealed
         </h2>
         <p className="mb-4 mt-1.5 max-w-[68ch] text-body text-muted">
@@ -205,7 +205,7 @@ export function Reveal({ request: r, deadline, now, onActiveChange, onFinished }
           onCopy={(k) => void copy(k)}
           onHide={() => finish('hide')}
         />
-        <p className="mt-4 flex items-start gap-2 rounded-md border border-border bg-sunken px-3.5 py-3 text-ui font-normal">
+        <p className="mt-4 flex items-start gap-2 rounded-lg border border-border bg-bg px-3.5 py-3 text-ui font-normal">
           <InfoIcon size={16} className="mt-px text-muted" />
           Copying is explicit. Don't rely on the clipboard being cleared.
         </p>
@@ -219,7 +219,7 @@ export function Reveal({ request: r, deadline, now, onActiveChange, onFinished }
   const busy = phase !== 'idle';
   return (
     <div className="px-5 py-[18px]">
-      <h2 id="state-heading" tabIndex={-1} className="text-[17px] font-semibold leading-[22px] text-ink">
+      <h2 id="state-heading" tabIndex={-1} className="text-[18px] font-semibold leading-6 text-ink">
         Values are ready to reveal
       </h2>
       <p className="mt-1.5 max-w-[68ch] text-body text-muted">

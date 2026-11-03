@@ -320,7 +320,7 @@ function Steps({ issued, onCopied, closeWarned }: { issued: Issued; onCopied: ()
         <h3 id="step-watch" className="text-body font-semibold text-ink">
           {isExternalStore(store) ? '5.' : '4.'} Watch it connect
         </h3>
-        <div aria-live="polite" className="rounded-md border border-border bg-surface px-3.5 py-3 text-ui font-normal">
+        <div aria-live="polite" className="rounded-xl border border-border bg-surface px-3.5 py-3 text-ui font-normal">
           {enrolled ? (
             <div className="flex flex-col gap-1">
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1">

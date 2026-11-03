@@ -214,7 +214,7 @@ function BindingsPanel({ connectionID }: { connectionID: string }) {
         (rows.length === 0 ? (
           <p className="text-muted">Not bound to any project yet.</p>
         ) : (
-          <ul className="m-0 list-none rounded-md border border-border p-0">
+          <ul className="m-0 list-none rounded-lg border border-border p-0">
             {rows.map((b) => (
               <li key={b.id} className="flex items-center justify-between gap-3 border-t border-rule px-3 py-2 text-ui font-normal first:border-t-0">
                 <span className="min-w-0">

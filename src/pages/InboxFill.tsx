@@ -85,7 +85,7 @@ function InboxFillView() {
         </h1>
         <Banner title="It doesn't exist, or it isn't assigned to one of your teams.">
           {req.error instanceof ApiError ? `${req.error.status}: ${req.error.message}. ` : ''}
-          <Link to="/inbox" className="font-medium text-accent hover:underline">
+          <Link to="/inbox" className="font-medium text-accent-ink hover:underline">
             Back to the inbox
           </Link>
         </Banner>
@@ -114,7 +114,7 @@ function InboxFillView() {
         <div className="min-w-0">
           {r.type !== 'cross_team' ? (
             <Banner title="This isn't a cross-team request.">
-              <Link to={`/requests/${r.id}`} className="font-medium text-accent hover:underline">
+              <Link to={`/requests/${r.id}`} className="font-medium text-accent-ink hover:underline">
                 Open it in Requests
               </Link>
             </Banner>
@@ -122,7 +122,7 @@ function InboxFillView() {
             <Banner title="This request no longer needs values.">
               <span className="inline-flex flex-wrap items-center gap-2">
                 Its status is <Status status={r.status}>{statusLabel(r.status)}</Status>.{' '}
-                <Link to={`/requests/${r.id}`} className="font-medium text-accent hover:underline">
+                <Link to={`/requests/${r.id}`} className="font-medium text-accent-ink hover:underline">
                   See the request
                 </Link>
               </span>
@@ -200,7 +200,7 @@ function FillForm({ r }: { r: AccessRequest }) {
           e.preventDefault();
           void send();
         }}
-        className="rounded-md border border-border bg-surface"
+        className="rounded-xl border border-border bg-surface"
       >
         <div className="border-b border-rule px-5 py-3.5">
           <h2 className="text-block-heading text-ink">
@@ -343,7 +343,7 @@ function Details({ r, now }: { r: AccessRequest; now: number }) {
   ];
   return (
     <aside className="flex flex-col gap-6">
-      <section className="rounded-md border border-border bg-surface">
+      <section className="rounded-xl border border-border bg-surface">
         <h2 className="border-b border-rule px-5 py-3.5 text-block-heading text-ink">Request</h2>
         <dl className="m-0 px-5 py-1">
           {rows.map(([k, v]) => (
@@ -354,7 +354,7 @@ function Details({ r, now }: { r: AccessRequest; now: number }) {
           ))}
         </dl>
       </section>
-      <section className="rounded-md border border-border bg-surface">
+      <section className="rounded-xl border border-border bg-surface">
         <h2 className="border-b border-rule px-5 py-3.5 text-block-heading text-ink">Justification</h2>
         <p className="whitespace-pre-wrap break-words px-5 py-4 text-ui font-normal">{r.justification}</p>
       </section>

@@ -15,7 +15,7 @@ import { ToneStatus } from '../../ui/Status';
 import { TabPanel, Tabs } from '../../ui/Tabs';
 import { selectorKeyLabel, selectorValue, type SelectorNames } from './labels';
 
-const CHIP = 'inline-flex h-[22px] max-w-full items-center gap-1.5 rounded-sm border border-border bg-sunken px-[7px] text-[12px]';
+const CHIP = 'inline-flex h-[22px] max-w-full items-center gap-1.5 rounded-sm border border-border bg-raised px-[7px] text-[12px]';
 
 /**
  * A rule's selector. With `selector`, each key and its value; with only
@@ -81,7 +81,7 @@ export function DetailRows({ rows }: { rows: [string, ReactNode][] }) {
 
 export function Panel({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <section className="rounded-md border border-border bg-surface">
+    <section className="rounded-xl border border-border bg-surface">
       {title && <h2 className="border-b border-rule px-5 py-3.5 text-block-heading text-ink">{title}</h2>}
       {children}
     </section>
@@ -166,7 +166,7 @@ export function RuleLoadProblem({
         }
       >
         {error instanceof ApiError ? `${error.status}: ${error.message}. ` : ''}
-        <Link to={back.to} className="font-medium text-accent hover:underline">
+        <Link to={back.to} className="font-medium text-accent-ink hover:underline">
           {back.label}
         </Link>
       </Banner>

@@ -115,7 +115,7 @@ export function DirectRevealDrawer({ project, env, secret, onClose, onCreated, o
         }}
         className="flex flex-col gap-[18px]"
       >
-        <div className="rounded-md border border-border bg-sunken px-3.5 py-3 text-ui font-normal">
+        <div className="rounded-lg border border-border bg-bg px-3.5 py-3 text-ui font-normal">
           <p><Path value={secret.ref} className="text-ink" /></p>
           <p className="mt-1">
             {project.name} <EnvTag kind={env.kind}>{env.name}</EnvTag> · {providerLabel(secret.provider)}
@@ -130,11 +130,11 @@ export function DirectRevealDrawer({ project, env, secret, onClose, onCreated, o
             <legend className="mb-1.5 text-body font-semibold text-ink">Keys</legend>
             <p className="text-caption text-muted">This binding allows every key. Pick only what the task needs.</p>
             <label className="flex items-center gap-2.5 text-ui font-normal">
-              <input type="radio" name="dr-keymode" checked={allKeys} onChange={() => setAllKeys(true)} className="accent-accent" />
+              <input type="radio" name="dr-keymode" checked={allKeys} onChange={() => setAllKeys(true)} className="accent-accent-ink" />
               All keys in this secret
             </label>
             <label className="flex items-center gap-2.5 text-ui font-normal">
-              <input type="radio" name="dr-keymode" checked={!allKeys} onChange={() => setAllKeys(false)} className="accent-accent" />
+              <input type="radio" name="dr-keymode" checked={!allKeys} onChange={() => setAllKeys(false)} className="accent-accent-ink" />
               Only these keys
             </label>
             {!allKeys && (

@@ -1,8 +1,8 @@
 /**
  * The Checkpoint mark: two squares joined by a route that turns once at
- * a ring. Drawn inline so it follows the theme (ultramarine on light,
- * periwinkle on dark, both from the `accent` token). Geometry is copied
- * from the brand files; never redraw or retype it.
+ * a ring. Drawn inline so it follows the theme: lime on dark, and ink
+ * with a lime ring on light, where lime alone would disappear. Geometry
+ * is copied from the design; never redraw or retype it.
  *
  * - `variant="lockup"` (default): mark plus "Secrets Bridge", for headers.
  * - `variant="mark"`: the mark alone, for square spaces.
@@ -19,15 +19,15 @@ export function LogoMark({ size = 20, className = '' }: MarkProps) {
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox="0 0 28 28"
       aria-hidden="true"
       focusable="false"
-      className={'shrink-0 overflow-visible text-accent ' + className}
+      className={'logo-mark shrink-0 overflow-visible ' + className}
     >
-      <rect width="9" height="9" fill="currentColor" />
-      <rect x="15" y="15" width="9" height="9" fill="currentColor" />
-      <path d="M9 4.5H16.6M19.5 7.4V15" fill="none" stroke="currentColor" strokeWidth="3" />
-      <circle cx="19.5" cy="4.5" r="2.4" fill="none" stroke="currentColor" strokeWidth="2" />
+      <rect className="logo-square" width="10" height="10" />
+      <rect className="logo-square" x="18" y="18" width="10" height="10" />
+      <path className="logo-route" d="M10 5H19.5M23 8.5V18" />
+      <circle className="logo-ring" cx="23" cy="5" r="3.2" />
     </svg>
   );
 }
@@ -53,7 +53,7 @@ export function Logo({ variant = 'lockup', size = 20, product, textSize, classNa
   return (
     <span
       className={
-        'inline-flex items-center whitespace-nowrap font-semibold tracking-[-0.01em] text-ink ' +
+        'inline-flex items-center whitespace-nowrap font-display font-bold tracking-[-0.025em] text-ink ' +
         className
       }
       style={{

@@ -88,7 +88,7 @@ export function DiscoverDrawer({ onClose }: { onClose: () => void }) {
             Nothing after a minute? Check that an agent for this provider is active and that its role can list secrets.
           </p>
           <p>
-            <Link to={`/audit?correlation_id=${queued.correlation_id}`} className="font-medium text-accent hover:underline">
+            <Link to={`/audit?correlation_id=${queued.correlation_id}`} className="font-medium text-accent-ink hover:underline">
               Follow the job in the audit log
             </Link>
           </p>

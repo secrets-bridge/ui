@@ -42,13 +42,13 @@ export function Dialog({ title, children, actions, onClose, fallbackFocus, dismi
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="relative max-h-[calc(100vh-32px)] w-[520px] max-w-full overflow-y-auto rounded-md border border-border bg-surface px-5 py-[18px] shadow-overlay"
+        className="relative max-h-[calc(100vh-32px)] w-[480px] max-w-full overflow-y-auto rounded-2xl border border-border bg-raised px-5 pt-[18px] shadow-overlay"
       >
         <h2 id={titleId} className="mb-2.5 text-dialog-title text-ink">
           {title}
         </h2>
         <div className="flex flex-col gap-3.5 text-body">{children}</div>
-        <div className="mt-4 flex flex-wrap justify-end gap-2.5">{actions}</div>
+        <div className="-mx-5 mt-[18px] flex flex-wrap justify-end gap-2 border-t border-border px-5 py-3.5">{actions}</div>
       </div>
     </div>,
     document.body,

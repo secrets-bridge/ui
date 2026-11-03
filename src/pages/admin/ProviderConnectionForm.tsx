@@ -296,7 +296,7 @@ export function ProviderConnectionForm({ formId, initial, submitError, onSubmit 
       <fieldset className="flex min-w-0 flex-col gap-3.5">
         <legend className="mb-1 text-body font-semibold text-ink">Discovery</legend>
         <label className="flex items-center gap-2.5 text-ui font-normal">
-          <input type="checkbox" {...register('discover_enabled')} className="h-4 w-4 accent-accent" />
+          <input type="checkbox" {...register('discover_enabled')} className="h-4 w-4 accent-accent-ink" />
           Discover secrets on a schedule
         </label>
         <Field
@@ -313,11 +313,11 @@ export function ProviderConnectionForm({ formId, initial, submitError, onSubmit 
         <legend className="mb-1.5 text-body font-semibold text-ink">Status</legend>
         <div className="flex flex-wrap gap-4 text-ui font-normal">
           <label className="flex items-center gap-2">
-            <input type="radio" value="active" {...register('status')} className="accent-accent" />
+            <input type="radio" value="active" {...register('status')} className="accent-accent-ink" />
             Active
           </label>
           <label className="flex items-center gap-2">
-            <input type="radio" value="disabled" {...register('status')} className="accent-accent" />
+            <input type="radio" value="disabled" {...register('status')} className="accent-accent-ink" />
             Disabled
           </label>
         </div>

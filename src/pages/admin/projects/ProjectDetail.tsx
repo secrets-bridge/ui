@@ -97,7 +97,7 @@ export function ProjectDetail({
             ) : undefined
           }
         >
-          <Link to="/admin/projects" className="font-medium text-accent hover:underline">
+          <Link to="/admin/projects" className="font-medium text-accent-ink hover:underline">
             Back to projects
           </Link>
         </Banner>

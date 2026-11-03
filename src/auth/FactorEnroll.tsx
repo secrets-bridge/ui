@@ -151,13 +151,13 @@ export function TOTPEnrollDrawer({ onClose, onEnrolled, elevated }: EnrollProps)
           )}
           <section>
             <h3 className="mb-2 text-body font-semibold text-ink">1. Scan this with your app</h3>
-            <div className="flex flex-col items-center gap-4 rounded-md border border-border px-5 py-5">
+            <div className="flex flex-col items-center gap-4 rounded-xl border border-border px-5 py-5">
               <div className="rounded-md bg-white p-3">
                 <QRCodeSVG value={challenge.provisioning_uri} size={192} level="M" marginSize={0} />
               </div>
               <details className="w-full text-caption text-muted">
                 <summary className="cursor-pointer hover:text-ink">Can't scan? Type the setup key instead</summary>
-                <code className="mt-3 block select-all break-all rounded-sm border border-dashed border-edge bg-sunken px-3 py-2 font-mono text-mono text-ink">
+                <code className="mt-3 block select-all break-all rounded-sm border border-dashed border-edge bg-field px-3 py-2 font-mono text-mono text-ink">
                   {challenge.secret_base32}
                 </code>
                 <p className="mt-2">Time-based, 6 digits, 30-second period, SHA-1.</p>
@@ -280,7 +280,7 @@ export function WebAuthnEnrollDrawer({ onClose, onEnrolled, elevated }: EnrollPr
           )}
         </Field>
 
-        <div className="rounded-md border border-border bg-sunken px-3.5 py-3 text-ui font-normal">
+        <div className="rounded-lg border border-border bg-bg px-3.5 py-3 text-ui font-normal">
           <p className="font-semibold text-ink">What happens next</p>
           <ol className="mt-1 list-inside list-decimal text-muted">
             <li>Your browser asks you to choose a security key or passkey.</li>

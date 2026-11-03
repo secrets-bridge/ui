@@ -94,7 +94,7 @@ export function TeamPolicies() {
       key: 'name',
       header: 'Name',
       render: (r) => (
-        <Link to={detail(r)} className="font-medium text-accent hover:underline">
+        <Link to={detail(r)} className="font-medium text-accent-ink hover:underline">
           {r.name}
         </Link>
       ),
@@ -150,7 +150,7 @@ export function TeamPolicies() {
             <>
               {' '}
               As an administrator you can still manage platform rules on the{' '}
-              <Link to="/admin/policies" className="font-medium text-accent hover:underline">
+              <Link to="/admin/policies" className="font-medium text-accent-ink hover:underline">
                 Policies
               </Link>{' '}
               page.
@@ -188,7 +188,7 @@ export function TeamPolicies() {
                   <>
                     {' '}
                     Platform rules are managed on the{' '}
-                    <Link to="/admin/policies" className="font-medium text-accent hover:underline">
+                    <Link to="/admin/policies" className="font-medium text-accent-ink hover:underline">
                       Policies
                     </Link>{' '}
                     page.
@@ -206,7 +206,7 @@ export function TeamPolicies() {
                 stacked={(r) => (
                   <div className="flex flex-col gap-1.5">
                     <p className="flex items-center justify-between gap-3">
-                      <Link to={detail(r)} className="font-medium text-accent hover:underline">
+                      <Link to={detail(r)} className="font-medium text-accent-ink hover:underline">
                         {r.name}
                       </Link>
                       <RuleStatus enabled={r.enabled} />
@@ -458,7 +458,7 @@ function TeamPolicyAuthorForm({ teamID, cap, onClose }: { teamID: string; cap: n
           <div className="flex flex-col gap-1.5">
             <span className="text-body font-semibold text-ink">Status</span>
             <label className="flex h-(--control-md) items-center gap-2.5 text-ui font-normal">
-              <input type="checkbox" {...register('enabled')} className="h-4 w-4 accent-accent" />
+              <input type="checkbox" {...register('enabled')} className="h-4 w-4 accent-accent-ink" />
               Enabled
             </label>
           </div>

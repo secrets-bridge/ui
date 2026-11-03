@@ -125,7 +125,7 @@ export function SignIn() {
 
 function Section({ id, title, description, action, children }: { id: string; title: string; description: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section aria-labelledby={id} className="max-w-3xl rounded-md border border-border bg-surface">
+    <section aria-labelledby={id} className="max-w-3xl rounded-xl border border-border bg-surface">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-rule px-5 py-3.5">
         <div className="min-w-0 flex-1 basis-[280px]">
           <h2 id={id} className="text-block-heading text-ink">
@@ -544,7 +544,7 @@ function ProviderDrawer({ settings, provider, onClose }: { settings: SSOSettings
         }}
         className="flex flex-col gap-[18px]"
       >
-        <div className="rounded-md border border-border bg-sunken px-3.5 py-3 text-ui">
+        <div className="rounded-lg border border-border bg-bg px-3.5 py-3 text-ui">
           <p className="font-semibold text-ink">Redirect URL for Google Cloud Console</p>
           {provider?.redirect_url || settings.public_url ? (
             <div className="mt-1">
@@ -579,14 +579,14 @@ function ProviderDrawer({ settings, provider, onClose }: { settings: SSOSettings
         <fieldset className="flex flex-col gap-2.5">
           <legend className="mb-1.5 text-body font-semibold text-ink">New people</legend>
           <label className="flex items-start gap-2.5 text-ui font-normal">
-            <input type="radio" name="google-approval" checked={requireApproval} onChange={() => setRequireApproval(true)} className="mt-1 accent-accent" />
+            <input type="radio" name="google-approval" checked={requireApproval} onChange={() => setRequireApproval(true)} className="mt-1 accent-accent-ink" />
             <span>
               Wait for approval <span className="text-muted">(recommended)</span>
               <span className="block text-caption text-muted">You give each new person a role on the Users page.</span>
             </span>
           </label>
           <label className="flex items-start gap-2.5 text-ui font-normal">
-            <input type="radio" name="google-approval" checked={!requireApproval} onChange={() => setRequireApproval(false)} className="mt-1 accent-accent" />
+            <input type="radio" name="google-approval" checked={!requireApproval} onChange={() => setRequireApproval(false)} className="mt-1 accent-accent-ink" />
             <span>
               Let them in right away
               <span className="block text-caption text-muted">Optionally with a basic role that can only list and request secrets.</span>

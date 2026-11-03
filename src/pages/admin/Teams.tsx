@@ -82,7 +82,7 @@ export function Teams() {
         </span>
       )}
       <EntityMark name={r.team.name} kind="team" size={r.depth > 0 ? 'sm' : 'md'} src={logoUrl('team', r.team.id, r.team.logo_version)} />
-      <button type="button" onClick={() => open(r.team.id)} className="text-left font-medium text-accent hover:underline">
+      <button type="button" onClick={() => open(r.team.id)} className="text-left font-medium text-accent-ink hover:underline">
         {r.team.name}
       </button>
     </span>

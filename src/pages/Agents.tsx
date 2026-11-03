@@ -79,7 +79,7 @@ export function Agents() {
       key: 'name',
       header: 'Agent',
       render: (a) => (
-        <button type="button" onClick={() => setOpenId(a.id)} className="text-left font-medium text-accent hover:underline">
+        <button type="button" onClick={() => setOpenId(a.id)} className="text-left font-medium text-accent-ink hover:underline">
           {a.name}
         </button>
       ),
@@ -207,7 +207,7 @@ export function Agents() {
             An agent runs next to the provider, calls out to the control plane and never opens a port. Enroll one for each provider connection.
           </EmptyState>
         ) : rows.length === 0 ? (
-          <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">No agent matches these filters.</p>
+          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-muted">No agent matches these filters.</p>
         ) : (
           <DataTable
             label="Agents"
@@ -219,7 +219,7 @@ export function Agents() {
             stacked={(a) => (
               <div className="flex flex-col gap-1">
                 <p className="flex items-center justify-between gap-3">
-                  <button type="button" onClick={() => setOpenId(a.id)} className="text-left font-medium text-accent hover:underline">
+                  <button type="button" onClick={() => setOpenId(a.id)} className="text-left font-medium text-accent-ink hover:underline">
                     {a.name}
                   </button>
                   <AgentStatusWord status={a.status} />

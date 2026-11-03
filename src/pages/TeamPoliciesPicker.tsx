@@ -47,7 +47,7 @@ export function TeamPoliciesPicker() {
       render: (t) => (
         <span className="inline-flex items-center gap-2.5">
           <EntityMark name={t.name} kind="team" size="md" src={logoUrl('team', t.id, t.logo_version)} />
-          <Link to={to(t)} className="font-medium text-accent hover:underline">
+          <Link to={to(t)} className="font-medium text-accent-ink hover:underline">
             {t.name}
           </Link>
         </span>

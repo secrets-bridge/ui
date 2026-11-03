@@ -25,11 +25,11 @@ import { AgentIcon, ApprovalIcon, AuditIcon, RequestIcon } from './icons';
 
 const ICON: Record<TimelineEntry['kind'], { icon: (cls: string) => ReactNode; tone: string }> = {
   request: { icon: (c) => <RequestIcon size={20} className={c} />, tone: 'text-muted' },
-  approval: { icon: (c) => <ApprovalIcon size={20} className={c} />, tone: 'text-accent' },
+  approval: { icon: (c) => <ApprovalIcon size={20} className={c} />, tone: 'text-accent-ink' },
   reject: { icon: (c) => <ApprovalIcon size={20} className={c} />, tone: 'text-bad' },
   execution: { icon: (c) => <AgentIcon size={20} className={c} />, tone: 'text-ok' },
   'exec-fail': { icon: (c) => <AgentIcon size={20} className={c} />, tone: 'text-bad' },
-  reveal: { icon: (c) => <AuditIcon size={20} className={c} />, tone: 'text-accent' },
+  reveal: { icon: (c) => <AuditIcon size={20} className={c} />, tone: 'text-accent-ink' },
   system: { icon: (c) => <AuditIcon size={20} className={c} />, tone: 'text-muted' },
 };
 

@@ -281,7 +281,7 @@ export function CrossTeamSubmitDrawer({ sourceProject, sourceEnvironmentID, pref
               {hasPermission('integration.edit') ? (
                 <>
                   Bind one on the environment page or in{' '}
-                  <Link to="/admin/provider-connections" className="font-medium text-accent hover:underline">
+                  <Link to="/admin/provider-connections" className="font-medium text-accent-ink hover:underline">
                     Provider connections
                   </Link>{' '}
                   so the agent can write the values.

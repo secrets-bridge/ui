@@ -15,7 +15,7 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       aria-label={label}
       title={label}
       className={
-        'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-transparent text-ink hover:bg-sunken ' +
+        'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-transparent text-ink hover:bg-hover ' +
         className
       }
     >

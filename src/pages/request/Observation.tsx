@@ -68,7 +68,7 @@ export function ObservationPanel({
   const label = data ? (LABEL_TEXT[data.label] ?? data.label.replace(/_/g, ' ')) : '';
 
   return (
-    <section aria-labelledby="observation-heading" className="rounded-md border border-border bg-surface">
+    <section aria-labelledby="observation-heading" className="rounded-xl border border-border bg-surface">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-rule px-5 py-3.5">
         <h2 id="observation-heading" className="text-block-heading text-ink">
           {title}
@@ -105,7 +105,7 @@ function TaskBlock({ task: t }: { task: RequestObservationTask }) {
   const expected = t.expected_stages ?? [];
   const missing = expected.filter((s) => !stages.some((e) => e.stage === s));
   return (
-    <div className="rounded-md border border-rule">
+    <div className="rounded-lg border border-rule">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule px-3.5 py-2.5 text-ui">
         <span className="font-medium text-ink">Gateway {t.gateway_name}</span>
         <ToneStatus tone={ROLLUP_TONE[t.verdict] ?? 'neutral'}>{ROLLUP_LABEL[t.verdict] ?? t.verdict}</ToneStatus>
@@ -164,7 +164,7 @@ function StageLine({ s }: { s: EvidenceStage }) {
       {caveats.length > 0 && (
         <ul className="m-0 flex list-none flex-col gap-1 p-0 text-ui font-normal text-ink">
           {caveats.map((c) => (
-            <li key={c} className={c === 'argocd_health_not_proof' ? 'rounded-md border border-border bg-sunken px-3 py-2' : 'text-muted'}>
+            <li key={c} className={c === 'argocd_health_not_proof' ? 'rounded-lg border border-border bg-bg px-3 py-2' : 'text-muted'}>
               {c === 'argocd_health_not_proof' ? ARGOCD_NOT_PROOF : caveatText(c)}
             </li>
           ))}

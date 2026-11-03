@@ -196,7 +196,7 @@ export function Assignments() {
         (all.length === 0 ? (
           <EmptyState title="No assignments yet.">Grant a role to give someone access.</EmptyState>
         ) : rows.length === 0 ? (
-          <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">No assignment matches that filter.</p>
+          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-muted">No assignment matches that filter.</p>
         ) : (
           <DataTable
             label="Assignments"
@@ -390,7 +390,7 @@ function GrantDrawer({ onDone, onCancel }: { onDone: (roleLabel: string, user: s
           )}
         </Field>
 
-        <fieldset className="flex min-w-0 flex-col gap-3.5 rounded-md border border-border px-4 pb-4 pt-2">
+        <fieldset className="flex min-w-0 flex-col gap-3.5 rounded-xl border border-border px-4 pb-4 pt-2">
           <legend className="px-1 text-body font-semibold text-ink">Scope</legend>
           <p className="text-caption text-muted">All optional. Leave everything empty to grant the role everywhere.</p>
           <Field id="grant-project" label="Project" error={errors.sc_project_id?.message}>
@@ -454,7 +454,7 @@ function GrantDrawer({ onDone, onCancel }: { onDone: (roleLabel: string, user: s
         </fieldset>
 
         {needsGlobalConfirm && (
-          <div className="flex flex-col gap-3 rounded-md border border-bad-line px-3.5 py-3">
+          <div className="flex flex-col gap-3 rounded-lg border border-bad-line bg-bad-bg px-3.5 py-3">
             <p className="text-ui font-normal">
               <span className="font-semibold text-bad">value_provider without a team covers every team's inbox.</span>{' '}
               That's rarely what you want. Pick a team in Scope, or type global to grant it everywhere.

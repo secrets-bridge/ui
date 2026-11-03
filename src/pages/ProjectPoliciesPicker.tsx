@@ -40,7 +40,7 @@ export function ProjectPoliciesPicker() {
       render: (p) => (
         <span className="inline-flex items-center gap-2.5">
           <EntityMark name={p.name} size="md" src={logoUrl('project', p.id, p.logo_version)} />
-          <Link to={to(p)} className="font-medium text-accent hover:underline">
+          <Link to={to(p)} className="font-medium text-accent-ink hover:underline">
             {p.name}
           </Link>
         </span>

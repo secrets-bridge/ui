@@ -24,14 +24,14 @@ export function PageHeader({ title, description, actions, mark }: Props) {
   }, [title]);
 
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="min-w-0">
         <h1 id="page-title" tabIndex={-1} className={'text-console-title text-ink' + (mark ? ' flex items-center gap-3' : '')}>
           {mark}
           {mark ? <span className="min-w-0 break-words">{title}</span> : title}
         </h1>
         {description && (
-          <p className="mt-[3px] max-w-3xl text-ui font-normal text-muted">{description}</p>
+          <p className="mt-1.5 max-w-3xl text-caption text-muted">{description}</p>
         )}
       </div>
       {actions && (

@@ -39,7 +39,7 @@ export function MyProjects() {
       render: (r) => (
         <span className="inline-flex items-center gap-2.5">
           <EntityMark name={r.project.name} size="md" src={logoUrl('project', r.project.id, r.project.logo_version)} />
-          <Link to={to(r)} className="font-medium text-accent hover:underline">
+          <Link to={to(r)} className="font-medium text-accent-ink hover:underline">
             {r.project.name}
           </Link>
           {r.project.status === 'archived' && <span className="text-caption font-normal text-muted">archived</span>}
@@ -87,7 +87,7 @@ export function MyProjects() {
               <div className="flex flex-col gap-1">
                 <p className="flex items-center gap-2">
                   <EntityMark name={r.project.name} src={logoUrl('project', r.project.id, r.project.logo_version)} />
-                  <Link to={to(r)} className="font-medium text-accent hover:underline">
+                  <Link to={to(r)} className="font-medium text-accent-ink hover:underline">
                     {r.project.name}
                   </Link>
                   <EnvTag kind={r.env.kind}>{r.env.name}</EnvTag>

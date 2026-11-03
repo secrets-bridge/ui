@@ -84,7 +84,7 @@ export function Policies() {
       header: 'Name',
       render: (p) => (
         <span>
-          <Link to={detail(p)} className="font-medium text-accent hover:underline">
+          <Link to={detail(p)} className="font-medium text-accent-ink hover:underline">
             {p.name}
           </Link>
           {p.is_system && <span className="ml-2 text-caption text-muted">System default</span>}
@@ -151,7 +151,7 @@ export function Policies() {
             stacked={(p) => (
               <div className="flex flex-col gap-1.5">
                 <p className="flex items-center justify-between gap-3">
-                  <Link to={detail(p)} className="font-medium text-accent hover:underline">
+                  <Link to={detail(p)} className="font-medium text-accent-ink hover:underline">
                     {p.name}
                   </Link>
                   <RuleStatus enabled={p.enabled} />

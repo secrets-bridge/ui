@@ -106,7 +106,7 @@ function Form({ gatewayId, connector, current, put, onClose }: FormProps) {
       {allowed.length === 0 ? (
         <p className="text-muted">No catalog yet. The AppProjects appear after the Gateway's first upload.</p>
       ) : (
-        <ul className="m-0 list-none rounded-md border border-border p-0">
+        <ul className="m-0 list-none rounded-lg border border-border p-0">
           {allowed.map((p) => {
             const ids = draft[p] ?? [];
             const options = active.filter((t) => !ids.includes(t.id));

@@ -38,7 +38,7 @@ export function CommandBlock({ command, label, copyLabel = 'Copy command' }: { c
     <div className="flex flex-col gap-2">
       <pre
         aria-label={label}
-        className="overflow-x-auto rounded-md border border-border bg-sunken px-3 py-2.5 font-mono text-mono-small leading-relaxed text-ink"
+        className="overflow-x-auto rounded-lg border border-border bg-bg px-3 py-2.5 font-mono text-mono-small leading-relaxed text-ink"
       >
         {command}
       </pre>
@@ -77,7 +77,7 @@ export function OnceToken({ label, token, onCopied }: { label: string; token: st
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <code aria-label={label} className="min-w-0 break-all rounded-md border border-border bg-sunken px-3 py-1.5 font-mono text-mono-small text-ink">
+        <code aria-label={label} className="min-w-0 break-all rounded-lg border border-border bg-field px-3 py-1.5 font-mono text-mono-small text-ink">
           {copied ? 'Copied and cleared from this page' : MASK}
         </code>
         <Button

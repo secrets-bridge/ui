@@ -44,14 +44,14 @@ interface Props {
 export function PolicyHistoryTimeline({ entries, hasMore, limit, onLoadMore, pageScope, loadingMore }: Props) {
   if (entries.length === 0) {
     return (
-      <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">
+      <p className="rounded-xl border border-border bg-surface px-4 py-3 text-muted">
         No changes recorded yet. Each change to this rule will show here.
       </p>
     );
   }
   return (
     <div>
-      <section className="rounded-md border border-border bg-surface" aria-label="Rule history">
+      <section className="rounded-xl border border-border bg-surface" aria-label="Rule history">
         <ol className="m-0 list-none px-4 pb-3 pt-2">
           {entries.map((e, i) => (
             <HistoryRow key={e.event_id} entry={e} showScope={pageScope === 'platform'} last={i === entries.length - 1} />
@@ -113,7 +113,7 @@ export function PolicyHistoryView({
 
 const TONE: Record<PolicyRuleHistoryEntry['action'], string> = {
   'policy.create': 'text-ok',
-  'policy.update': 'text-accent',
+  'policy.update': 'text-accent-ink',
   'policy.delete': 'text-bad',
 };
 
@@ -171,7 +171,7 @@ function HistoryRow({ entry: e, showScope, last }: { entry: PolicyRuleHistoryEnt
         )}
 
         <details className="mt-2 text-ui font-normal">
-          <summary className="cursor-pointer text-accent hover:underline">State after this change</summary>
+          <summary className="cursor-pointer text-accent-ink hover:underline">State after this change</summary>
           <Snapshot snapshot={e.snapshot_after} />
         </details>
 
@@ -230,7 +230,7 @@ function SelectorKeysChange({ change }: { change: PolicyRuleFieldChange }) {
       <span className="text-muted">Matches on</span>
       <span className="flex flex-wrap gap-1.5">
         {kept.map((k) => (
-          <span key={`k-${k}`} title={k} className={chip + ' border-border bg-sunken text-ink'}>
+          <span key={`k-${k}`} title={k} className={chip + ' border-border bg-raised text-ink'}>
             {selectorKeyLabel(k)}
           </span>
         ))}
@@ -260,7 +260,7 @@ function Snapshot({ snapshot: s }: { snapshot: PolicyRuleSnapshot }) {
     ['Matches on', s.selector_keys.length ? s.selector_keys.map(selectorKeyLabel).join(', ') : 'Every request'],
   ];
   return (
-    <dl className="m-0 mt-2 rounded-md border border-border bg-sunken px-3 py-1">
+    <dl className="m-0 mt-2 rounded-lg border border-border bg-bg px-3 py-1">
       {rows.map(([k, v]) => (
         <div key={k} className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 border-b border-rule py-1.5 last:border-0">
           <dt className="text-muted">{k}</dt>

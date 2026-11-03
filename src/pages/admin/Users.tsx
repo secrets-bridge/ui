@@ -267,7 +267,7 @@ function ApproveDrawer({ user, onDone, onCancel }: { user: PendingUser; onDone: 
           )}
         </Field>
 
-        <fieldset className="flex min-w-0 flex-col gap-3.5 rounded-md border border-border px-4 pb-4 pt-2">
+        <fieldset className="flex min-w-0 flex-col gap-3.5 rounded-xl border border-border px-4 pb-4 pt-2">
           <legend className="px-1 text-body font-semibold text-ink">Scope</legend>
           <p className="text-caption text-muted">Optional. Leave both empty to grant the role everywhere.</p>
           <Field

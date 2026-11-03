@@ -59,7 +59,7 @@ export function ConfirmModal({
       <p className="text-muted">{body}</p>
 
       {error != null && (
-        <div role="alert" className="rounded-md border border-bad-line px-3.5 py-3 text-ui">
+        <div role="alert" className="rounded-lg border border-bad-line bg-bad-bg px-3.5 py-3 text-ui">
           <div className="font-semibold text-bad">
             {error instanceof ApiError
               ? `${error.status} · ${statusLabel(error.status)}`

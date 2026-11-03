@@ -308,7 +308,7 @@ function FactorPicker({
         <button
           type="button"
           onClick={() => onPick('webauthn')}
-          className="w-full rounded-md border border-edge bg-surface px-3.5 py-2.5 text-left hover:bg-sunken"
+          className="w-full rounded-md border border-edge bg-transparent px-3.5 py-2.5 text-left hover:bg-hover"
         >
           <div className="text-ui font-medium text-ink">Use a security key</div>
           <div className="mt-0.5 text-caption text-muted">
@@ -320,7 +320,7 @@ function FactorPicker({
         <button
           type="button"
           onClick={() => onPick('totp', totpFactors[0])}
-          className="w-full rounded-md border border-edge bg-surface px-3.5 py-2.5 text-left hover:bg-sunken"
+          className="w-full rounded-md border border-edge bg-transparent px-3.5 py-2.5 text-left hover:bg-hover"
         >
           <div className="text-ui font-medium text-ink">Use an authenticator app</div>
           <div className="mt-0.5 text-caption text-muted">

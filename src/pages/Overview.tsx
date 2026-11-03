@@ -241,7 +241,7 @@ export function Overview() {
           action={
             <Link
               to="/admin/users"
-              className="inline-flex h-(--control-sm) items-center rounded-md border border-edge bg-surface px-2.5 text-ui font-medium text-ink hover:bg-sunken"
+              className="inline-flex h-(--control-sm) items-center rounded-md border border-edge bg-surface px-2.5 text-ui font-medium text-ink hover:bg-hover"
             >
               Review
             </Link>
@@ -412,7 +412,7 @@ function Section({
           {title} <span className="ml-1 font-mono text-mono-small font-normal text-muted">{count}</span>
         </h2>
         {link && (
-          <Link to={link.to} className="text-ui font-normal text-accent hover:underline">
+          <Link to={link.to} className="text-ui font-normal text-accent-ink hover:underline">
             {link.label}
           </Link>
         )}
@@ -430,7 +430,7 @@ function ScopeCell({ d }: { d: ScopeDisplay }) {
 
 function RefLink({ r }: { r: AccessRequest }) {
   return (
-    <Link to={`/requests/${r.id}`} className="whitespace-nowrap font-mono text-mono font-medium text-accent hover:underline">
+    <Link to={`/requests/${r.id}`} className="whitespace-nowrap font-mono text-mono font-medium text-accent-ink hover:underline">
       {requestRef(r.id)}
     </Link>
   );
@@ -443,7 +443,7 @@ function RequestCell({ r }: { r: AccessRequest }) {
       <Link
         to={`/requests/${r.id}`}
         title={keysOf(r).join(', ') || 'All keys'}
-        className="block truncate font-mono text-mono font-medium text-ink hover:text-accent hover:underline"
+        className="block truncate font-mono text-mono font-medium text-ink hover:text-accent-ink hover:underline"
       >
         {keysOf(r).join(', ') || 'All keys'}
       </Link>
@@ -684,7 +684,7 @@ function AgentsBlock() {
     <section>
       <div className="mb-1 flex items-baseline justify-between border-b border-border pb-2">
         <h2 className="text-block-heading text-ink">Agents</h2>
-        <Link to="/agents" className="text-ui font-normal text-accent hover:underline">
+        <Link to="/agents" className="text-ui font-normal text-accent-ink hover:underline">
           All agents
         </Link>
       </div>

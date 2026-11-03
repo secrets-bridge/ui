@@ -119,7 +119,7 @@ export function LogoDialog({ kind, id, name, logoVersion, onClose }: Props) {
         <p className="text-muted">The initials tile shows again everywhere {name} appears.</p>
       ) : (
         <>
-          <div className="flex items-center gap-4 rounded-md border border-border bg-sunken px-4 py-3.5">
+          <div className="flex items-center gap-4 rounded-lg border border-border bg-bg px-4 py-3.5">
             <EntityMark name={name} kind={markKind} size="lg" src={shown} />
             <EntityMark name={name} kind={markKind} size="md" src={shown} />
             <span className="inline-flex items-center gap-2 text-ui">

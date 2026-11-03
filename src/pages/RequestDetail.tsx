@@ -284,7 +284,7 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
               <span className="flex items-baseline gap-3">
                 <span className="font-mono text-mono-small text-muted">times in UTC</span>
                 {!!audit.data?.length && (
-                  <Link to={`/audit?correlation_id=${r.id}`} className="text-ui font-normal text-accent hover:underline">
+                  <Link to={`/audit?correlation_id=${r.id}`} className="text-ui font-normal text-accent-ink hover:underline">
                     Audit log
                   </Link>
                 )}
@@ -564,7 +564,7 @@ function Card({
 }) {
   return (
     <div className="px-5 py-[18px]">
-      <h2 id="state-heading" tabIndex={-1} className="text-[17px] font-semibold leading-[22px] text-ink">
+      <h2 id="state-heading" tabIndex={-1} className="text-[18px] font-semibold leading-6 text-ink">
         {heading}
       </h2>
       {sentence && <p className="mt-1.5 max-w-[68ch] text-body text-muted">{sentence}</p>}
@@ -579,7 +579,7 @@ function Card({
 
 function Panel({ title, aside, children }: { title?: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <section className="rounded-md border border-border bg-surface">
+    <section className="rounded-xl border border-border bg-surface">
       {title && (
         <div className="flex items-baseline justify-between gap-3 border-b border-rule px-5 py-3.5">
           <h2 className="text-block-heading text-ink">{title}</h2>

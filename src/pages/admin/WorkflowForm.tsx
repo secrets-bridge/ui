@@ -297,7 +297,7 @@ type CheckProps = {
 const Check = forwardRef<HTMLInputElement, CheckProps>(function Check({ label, hint, ...rest }, ref) {
   return (
     <label className="flex cursor-pointer items-start gap-2.5 text-ui font-normal text-ink max-md:min-h-(--control-touch)">
-      <input type="checkbox" ref={ref} {...rest} className="mt-[3px] h-4 w-4 shrink-0 accent-accent" />
+      <input type="checkbox" ref={ref} {...rest} className="mt-[3px] h-4 w-4 shrink-0 accent-accent-ink" />
       <span>
         <span className="block font-medium">{label}</span>
         {hint && <span className="block text-caption text-muted">{hint}</span>}

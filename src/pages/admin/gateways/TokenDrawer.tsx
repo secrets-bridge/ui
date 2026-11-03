@@ -179,7 +179,7 @@ function ShownOnce({ issued, copied, onCopied, closeWarned }: { issued: Issued; 
         <div className="flex flex-wrap items-center gap-2">
           <code
             aria-label="Enrollment token"
-            className="min-w-0 break-all rounded-md border border-border bg-sunken px-3 py-1.5 font-mono text-mono-small text-ink"
+            className="min-w-0 break-all rounded-lg border border-border bg-field px-3 py-1.5 font-mono text-mono-small text-ink"
           >
             {show ? issued.token : MASK}
           </code>

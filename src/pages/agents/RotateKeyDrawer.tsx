@@ -192,7 +192,7 @@ function RotateSteps({ agent, issued, onCopied, closeWarned }: { agent: AdminAge
             ? 'Wait until External Secrets Operator has synced the new version into the Secret (or force a sync), then restart.'
             : 'The Secret is updated in place; restart so the agent reads it.'}
         </p>
-        <div aria-live="polite" className="rounded-md border border-border bg-surface px-3.5 py-3 text-ui font-normal">
+        <div aria-live="polite" className="rounded-xl border border-border bg-surface px-3.5 py-3 text-ui font-normal">
           {rotated ? (
             <p className="text-ink">
               Key version {current.public_key_version} is registered

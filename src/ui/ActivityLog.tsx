@@ -19,14 +19,14 @@ export interface ActivityEvent {
   tone?: 'ok' | 'bad' | 'neutral';
 }
 
-const DOT = { ok: 'bg-ok', bad: 'bg-bad', neutral: 'bg-edge' };
+const MARK = { ok: 'bg-ok', bad: 'rotate-45 bg-bad', neutral: 'border-[1.75px] border-edge' };
 
 export function ActivityLog({ events }: { events: ActivityEvent[] }) {
   return (
     <ol className="m-0 list-none p-0">
       {events.map((e) => (
-        <li key={e.key} className="grid grid-cols-[6px_minmax(0,1fr)] gap-x-2.5 border-b border-rule py-2 text-caption">
-          <span aria-hidden="true" className={'mt-[5px] h-1.5 w-1.5 ' + DOT[e.tone ?? 'neutral']} />
+        <li key={e.key} className="grid grid-cols-[8px_minmax(0,1fr)] gap-x-3 border-b border-rule py-[9px] text-ui last:border-b-0">
+          <span aria-hidden="true" className={'mt-1.5 box-border h-2 w-2 ' + MARK[e.tone ?? 'neutral']} />
           <div className="min-w-0">
             <time title={e.exact} className="block whitespace-nowrap font-mono text-mono-small leading-4 text-muted">
               {e.time}
@@ -36,7 +36,7 @@ export function ActivityLog({ events }: { events: ActivityEvent[] }) {
               {e.ref && e.to && (
                 <>
                   {' '}
-                  <Link to={e.to} className="whitespace-nowrap font-mono text-[12px] text-accent hover:underline">
+                  <Link to={e.to} className="whitespace-nowrap font-mono text-[12px] text-accent-ink hover:underline">
                     {e.ref}
                   </Link>
                 </>

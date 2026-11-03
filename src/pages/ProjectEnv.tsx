@@ -78,7 +78,7 @@ export function ProjectEnv() {
           You can't open this environment
         </h1>
         <Banner title="It doesn't exist, or your roles don't cover it.">
-          <Link to="/projects" className="font-medium text-accent hover:underline">
+          <Link to="/projects" className="font-medium text-accent-ink hover:underline">
             Back to My projects
           </Link>
         </Banner>
@@ -193,7 +193,7 @@ export function ProjectEnv() {
               )}
             />
           ) : (
-            <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">
+            <p className="rounded-xl border border-border bg-surface px-4 py-3 text-muted">
               No secret is bound to this environment yet. A project admin binds them from the Secrets page.
             </p>
           ))}

@@ -93,7 +93,7 @@ export function ProviderConnections() {
   const agentsCell = (c: ProviderConnection) => {
     const n = agentCount.get(c.id) ?? 0;
     return (
-      <Link to={`/agents?connection=${c.id}`} className="whitespace-nowrap font-medium text-accent hover:underline" aria-label={`Agents for ${c.name}`}>
+      <Link to={`/agents?connection=${c.id}`} className="whitespace-nowrap font-medium text-accent-ink hover:underline" aria-label={`Agents for ${c.name}`}>
         {agents.isLoading ? 'Agents' : n === 0 ? 'No agents' : `${n} ${n === 1 ? 'agent' : 'agents'}`}
       </Link>
     );
@@ -117,7 +117,7 @@ export function ProviderConnections() {
       header: 'Name',
       render: (c) => (
         <span className="block max-w-[280px]">
-          <button type="button" onClick={() => setEditingId(c.id)} className="text-left font-medium text-accent hover:underline">
+          <button type="button" onClick={() => setEditingId(c.id)} className="text-left font-medium text-accent-ink hover:underline">
             {c.name}
           </button>
           {c.description && <span className="block truncate text-caption text-muted" title={c.description}>{c.description}</span>}
@@ -229,7 +229,7 @@ export function ProviderConnections() {
             enroll an agent for it.
           </EmptyState>
         ) : rows.length === 0 ? (
-          <p className="rounded-md border border-border bg-surface px-4 py-3 text-muted">No connection matches these filters.</p>
+          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-muted">No connection matches these filters.</p>
         ) : (
           <DataTable
             label="Provider connections"
@@ -241,7 +241,7 @@ export function ProviderConnections() {
             stacked={(c) => (
               <div className="flex flex-col gap-1.5">
                 <p className="flex items-center justify-between gap-3">
-                  <button type="button" onClick={() => setEditingId(c.id)} className="text-left font-medium text-accent hover:underline">
+                  <button type="button" onClick={() => setEditingId(c.id)} className="text-left font-medium text-accent-ink hover:underline">
                     {c.name}
                   </button>
                   <ToneStatus tone={c.status === 'active' ? 'ok' : 'neutral'}>{c.status === 'active' ? 'Active' : 'Disabled'}</ToneStatus>

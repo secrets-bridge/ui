@@ -54,6 +54,20 @@ export default [
       ],
     },
   },
+  // Lime is a fill, never a line: on the light background it is about
+  // 1.2:1, so a missed one fails silently. Thin things use accent-ink.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...['Literal[value', 'TemplateElement[value.raw'].map((node) => ({
+          selector: `${node}=/(^|[\\s:])(text|border|ring|outline|accent|fill|stroke|decoration)-accent([\\s/]|$)/]`,
+          message: 'Lime is a fill only: use accent-ink for text, borders, rings and native controls.',
+        })),
+      ],
+    },
+  },
   // Playwright specs and helpers (ui#152): node-side test code, not React.
   // Playwright's fixture callback is named `use`, which the hooks rules
   // would read as a React hook.
