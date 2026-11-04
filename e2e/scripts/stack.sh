@@ -112,6 +112,10 @@ seed() {
   st=$(printf '%s\n%s\n' "$E2E_ADMIN_EMAIL" "$E2E_ADMIN_PASSWORD" | jq -Rn '{email: input, password: input}' |
     curl -sS -o /dev/null -w '%{http_code}' -X POST "$API/api/v1/auth/login" -c "$E2E_STATE/admin.jar" -H 'Content-Type: application/json' --data-binary @-)
   need "$st" 200 admin-login
+  # Role, team and policy writes need a fresh second factor, and this
+  # admin has none yet, so its session gets the stamp step-up would give
+  # it. Specs sign in again and go through the real step-up.
+  psqlq "UPDATE sessions SET last_mfa_at = now() WHERE user_id = (SELECT id FROM local_users WHERE email = '$E2E_ADMIN_EMAIL')"
 
   local requester approver outsider filler lead
   requester=$(mkuser e2e-requester@example.com Requester)
