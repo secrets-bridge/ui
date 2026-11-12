@@ -24,7 +24,7 @@ export function Person({ id, person, children }: { id: string; person?: UserSumm
         {person.disabled && <span className="ml-2 text-caption text-muted">Disabled</span>}
         {children}
       </span>
-      {person.display_name && <span className="break-all text-caption text-muted">{person.email}</span>}
+      {person.display_name && <span className="text-caption text-muted [overflow-wrap:anywhere]">{person.email}</span>}
     </span>
   );
 }

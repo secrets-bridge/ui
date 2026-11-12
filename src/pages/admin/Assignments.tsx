@@ -1,5 +1,5 @@
 /**
- * Assignments (`/admin/assignments`): who holds which role, and where.
+ * Role assignments (`/admin/assignments`): who holds which role, and where.
  * Each row gives one user a role, everywhere or narrowed by a scope
  * (project, team and its sub-teams, environment name, secret path
  * prefix, provider type).
@@ -146,7 +146,7 @@ export function Assignments() {
   return (
     <div>
       <PageHeader
-        title="Assignments"
+        title="Role assignments"
         description={
           list.data
             ? `${all.length} ${all.length === 1 ? 'assignment' : 'assignments'} for ${people} ${people === 1 ? 'user' : 'users'}. Each gives one user a role, everywhere or within a scope.`

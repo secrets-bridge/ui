@@ -273,6 +273,18 @@
   letter-spacing: -0.015em;
 }
 
+@utility text-count {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 30px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+@utility bg-prod-hatch {
+  background-image: repeating-linear-gradient(135deg, var(--stripe) 0 4px, transparent 4px 10px);
+}
+
 /* Native select with the design's chevron, in each theme's muted colour. */
 @utility select-chevron {
   appearance: none;

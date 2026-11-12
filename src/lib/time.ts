@@ -6,6 +6,8 @@
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function parse(iso: string | null | undefined): Date | null {
@@ -33,6 +35,12 @@ export function formatShort(iso: string | null | undefined, now = Date.now()): s
     d.getUTCMonth() === today.getUTCMonth() &&
     d.getUTCDate() === today.getUTCDate();
   return sameDay ? hm : `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${hm}`;
+}
+
+/** "Sunday 1 Nov", in UTC like every other time here. */
+export function formatDay(now = Date.now()): string {
+  const d = new Date(now);
+  return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
 /** "12:17 UTC". */

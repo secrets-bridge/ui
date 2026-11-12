@@ -205,16 +205,14 @@ export function RequestAccessDrawer({ prefill, onClose, onCreated }: Props) {
         className="flex flex-col gap-[18px]"
       >
         <fieldset className="flex flex-col gap-1.5">
-          <legend className="mb-1.5 text-body font-semibold text-ink">What do you need?</legend>
-          <div className="flex flex-wrap gap-4 text-ui font-normal">
-            <label className="flex items-center gap-2">
-              <input type="radio" name="ra-op" checked={op === 'read'} onChange={() => setOp('read')} className="accent-accent-ink" />
-              Read values
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="radio" name="ra-op" checked={op === 'patch'} onChange={() => setOp('patch')} className="accent-accent-ink" />
-              Change values
-            </label>
+          <legend className="mb-1.5 text-ui font-semibold text-ink">What do you need?</legend>
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-2.5">
+            <OpChoice name="Read values" checked={op === 'read'} onChange={() => setOp('read')}>
+              An agent reads the keys after approval. You reveal each value once.
+            </OpChoice>
+            <OpChoice name="Change values" checked={op === 'patch'} onChange={() => setOp('patch')}>
+              You enter new values now. An agent writes them after approval.
+            </OpChoice>
           </div>
         </fieldset>
 
@@ -382,6 +380,18 @@ export function RequestAccessDrawer({ prefill, onClose, onCreated }: Props) {
         {serverError && !serverError.field && <Banner tone="error" title="Not submitted.">{serverError.text}</Banner>}
       </form>
     </Drawer>
+  );
+}
+
+function OpChoice({ name, checked, onChange, children }: { name: string; checked: boolean; onChange: () => void; children: string }) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-edge bg-field px-4 py-3.5 hover:bg-hover has-[input:checked]:border-accent-ink has-[input:checked]:bg-accent-soft">
+      <input type="radio" name="ra-op" checked={checked} onChange={onChange} className="mt-[3px] h-4 w-4 shrink-0 accent-accent-ink" />
+      <span className="min-w-0">
+        <span className="block text-[14.5px] font-semibold leading-[21px] text-ink">{name}</span>
+        <span className="block text-caption text-muted">{children}</span>
+      </span>
+    </label>
   );
 }
 

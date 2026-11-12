@@ -125,7 +125,7 @@ export const PersonPicker = forwardRef<HTMLInputElement, Props>(({ value, onChan
         spellCheck={false}
       />
       {value && (
-        <Button type="button" variant="quiet" size="sm" onClick={clear} className="absolute right-1 top-[calc(var(--control-md)/2)] -translate-y-1/2 max-md:top-[calc(var(--control-touch)/2)]">
+        <Button type="button" variant="quiet" size="sm" onClick={clear} className="absolute right-1 top-[calc(var(--control-field)/2)] -translate-y-1/2 max-md:top-[calc(var(--control-touch)/2)]">
           Change
         </Button>
       )}
@@ -135,7 +135,7 @@ export const PersonPicker = forwardRef<HTMLInputElement, Props>(({ value, onChan
         </p>
       )}
       {listOpen && (
-        <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-[300px] overflow-y-auto rounded-md border border-border bg-surface shadow-overlay">
+        <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-[300px] overflow-y-auto rounded-md border border-border bg-raised shadow-overlay">
           {people.length > 0 && (
             <ul id={listId} role="listbox" aria-label="Matching people" className="m-0 list-none p-1">
               {people.map((u) => {

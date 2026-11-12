@@ -171,7 +171,7 @@ export function Audit() {
     <div>
       <PageHeader title="Audit log" description={fact} />
 
-      <div className="mb-4 grid grid-cols-1 gap-2.5 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-[repeat(4,minmax(0,1fr))_minmax(150px,auto)]">
+      <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-border bg-surface p-4 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-[repeat(4,minmax(0,1fr))_minmax(150px,auto)]">
         <FilterInput
           label="Actor"
           value={privileged ? typed.actor : 'Only you'}
@@ -188,8 +188,8 @@ export function Audit() {
           placeholder="Request id or other chain id"
           invalid={!corrValid}
         />
-        <label>
-          <span className="sr-only">Period</span>
+        <label className="flex min-w-0 flex-col gap-1.5">
+          <span className="text-ui font-semibold text-ink">Period</span>
           <Select
             value={period}
             onChange={(e) => {
@@ -299,8 +299,8 @@ function FilterInput({
   invalid?: boolean;
 }) {
   return (
-    <label className="flex min-w-0 flex-col gap-1">
-      <span className="text-caption font-medium text-muted">{label}</span>
+    <label className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-ui font-semibold text-ink">{label}</span>
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}

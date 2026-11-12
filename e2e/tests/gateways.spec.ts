@@ -10,6 +10,9 @@ import { secondFactor, stepUp } from '../support/totp';
 
 test.describe.configure({ mode: 'serial' });
 
+// Wide enough for Administration's own navigation.
+test.use({ viewport: { width: 1440, height: 900 } });
+
 const MASK = '••••••••••••';
 
 /** n random bytes as hex (WebCrypto, so no node typings). */
@@ -34,7 +37,8 @@ test('an admin creates a Gateway and its enrollment token is shown once, masked,
   const auth = await secondFactor(admin, fx.users.admin);
   await stepUp(admin, auth);
 
-  await admin.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Gateways' }).click();
+  await admin.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Administration' }).click();
+  await admin.getByRole('navigation', { name: 'Administration' }).getByRole('link', { name: 'Gateways' }).click();
   await expect(admin.getByRole('heading', { name: 'Gateways', level: 1 })).toBeVisible();
 
   const name = `e2e-gw-${rnd(3)}`;

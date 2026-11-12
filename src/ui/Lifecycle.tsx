@@ -31,11 +31,11 @@ const NODE: Record<StepState, string> = {
 export function Lifecycle({ steps, now }: { steps: LifecycleStep[]; now: number }) {
   const attention = steps.findIndex((s) => s.state !== 'done');
   return (
-    <div className="mb-6">
+    <div>
       <p className="sr-only">{lifecycleSummary(steps)}</p>
       <ol
         aria-label="Request progress"
-        className="m-0 grid list-none auto-cols-fr grid-flow-col gap-0 rounded-xl border border-border bg-surface px-4 py-3.5 max-[600px]:grid-flow-row max-[600px]:auto-cols-auto"
+        className="m-0 grid list-none auto-cols-fr grid-flow-col gap-0 p-0 max-[600px]:grid-flow-row max-[600px]:auto-cols-auto"
       >
         {steps.map((s, i) => {
           const quiet = s.state === 'upcoming' || s.state === 'closed';

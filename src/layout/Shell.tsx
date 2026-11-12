@@ -2,26 +2,37 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthContext';
+import { roleLabelFor } from '../auth/roleLabel';
 import { useInboxCount } from '../api/crossTeam';
-import { pendingForbidden, usePendingUsers } from '../api/pendingUsers';
+import { useMe } from '../api/me';
 import { useRequests } from '../api/requests';
 import { needsMyDecision } from '../lib/requestQueues';
 import { useRevealConditions } from '../requests/revealState';
+import { ALL_SCOPES, scopeOptions, useScope } from '../requests/scope';
+import { useRequestDetails } from '../requests/useRequestDetails';
+import { Avatar } from '../ui/Avatar';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import {
+  AdminIcon,
   AgentIcon,
+  ApprovalIcon,
   AuditIcon,
   CatalogIcon,
   CloseIcon,
+  FolderIcon,
   InboxIcon,
   MenuIcon,
   OverviewIcon,
+  PolicyIcon,
   RequestIcon,
+  TargetIcon,
 } from '../ui/icons';
 import { Logo } from '../ui/Logo';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { useModalFocus } from '../ui/useModalFocus';
 import { VersionChip } from '../ui/VersionChip';
+import { NavItem } from './NavItem';
+import { useAdminSections } from './useAdminSections';
 
 /**
  * Console shell: a 240px sidebar and the page. At 900px and below the
@@ -33,6 +44,7 @@ import { VersionChip } from '../ui/VersionChip';
  *   authorization; the api decides.
  * - No organization switcher, no environment toggle and no search
  *   field: none of them exist behind the UI.
+ * - The top bar holds the scope for the pages that follow it, and Docs.
  * - A route change moves focus to the page h1 (#page-title), or to the
  *   main region while the page is still loading.
  */
@@ -126,11 +138,15 @@ export function Shell() {
           {identity && <Avatar name={identity.display_name} />}
         </header>
 
+        <TopBar />
+
         <main ref={mainRef} id="main" tabIndex={-1} className="flex-1 px-8 pb-14 pt-7 max-[900px]:px-4 max-[900px]:pb-10 max-[900px]:pt-5">
           <div className="w-full max-w-[1240px]">
             <Outlet />
           </div>
         </main>
+
+        <BottomTabs />
       </div>
 
       {navOpen && <MobileNav onClose={() => setNavOpen(false)} onSignOut={openSignOut} />}
@@ -155,6 +171,57 @@ export function Shell() {
   );
 }
 
+// --- top bar --------------------------------------------------------
+
+// The pages the scope filters. Everything else shows only Docs.
+const SCOPED_PATHS = ['/', '/approvals', '/requests'];
+
+function TopBar() {
+  const { pathname } = useLocation();
+  const { scope, setScope } = useScope();
+  const me = useMe();
+  const scopes = useMemo(() => scopeOptions(me.data?.projects), [me.data]);
+  const scoped = SCOPED_PATHS.includes(pathname) && scopes.length > 0;
+  return (
+    <div
+      className={
+        'flex min-h-[60px] flex-wrap items-center gap-3 border-b border-border px-8 py-2.5 max-[900px]:min-h-0 max-[900px]:px-4 max-[900px]:py-2 ' +
+        (scoped ? '' : 'max-[900px]:hidden')
+      }
+    >
+      {scoped && (
+        <>
+          <label className="inline-flex h-9 min-w-0 items-center gap-2 rounded-md border border-border bg-surface pl-3 text-[13.5px] font-medium text-ink">
+            <span className="text-muted">Scope</span>
+            <select
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+              className="select-chevron h-full min-w-0 max-w-[260px] rounded-md bg-transparent pr-8 font-medium text-ink focus:outline-2 focus:outline-offset-1 focus:outline-accent-ink"
+            >
+              <option value={ALL_SCOPES}>All my scopes</option>
+              {scopes.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="text-caption text-muted max-[1100px]:hidden">Overview, Approvals and Requests follow this scope.</span>
+        </>
+      )}
+      <span className="flex-1" />
+      <a
+        href="https://secrets-bridge.io"
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-(--control-sm) items-center rounded-md px-[11px] text-[13px] font-semibold text-ink hover:bg-hover"
+      >
+        Docs
+      </a>
+    </div>
+  );
+}
+
 // --- navigation -----------------------------------------------------
 
 function SidebarContent({ onSignOut }: { onSignOut: () => void }) {
@@ -169,12 +236,45 @@ function SidebarContent({ onSignOut }: { onSignOut: () => void }) {
   );
 }
 
-function Navigation() {
-  const { identity, hasPermission, hasGlobalPermission, meStatus } = useAuth();
+// Counts, hidden at 0, from the same queries and rules as the pages so
+// the numbers never disagree: on Approvals, the requests waiting for
+// this person's decision; on Requests, reveals that are ready. The
+// detail lookup adds the votes the list rows don't carry.
+function useNavCounts() {
+  const { identity, hasPermission } = useAuth();
   const me = identity?.id ?? '';
+  const canApprove = hasPermission('secret.approve');
+  const canRequest = hasPermission('secret.request');
+  const showInbox = hasPermission('secret.value.provide');
+  const pending = useRequests({ status: 'pending' }, { enabled: canApprove && !!me });
+  const mine = useRequests({ requester_id: me }, { enabled: canRequest && !!me });
+  const mineRows = useMemo(() => (mine.data ?? []).filter((r) => r.requester_id === me), [mine.data, me]);
+  const reveal = useRevealConditions(mineRows, me);
+  const candidates = useMemo(() => (canApprove ? needsMyDecision(pending.data ?? [], me) : []), [canApprove, pending.data, me]);
+  const details = useRequestDetails(useMemo(() => candidates.map((r) => r.id), [candidates]));
+  const decisionCount = useMemo(
+    () =>
+      needsMyDecision(
+        candidates.map((r) => details.get(r.id) ?? r),
+        me,
+      ).length,
+    [candidates, details, me],
+  );
+  const readyCount = useMemo(
+    () => [...reveal.values()].filter((c) => c.state === 'ready').length,
+    [reveal],
+  );
+
+  const inboxCount = useInboxCount({ enabled: showInbox });
+  return { decisionCount, readyCount, inboxBadge: showInbox ? inboxCount.data?.total : undefined };
+}
+
+function Navigation() {
+  const { hasPermission, hasGlobalPermission, meStatus } = useAuth();
 
   // Sidebar entries gated by the live permission set:
-  //   Requests        → secret.request OR secret.approve
+  //   Approvals       → secret.approve
+  //   Requests        → secret.request
   //   Inbox           → secret.value.provide (at any scope)
   //   Agents          → agent.list
   //   Gateways        → gateway.list, global (every /admin/gateways read
@@ -184,69 +284,40 @@ function Navigation() {
   //   Audit           → audit.read
   //   Project / team policies → policy.author (never auto-shown for
   //                     policy.edit holders; they use /admin/policies)
-  //   Admin pages     → team.edit, role.edit, user_role.edit,
-  //                     workflow.edit, policy.edit, integration.edit
+  //   Administration  → any section this person has (useAdminSections)
   const canApprove = hasPermission('secret.approve');
   const canRequest = hasPermission('secret.request');
-  const showRequests = canRequest || canApprove;
   const showInbox = hasPermission('secret.value.provide');
   const showAgents = hasPermission('agent.list');
   const showSecrets = hasPermission('secret.list');
   const showAudit = hasPermission('audit.read');
-  const showTeams = hasPermission('team.edit');
-  const showRoles = hasPermission('role.edit');
-  const showAssignments = hasPermission('user_role.edit');
-  const showWorkflows = hasPermission('workflow.edit');
-  const showPolicies = hasPermission('policy.edit');
-  const showProviderConnections = hasPermission('integration.edit');
-  const showSignIn = hasPermission('auth.sso.edit');
   const showScopedPolicies = hasPermission('policy.author');
   const showGateways = hasGlobalPermission('gateway.list');
   const showTargets = hasPermission('gateway.bind') || showGateways;
-  const anyAdmin =
-    showTeams || showRoles || showAssignments || showWorkflows || showPolicies || showProviderConnections || showSignIn || showGateways;
+  const admin = useAdminSections();
 
-  // Requests count, hidden at 0, from the same queries and rules as the
-  // pages so the numbers never disagree: for approvers, the requests
-  // waiting for their decision; for requesters, reveals that are ready.
-  const pending = useRequests({ status: 'pending' }, { enabled: canApprove && !!me });
-  const mine = useRequests({ requester_id: me }, { enabled: !canApprove && canRequest && !!me });
-  const mineRows = useMemo(() => (mine.data ?? []).filter((r) => r.requester_id === me), [mine.data, me]);
-  const reveal = useRevealConditions(canApprove ? [] : mineRows, me);
-  const decisionCount = useMemo(
-    () => (canApprove ? needsMyDecision(pending.data ?? [], me).length : 0),
-    [canApprove, pending.data, me],
-  );
-  const readyCount = useMemo(
-    () => [...reveal.values()].filter((c) => c.state === 'ready').length,
-    [reveal],
-  );
-  const requestsCount = canApprove ? decisionCount : readyCount;
-  const requestsCountLabel = canApprove
-    ? `${decisionCount} waiting for your decision`
-    : `${readyCount} ready to reveal`;
-
-  const inboxCount = useInboxCount({ enabled: showInbox });
-  const inboxBadge = showInbox ? inboxCount.data?.total : undefined;
-
-  // People waiting for an admin's approval (api#266), for whoever can
-  // approve them.
-  // The list needs a global grant; a team-scoped one gets a 403, and
-  // then there's no Users page for this admin to use.
-  const waiting = usePendingUsers({ enabled: showAssignments });
-  const showUsers = showAssignments && !pendingForbidden(waiting.error);
-  const waitingBadge = showUsers ? waiting.data?.total : undefined;
+  const { decisionCount, readyCount, inboxBadge } = useNavCounts();
 
   return (
     <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pb-3">
       <NavItem to="/" end label="Overview" icon={<OverviewIcon />} />
-      {showRequests && (
+      {canApprove && (
+        <NavItem
+          to="/approvals"
+          label="Approvals"
+          icon={<ApprovalIcon />}
+          count={decisionCount}
+          countLabel={`${decisionCount} waiting for your decision`}
+        />
+      )}
+      {canRequest && (
         <NavItem
           to="/requests"
           label="Requests"
           icon={<RequestIcon />}
-          count={requestsCount}
-          countLabel={requestsCountLabel}
+          count={readyCount}
+          countLabel={`${readyCount} ready to reveal`}
+          quiet
         />
       )}
       {showInbox && (
@@ -263,39 +334,25 @@ function Navigation() {
         <NavGroup label="Catalog and records">
           {showSecrets && <NavItem to="/secrets" label="Secrets" icon={<CatalogIcon />} />}
           {showAgents && <NavItem to="/agents" label="Agents" icon={<AgentIcon />} />}
-          {showAudit && <NavItem to="/audit" label="Audit" icon={<AuditIcon />} />}
+          {showAudit && <NavItem to="/audit" label="Audit log" icon={<AuditIcon />} />}
         </NavGroup>
       )}
 
       <NavGroup label="Projects">
-        <NavItem to="/projects" end label="My projects" />
-        {showScopedPolicies && <NavItem to="/projects/policies" label="Project policies" />}
-        {showScopedPolicies && <NavItem to="/teams/policies" label="Team policies" />}
-        {showTargets && <NavItem to="/gateways" label="Argo CD targets" />}
+        <NavItem to="/projects" end label="My projects" icon={<FolderIcon />} />
+        {showScopedPolicies && <NavItem to="/projects/policies" label="Project policies" icon={<PolicyIcon />} />}
+        {showScopedPolicies && <NavItem to="/teams/policies" label="Team policies" icon={<PolicyIcon />} />}
+        {showTargets && <NavItem to="/gateways" label="Argo CD targets" icon={<TargetIcon />} />}
+        {admin.isAdmin && (
+          <NavItem
+            to="/admin"
+            label="Administration"
+            icon={<AdminIcon />}
+            count={admin.waiting}
+            countLabel={`${admin.waiting} waiting for approval`}
+          />
+        )}
       </NavGroup>
-
-      {anyAdmin && (
-        <NavGroup label="Admin">
-          {showTeams && <NavItem to="/admin/projects" label="Projects" />}
-          {showTeams && <NavItem to="/admin/teams" label="Teams" />}
-          {showRoles && <NavItem to="/admin/roles" label="Roles" />}
-          {showUsers && (
-            <NavItem
-              to="/admin/users"
-              label="Users"
-              count={waitingBadge}
-              countLabel={`${waitingBadge ?? 0} waiting for approval`}
-            />
-          )}
-          {showAssignments && <NavItem to="/admin/assignments" label="Assignments" />}
-          {showWorkflows && <NavItem to="/admin/workflows" label="Workflows" />}
-          {showPolicies && <NavItem to="/admin/policies" label="Policies" />}
-          {showPolicies && <NavItem to="/admin/platform-settings" label="Platform settings" />}
-          {showProviderConnections && <NavItem to="/admin/provider-connections" label="Provider connections" />}
-          {showGateways && <NavItem to="/admin/gateways" label="Gateways" />}
-          {showSignIn && <NavItem to="/admin/sign-in" label="Sign-in" />}
-        </NavGroup>
-      )}
 
       {meStatus === 'loading' && (
         <p className="px-2 pt-3 text-caption text-muted" role="status">
@@ -306,53 +363,54 @@ function Navigation() {
   );
 }
 
+/**
+ * The phone's bottom tabs: the four places this person goes most, picked
+ * from what they can open. Everything else is in the menu.
+ */
+function BottomTabs() {
+  const { hasPermission } = useAuth();
+  const { decisionCount, readyCount, inboxBadge } = useNavCounts();
+  const tabs = [
+    { to: '/', end: true, label: 'Overview', icon: <OverviewIcon />, show: true },
+    { to: '/approvals', label: 'Approvals', icon: <ApprovalIcon />, show: hasPermission('secret.approve'), count: decisionCount, countLabel: `${decisionCount} waiting for your decision` },
+    { to: '/requests', label: 'Requests', icon: <RequestIcon />, show: hasPermission('secret.request'), count: readyCount, countLabel: `${readyCount} ready to reveal` },
+    { to: '/inbox', label: 'Inbox', icon: <InboxIcon />, show: hasPermission('secret.value.provide'), count: inboxBadge, countLabel: `${inboxBadge ?? 0} waiting for your team's values` },
+    { to: '/audit', label: 'Activity', icon: <AuditIcon />, show: hasPermission('audit.read') },
+    { to: '/secrets', label: 'Secrets', icon: <CatalogIcon />, show: hasPermission('secret.list') },
+  ]
+    .filter((t) => t.show)
+    .slice(0, 4);
+  return (
+    <nav aria-label="Quick links" className="sticky bottom-0 z-10 hidden border-t border-border bg-side max-[900px]:flex">
+      {tabs.map((t) => (
+        <NavLink
+          key={t.to}
+          to={t.to}
+          end={t.end}
+          className={({ isActive }) =>
+            'group relative flex min-h-[60px] flex-1 flex-col items-center justify-center gap-[3px] text-[11.5px] font-medium ' + (isActive ? 'text-ink' : 'text-muted')
+          }
+        >
+          <span aria-hidden="true" className="absolute inset-x-[32%] top-0 h-0.5 group-aria-[current=page]:bg-accent-ink" />
+          <span className="group-aria-[current=page]:text-accent-ink">{t.icon}</span>
+          {t.label}
+          {!!t.count && (
+            <span aria-label={t.countLabel} className="absolute left-[calc(50%+6px)] top-[7px] min-w-[18px] rounded-sm bg-accent px-[5px] text-center font-mono text-[11px] font-semibold leading-[18px] text-on-accent">
+              {t.count}
+            </span>
+          )}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
 function NavGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="mt-[22px] flex flex-col gap-0.5">
       <p className="px-2.5 pb-1.5 text-[12px] font-medium leading-4 text-muted">{label}</p>
       {children}
     </div>
-  );
-}
-
-function NavItem({
-  to,
-  label,
-  icon,
-  count,
-  countLabel,
-  end,
-}: {
-  to: string;
-  label: string;
-  icon?: ReactNode;
-  count?: number;
-  countLabel?: string;
-  // NavLink matches by prefix; `end` keeps "/" from matching every route.
-  end?: boolean;
-}) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      className={({ isActive }) =>
-        'group flex h-9 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-ui font-medium max-[900px]:h-11 ' +
-        (isActive ? 'bg-raised text-ink' : 'text-muted hover:bg-hover hover:text-ink')
-      }
-    >
-      {icon && (
-        <span className="group-aria-[current=page]:text-accent-ink">{icon}</span>
-      )}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {count !== undefined && count > 0 && (
-        <span
-          aria-label={countLabel}
-          className="inline-flex h-5 min-w-[22px] items-center justify-center rounded-sm bg-accent px-1.5 font-mono text-[11.5px] font-semibold text-on-accent"
-        >
-          {count}
-        </span>
-      )}
-    </NavLink>
   );
 }
 
@@ -382,7 +440,7 @@ function SidebarFooter({ onSignOut }: { onSignOut: () => void }) {
       )}
 
       <div className="grid grid-cols-[30px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border border-border p-2.5">
-        <Avatar name={identity.display_name} small />
+        <Avatar name={identity.display_name} size="sm" />
         <button
           type="button"
           onClick={() => navigate('/me')}
@@ -448,42 +506,5 @@ function MobileNav({ onClose, onSignOut }: { onClose: () => void; onSignOut: () 
         <SidebarFooter onSignOut={onSignOut} />
       </div>
     </div>
-  );
-}
-
-// --- people ---------------------------------------------------------
-
-// The api has no "kind of user" field, so the subtitle is read from the
-// permission set. "No role" is the honest label for a signed-in user
-// with zero grants (e.g. an OIDC user not yet in any mapped group).
-function roleLabelFor(perms: string[]): string {
-  if (perms.includes('role.edit') || perms.includes('user_role.edit')) return 'Platform admin';
-  if (perms.includes('secret.security.approve')) return 'Security approver';
-  if (perms.includes('secret.approve')) return 'Approver';
-  if (perms.includes('secret.value.provide')) return 'Value provider';
-  if (perms.includes('secret.request')) return 'Requester';
-  if (perms.length === 0) return 'No role';
-  return 'Member';
-}
-
-function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '?';
-  const first = words[0].charAt(0);
-  const second = words.length > 1 ? words[words.length - 1].charAt(0) : '';
-  return (first + second).toUpperCase();
-}
-
-function Avatar({ name, small }: { name: string; small?: boolean }) {
-  return (
-    <span
-      aria-hidden="true"
-      className={
-        'inline-flex shrink-0 items-center justify-center rounded-full border border-border bg-raised font-semibold text-ink ' +
-        (small ? 'h-[30px] w-[30px] text-[11.5px]' : 'h-8 w-8 text-[12px]')
-      }
-    >
-      {initialsOf(name)}
-    </span>
   );
 }

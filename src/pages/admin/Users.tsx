@@ -1,5 +1,5 @@
 /**
- * Users (`/admin/users`): accounts waiting for approval (api#266).
+ * Accounts (`/admin/users`): people waiting for approval (api#266).
  *
  * Someone who signs in with Google for the first time gets an account
  * that can't do anything until an administrator approves it here with a
@@ -44,7 +44,7 @@ export function Users() {
   if (!allowed || pendingForbidden(pending.error)) {
     return (
       <div>
-        <PageHeader title="Users" />
+        <PageHeader title="Accounts" />
         <Banner title="You can't approve new users.">
           It needs the <code className="font-mono text-mono">user_role.edit</code> permission for everything, not only for a team
           or a project. Ask an administrator.
@@ -96,7 +96,7 @@ export function Users() {
   return (
     <div>
       <PageHeader
-        title="Users"
+        title="Accounts"
         description="People who signed in with Google for the first time wait here until you approve them with a role."
       />
       <div className="flex flex-col gap-6">

@@ -222,22 +222,34 @@ function RequestView({ r, refetch, refetching }: { r: AccessRequest; refetch: ()
   return (
     <div>
       <Breadcrumb items={[{ label: 'Requests', to: '/requests' }, { label: requestRef(r.id), mono: true }]} />
-      <h1 id="page-title" tabIndex={-1} className="mt-3 break-words text-console-title text-ink">
-        {operationTitle(r)}
-      </h1>
-      <div className="mb-4 mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-ui">
-        <Status status={r.status} />
-        {line && <span className={line.tone === 'ok' ? 'text-ok' : 'text-muted'}>{line.text}</span>}
-        {/* The separator travels with the scope, so it never dangles at
-            the end of a line when the scope wraps on a phone. */}
-        <span className="inline-flex max-w-full items-center gap-x-2.5">
-          <span aria-hidden="true" className="text-muted">
-            ·
-          </span>
-          <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} logo={display.logo} />
-        </span>
-      </div>
-      <Lifecycle steps={steps} now={now} />
+      <header className="mb-6 mt-3 overflow-hidden rounded-xl border border-border bg-surface">
+        {display.envKind === 'prod' && <div aria-hidden="true" className="bg-prod-hatch h-1" />}
+        <div className="flex flex-col gap-5 px-6 py-[22px] max-[600px]:px-4 max-[600px]:py-[18px]">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <span className="font-mono text-mono">{requestRef(r.id)}</span>
+              <Status status={r.status} />
+              {line && <span className={'text-caption ' + (line.tone === 'ok' ? 'text-ok' : 'text-muted')}>{line.text}</span>}
+            </div>
+            <h1 id="page-title" tabIndex={-1} className="break-words text-console-title text-ink">
+              {operationTitle(r)}
+            </h1>
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-caption">
+              {r.requester_display && (
+                <>
+                  <span className="text-ink">{isMine ? 'You' : r.requester_display}</span>
+                  <span aria-hidden="true" className="text-muted">
+                    ·
+                  </span>
+                </>
+              )}
+              <ScopeLabel project={display.project} env={display.env} envKind={display.envKind} logo={display.logo} />
+              {display.envKind === 'prod' && <span className="font-semibold text-ink">Production</span>}
+            </div>
+          </div>
+          <Lifecycle steps={steps} now={now} />
+        </div>
+      </header>
 
       <div className="grid grid-cols-1 gap-6 min-[1181px]:grid-cols-[minmax(0,1fr)_360px]">
         <div className="flex min-w-0 flex-col gap-6">

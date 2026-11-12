@@ -18,6 +18,14 @@ export function pathOf(r: AccessRequest): string {
   return (r.type === 'cross_team' ? r.destination_secret_ref : r.target_secret_ref) ?? '';
 }
 
+/** "wants to read 2 keys in production", the words on every decision row. */
+export function askedFor(r: AccessRequest, where?: { env?: string; envKind?: 'prod' | 'non_prod' }): string {
+  const n = keysOf(r).length;
+  const what = n === 0 ? 'all keys' : `${n} ${n === 1 ? 'key' : 'keys'}`;
+  const place = where?.envKind === 'prod' ? 'production' : where?.env;
+  return `wants to ${r.type === 'patch' ? 'change' : 'read'} ${what}${place ? ` in ${place}` : ''}`;
+}
+
 /** Who or what an open request is waiting on. */
 export function waitingOn(r: AccessRequest): string {
   switch (r.status) {

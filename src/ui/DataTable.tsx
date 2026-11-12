@@ -34,6 +34,8 @@ interface Props<T> {
   minWidth?: number;
   /** Align cells to the top, for rows whose first cell runs to two lines. */
   alignTop?: boolean;
+  /** The row whose details are open beside the table. */
+  selected?: (row: T) => boolean;
 }
 
 // A click on a control inside the row belongs to that control.
@@ -41,7 +43,7 @@ function fromControl(e: MouseEvent): boolean {
   return !!(e.target as HTMLElement).closest('a,button,input,select,textarea,label,summary');
 }
 
-export function DataTable<T>({ columns, rows, rowKey, label, onRowClick, stacked, minWidth = 640, alignTop }: Props<T>) {
+export function DataTable<T>({ columns, rows, rowKey, label, onRowClick, stacked, minWidth = 640, alignTop, selected }: Props<T>) {
   return (
     <>
       <div
@@ -75,8 +77,9 @@ export function DataTable<T>({ columns, rows, rowKey, label, onRowClick, stacked
               <tr
                 key={rowKey(r)}
                 onClick={onRowClick ? (e) => !fromControl(e) && onRowClick(r) : undefined}
+                aria-selected={selected ? selected(r) : undefined}
                 className={
-                  'border-t border-rule first:border-t-0 ' +
+                  'border-t border-rule first:border-t-0 aria-selected:bg-raised aria-selected:shadow-[inset_3px_0_0_var(--accent-ink)] ' +
                   (onRowClick ? 'cursor-pointer hover:bg-hover' : '')
                 }
               >

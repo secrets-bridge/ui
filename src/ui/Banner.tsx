@@ -32,10 +32,10 @@ export function Banner({ tone = 'note', title, children, action, className = '' 
   return (
     <div
       role={tone === 'error' ? 'alert' : undefined}
-      className={'flex items-start gap-3 rounded-lg border px-3.5 py-3 text-ui leading-[21px] font-normal text-ink ' + TONE[tone].box + ' ' + className}
+      className={'flex flex-wrap items-start gap-x-3 gap-y-2.5 rounded-lg border px-3.5 py-3 text-ui leading-[21px] font-normal text-ink ' + TONE[tone].box + ' ' + className}
     >
       <InfoIcon size={18} className={'mt-px ' + TONE[tone].icon} />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-[1_1_calc(100%-40px)] sm:flex-[1_1_0]">
         {title && <p className="font-semibold">{title}</p>}
         {children && <div className={title ? 'mt-0.5' : ''}>{children}</div>}
       </div>

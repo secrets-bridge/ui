@@ -6,7 +6,8 @@ import { as, call, fx } from '../support/stack';
 
 test('a developer sees no admin menu, and an admin page and its api refuse them', async ({ browser }) => {
   const page = await as(browser, fx.users.requester);
-  await expect(page.getByRole('navigation', { name: 'Main' }).getByText('Admin', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Overview' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Administration' })).toHaveCount(0);
 
   await page.goto('/admin/users');
   await expect(page.getByText("You can't approve new users.")).toBeVisible();
