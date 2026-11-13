@@ -41,3 +41,24 @@ test('granting a role asks for the second factor once, and the grant goes throug
   await page.getByRole('dialog').getByRole('button', { name: 'Revoke' }).click();
   await expect(page.getByText('Revoked approver from Outsider.')).toBeVisible();
 });
+
+// The api refuses a move that would bring a team under a team where the
+// mover holds a role limited to that team (api#339). The console says why
+// in words. The refusal itself is the api's to test, so the api's answer
+// is stubbed here.
+test('a refused team move says why, in words', async ({ browser }) => {
+  const page = await as(browser, fx.users.admin, adminPassword);
+  await page.route(new RegExp(`/api/v1/teams/${fx.team}$`), (route) =>
+    route.request().method() === 'PUT'
+      ? route.fulfill({ status: 403, json: { error: 'self_scope_expansion_not_allowed' } })
+      : route.fallback(),
+  );
+  await page.goto(`/admin/teams?team=${fx.team}`);
+  await page.getByRole('button', { name: 'Edit team' }).click();
+  const drawer = page.getByRole('dialog', { name: 'Edit team' });
+  await drawer.locator('#team-parent').selectOption(fx.otherTeam);
+  await drawer.getByRole('button', { name: 'Save team' }).click();
+  await expect(drawer.getByText('Not saved.')).toBeVisible();
+  await expect(drawer.getByText(/so moving this team under it would widen your own access/)).toBeVisible();
+  await expect(drawer.getByText('self_scope_expansion_not_allowed'), 'the raw code is not shown').toHaveCount(0);
+});
