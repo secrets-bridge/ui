@@ -41,7 +41,9 @@ test('an approval with a stale second factor asks for it again and only then rec
 
   await stepUpDialog.locator('#stepup-code').fill(await auth.next());
   await stepUpDialog.getByRole('button', { name: 'Confirm' }).click();
-  await expect.poll(() => status(approver, id)).toBe('approved');
+  // The vote counts once the request leaves pending. The agent can run it
+  // before the next poll, so `executed` is a pass too.
+  await expect.poll(() => status(approver, id)).toMatch(/^(approved|executed)$/);
 });
 
 test("nobody, admin included, can approve or reject their own request", async ({ browser }) => {

@@ -78,7 +78,9 @@ test('an approver with no second factor adds one from the Approve dialog, and th
   await confirm.locator('#stepup-code').fill(await auth.next());
   await confirm.getByRole('button', { name: 'Confirm' }).click();
 
-  await expect.poll(() => status(page, id)).toBe('approved');
+  // The vote counts once the request leaves pending. The agent can run it
+  // before the next poll, so `executed` is a pass too.
+  await expect.poll(() => status(page, id)).toMatch(/^(approved|executed)$/);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
