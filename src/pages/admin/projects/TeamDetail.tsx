@@ -50,6 +50,8 @@ function errorText(err: unknown): string {
     if (err.status === 409 && m.includes('children')) return 'This team still has sub-teams. Move or delete them first.';
     if (err.status === 409 && m.includes('name')) return 'Another team under the same parent already has this name.';
     if (err.status === 409 && m.includes('cycle')) return 'That parent would put the team under itself. Pick another parent.';
+    if (err.status === 403 && m.includes('self_scope_expansion_not_allowed'))
+      return "You hold a role limited to that parent team or a team above it, so moving this team under it would widen your own access. Another admin has to make this move.";
     return `${err.status}: ${err.message}`;
   }
   return err instanceof Error ? err.message : String(err);
