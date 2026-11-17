@@ -88,7 +88,7 @@ export function SignIn() {
     <div>
       <PageHeader
         title="Sign-in methods"
-        description="Let people sign in with their Google Workspace account. New accounts wait for your approval on the Users page."
+        description="Let people sign in with their Google Workspace account. New accounts wait for your approval under Administration → Accounts."
       />
       <div className="flex flex-col gap-6">
         {finish.isError && (
@@ -417,7 +417,7 @@ function GoogleSection({ provider, settings }: { provider: SSOProvider; settings
         <dt className="text-muted">New people</dt>
         <dd className="text-ink">
           {provider.require_approval
-            ? 'Wait for your approval on the Users page'
+            ? 'Wait for your approval under Accounts'
             : defaultRole
               ? `Get the ${defaultRole.name} role right away`
               : 'Get in right away, with no role'}
@@ -582,7 +582,7 @@ function ProviderDrawer({ settings, provider, onClose }: { settings: SSOSettings
             <input type="radio" name="google-approval" checked={requireApproval} onChange={() => setRequireApproval(true)} className="mt-1 accent-accent-ink" />
             <span>
               Wait for approval <span className="text-muted">(recommended)</span>
-              <span className="block text-caption text-muted">You give each new person a role on the Users page.</span>
+              <span className="block text-caption text-muted">You give each new person a role under Accounts.</span>
             </span>
           </label>
           <label className="flex items-start gap-2.5 text-ui font-normal">

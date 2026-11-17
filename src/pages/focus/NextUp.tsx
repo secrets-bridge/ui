@@ -205,7 +205,8 @@ export function ThenRow({
         </div>
         {children}
       </div>
-      {action && <span className="relative z-10 shrink-0 self-center max-[600px]:w-full">{action}</span>}
+      {/* Above the row's stretched link (z-auto), below the phone top bar and tabs (z-10). */}
+      {action && <span className="relative z-[1] shrink-0 self-center max-[600px]:w-full">{action}</span>}
     </li>
   );
 }

@@ -26,6 +26,7 @@ import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { requestRef } from '../lib/requestRef';
 import { formatExact, formatShort } from '../lib/time';
+import { useMinWidth } from '../lib/useMinWidth';
 import { useNow } from '../lib/useNow';
 import { Banner } from '../ui/Banner';
 import { Button } from '../ui/Button';
@@ -110,7 +111,12 @@ export function Audit() {
   const open = rows.find((e) => e.id === openId) ?? null;
 
   // Anything in the URL counts, even an id still being typed, so Reset is always there to clear it.
-  const filtered = [...params.keys()].some((k) => k !== 'actor' || privileged);
+  const active = [...params.keys()].filter((k) => k !== 'actor' || privileged).length;
+  const filtered = active > 0;
+  // On a phone the five filters would fill the first screen, so they fold
+  // away behind a button that says how many are on.
+  const wide = useMinWidth(701);
+  const [showFilters, setShowFilters] = useState(false);
   const reset = () => {
     setTyped({ actor: '', action: '', resource: '', correlation_id: '' });
     setParams({}, { replace: true });
@@ -171,7 +177,23 @@ export function Audit() {
     <div>
       <PageHeader title="Audit log" description={fact} />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-border bg-surface p-4 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-[repeat(4,minmax(0,1fr))_minmax(150px,auto)]">
+      {!wide && (
+        <Button
+          variant="secondary"
+          className="mb-3 w-full"
+          aria-expanded={showFilters}
+          aria-controls="audit-filters"
+          onClick={() => setShowFilters((v) => !v)}
+        >
+          {showFilters ? 'Hide filters' : 'Filters'}
+          {active > 0 && ` · ${active} on`}
+        </Button>
+      )}
+      <div
+        id="audit-filters"
+        hidden={!wide && !showFilters}
+        className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-border bg-surface p-4 min-[700px]:grid-cols-2 min-[1100px]:grid-cols-[repeat(4,minmax(0,1fr))_minmax(150px,auto)]"
+      >
         <FilterInput
           label="Actor"
           value={privileged ? typed.actor : 'Only you'}
