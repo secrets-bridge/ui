@@ -301,6 +301,36 @@ export function Secrets() {
                 onRowClick={setSelected}
                 selected={(s) => s.id === selected?.id}
                 minWidth={docked && selected ? 560 : 880}
+                stacked={(s) => (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="flex items-start justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelected(s)}
+                        className="min-w-0 break-all text-left font-mono text-mono font-medium text-accent-ink hover:underline"
+                      >
+                        {s.secret_ref}
+                      </button>
+                      <CatalogStatus status={s.status} />
+                    </p>
+                    <p className="text-caption text-muted">
+                      {providerLabel(s.provider_type)} · <span className="font-mono">{s.cluster_name}</span> · seen{' '}
+                      <time title={formatExact(s.last_seen_at)}>{formatAge(s.last_seen_at, now)}</time>
+                    </p>
+                    {Object.keys(s.labels ?? {}).length > 0 && (
+                      <span className="flex flex-wrap gap-1">
+                        {Object.entries(s.labels ?? {})
+                          .slice(0, 3)
+                          .map(([k, v]) => (
+                            <LabelChip key={k} k={k} v={v} />
+                          ))}
+                        {Object.keys(s.labels ?? {}).length > 3 && (
+                          <span className="text-caption text-muted">+{Object.keys(s.labels ?? {}).length - 3} more</span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                )}
               />
             </div>
             {docked && selected && (
